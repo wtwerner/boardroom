@@ -2,11 +2,12 @@ name: tick
 # Calls the site through the day, for the reminder before a night and the morning-after DM
 # asking for its plays. Vercel's Hobby crons only run once a day. Needs the repo secrets
 # SITE_URL (https://your-site.example) and CRON_SECRET (the same as Vercel's); without them it
-# does nothing. Hourly keeps a private repo well inside GitHub's free minutes; a public repo
-# or fork can run it every 15 minutes ("*/15 * * * *") for free.
+# does nothing. Every 15 minutes, off the hour (GitHub delays runs at :00 most). That's free
+# for a public repo or fork; a private repo pays for each run in Actions minutes, so run it
+# hourly there ("7 * * * *").
 on:
   schedule:
-    - cron: "7 * * * *"
+    - cron: "2-59/15 * * * *"
   workflow_dispatch:
 permissions: {}
 jobs:

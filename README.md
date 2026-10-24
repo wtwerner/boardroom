@@ -118,14 +118,14 @@ After that, a nightly cron (`vercel.json`, 09:00 UTC) syncs Discord, BGG collect
 
 ### Reminders and the morning after
 
-With nights posted in Discord ([Part 4](docs/discord-setup.md#part-4-nights-in-discord-optional)), Boardroom replies to a night's post a few hours before it starts, pinging whoever's going or a maybe, and the morning after it DMs whoever made the night if nothing's been logged for it. Vercel's Hobby crons only run once a day, so something else calls `/api/cron/tick` through the day. The repo has a GitHub Actions workflow for it (`.github/workflows/tick.yml`): add two repository secrets and it runs every hour.
+With nights posted in Discord ([Part 4](docs/discord-setup.md#part-4-nights-in-discord-optional)), Boardroom replies to a night's post a few hours before it starts, pinging whoever's going or a maybe, and the morning after it DMs whoever made the night if nothing's been logged for it. Vercel's Hobby crons only run once a day, so something else calls `/api/cron/tick` through the day. The repo has a GitHub Actions workflow for it (`.github/workflows/tick.yml`): add two repository secrets and it runs every 15 minutes.
 
 ```sh
 gh secret set SITE_URL      # https://<your-domain>
 gh secret set CRON_SECRET   # the same value as in Vercel
 ```
 
-A public repo or fork can run it every 15 minutes for free (change `"7 * * * *"` to `"*/15 * * * *"`); on a private repo each run counts against GitHub's free Actions minutes, so hourly keeps well inside them. GitHub turns off scheduled workflows in a repo with no activity for 60 days, and in a new fork until you open its **Actions** tab. Any other scheduler that can send `Authorization: Bearer <CRON_SECRET>` works too.
+That's free for a public repo or fork. On a private repo each run counts against GitHub's free Actions minutes, so run it hourly there (change `"2-59/15 * * * *"` to `"7 * * * *"`). GitHub turns off scheduled workflows in a repo with no activity for 60 days, and in a new fork until you open its **Actions** tab. Any other scheduler that can send `Authorization: Bearer <CRON_SECRET>` works too.
 
 ## Updating
 
