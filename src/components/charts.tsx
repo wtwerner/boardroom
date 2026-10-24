@@ -100,7 +100,7 @@ export function AttendanceBars({ rows }: { rows: ({ id: number; name: string; co
             <li
               key={r.id}
               aria-label={`${r.name}: ${CASUAL_NIGHT ? byNight(r, ", ") : `${total} ${total === 1 ? "event" : "events"}`}`}
-              className="grid grid-cols-[minmax(0,7rem)_1fr_auto] items-center gap-3 text-sm"
+              className="grid grid-cols-[minmax(0,7rem)_1fr_4.5rem] items-center gap-3 text-sm"
             >
               <span className="flex min-w-0 items-center gap-1.5">
                 <Meeple color={r.color} className="size-4" />
@@ -119,12 +119,6 @@ export function AttendanceBars({ rows }: { rows: ({ id: number; name: string; co
               </span>
               <span className="tabular text-right text-slate">
                 <span className="font-semibold text-ink">{total}</span> {total === 1 ? "event" : "events"}
-                {/* The bar's colors already say which night when it's only one */}
-                {r.core > 0 && r.casual > 0 && (
-                  <span className="hidden sm:inline">
-                    , {byNight(r)}
-                  </span>
-                )}
               </span>
             </li>
           );
