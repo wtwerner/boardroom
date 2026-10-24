@@ -1,0 +1,22 @@
+name: Something's wrong
+description: A page errors, a number looks off, or a sync doesn't do what it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you saw instead. Screenshots help.
+    validations:
+      required: true
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: Which optional parts you use (casual night, nights posted to Discord, BGG token, Claude), and any settings you've changed. No secrets or ids, please.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Errors or logs
+      description: From the browser console or Vercel's function logs, if there are any.
+      render: text

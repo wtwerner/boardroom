@@ -1,0 +1,15 @@
+name: An idea
+description: Something your group would use, or a setup Boardroom doesn't fit yet
+labels: [idea]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What your group wants to do
+      description: The situation, not the solution. "We play online every other week and..." beats "add a button that...".
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How it might work

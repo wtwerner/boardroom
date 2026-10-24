@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+
+:root {
+  /* Native controls (date pickers, scrollbars) follow the theme */
+  color-scheme: light;
+  --table: #f6f7f5;
+  --card: #ffffff;
+  --ink: #1b1e22;
+  --slate: #646b73;
+  --line: #e3e5e0;
+  --felt: #1e4a3b;
+  --felt-ink: #f1f5f2;
+  --felt-soft: #e4ede8;
+  /* Green for text and icons: felt is too dark to read on the dark theme */
+  --accent: #1e4a3b;
+  --edge: rgb(27 30 34 / 0.9);
+  --meeple-red: #d33f49;
+  --meeple-blue: #2f6fb3;
+  --meeple-yellow: #c9960f;
+  --meeple-green: #3e9a5b;
+  --meeple-purple: #7a52a3;
+  --meeple-orange: #e07b39;
+  /* Chart series for the two nights, checked for color-blind separation and contrast on --card */
+  --night-core: #1f8058;
+  --night-casual: #c0801a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --table: #121614;
+    --card: #1a1f1c;
+    --ink: #e8ebe7;
+    --slate: #9aa39e;
+    --line: #2b322e;
+    --felt: #22584a;
+    --felt-ink: #f1f5f2;
+    --felt-soft: #1f3a30;
+    --accent: #7cc4a0;
+    --edge: rgb(0 0 0 / 0.7);
+    --meeple-red: #e0525b;
+    --meeple-blue: #4a86c8;
+    --meeple-yellow: #b38812;
+    --meeple-green: #3a9a6a;
+    --meeple-purple: #9572c0;
+    --meeple-orange: #d0702f;
+    --night-core: #249a6c;
+    --night-casual: #bd7a10;
+  }
+}
+
+@theme inline {
+  --color-table: var(--table);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-slate: var(--slate);
+  --color-line: var(--line);
+  --color-felt: var(--felt);
+  --color-felt-ink: var(--felt-ink);
+  --color-felt-soft: var(--felt-soft);
+  --color-accent: var(--accent);
+
+  /* Meeple colors — one per person, used everywhere they appear */
+  --color-meeple-red: var(--meeple-red);
+  --color-meeple-blue: var(--meeple-blue);
+  --color-meeple-yellow: var(--meeple-yellow);
+  --color-meeple-green: var(--meeple-green);
+  --color-meeple-purple: var(--meeple-purple);
+  --color-meeple-orange: var(--meeple-orange);
+
+  /* The core group's nights and the casual night, wherever they're told apart */
+  --color-night-core: var(--night-core);
+  --color-night-casual: var(--night-casual);
+
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+
+  /* Solid offset "cardboard" edge for pressable things and box covers */
+  --shadow-token: 0 2px 0 0 var(--edge);
+  --shadow-box: 0 3px 0 0 rgb(0 0 0 / 0.18);
+}
+
+/* Wide, heavy Archivo — reads like a box-lid title */
+@utility font-display {
+  font-stretch: 125%;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+@utility font-wide {
+  font-stretch: 112%;
+  font-weight: 650;
+}
+
+body {
+  background: var(--table);
+  color: var(--ink);
+  font-feature-settings: "tnum" 0;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--felt);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

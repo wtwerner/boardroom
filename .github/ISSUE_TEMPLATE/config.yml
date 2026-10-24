@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Setting it up
+    url: https://github.com/wtwerner/boardroom#set-it-up
+    about: The setup steps, environment variables and settings

@@ -1,0 +1,9 @@
+# Kept out of `vercel deploy` uploads from a local checkout (Git deploys never have them)
+.env*
+!.env.example
+*.db
+*.db-*
+CLAUDE.local.md
+.next
+coverage
+*.pem
