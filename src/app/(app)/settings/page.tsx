@@ -60,7 +60,7 @@ async function Settings() {
       <Section title="You">
         {me.playerId && (
           <div className="mb-5">
-            <p className="mb-2 text-sm text-slate">The name everyone sees on plays and rankings. It starts as your Discord name.</p>
+            <p className="mb-2 text-sm text-slate">The name everyone sees on plays and rankings. It starts as your Discord name, but most people here go by their first name.</p>
             <RenamePlayerForm players={[{ id: me.playerId, name: me.name }]} myPlayerId={me.playerId} label="Your name" />
           </div>
         )}
@@ -70,6 +70,7 @@ async function Settings() {
 
       <Section id="bgg" title="BoardGameGeek collection" className="scroll-mt-6">
         <Panel className="space-y-5 p-4">
+          <p className="text-sm text-slate">Where you keep track of the games you own, at boardgamegeek.com.</p>
           <div>
             <BggForm username={me.bggUsername} />
             <p className="mt-2 text-xs text-slate">
@@ -89,6 +90,7 @@ async function Settings() {
 
       <Section id="bga" title="Board Game Arena" className="scroll-mt-6">
         <Panel className="p-4">
+          <p className="mb-3 text-sm text-slate">For playing online, at boardgamearena.com. It&apos;s a different site from BoardGameGeek.</p>
           <BgaForm username={bga?.username ?? null} premium={bga?.premium ?? false} />
           <p className="mt-2 text-xs text-slate">
             Shown on the <Link href="/online" className="text-accent underline-offset-4 hover:underline">Online</Link> page so the others can find you

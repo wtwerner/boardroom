@@ -50,6 +50,8 @@ async function linkPlayer(userId: string, name: string, discordId: string | null
       .update(schema.player)
       .set({ userId, discordId: discordId ?? match.discordId, color: match.color ?? color })
       .where(eq(schema.player.id, match.id));
+    // The group may already have renamed their player ("Sam" for a handle like "sambo99"): keep that, not the Discord name
+    if (match.name !== name) await db.update(schema.user).set({ name: match.name }).where(eq(schema.user.id, userId));
   } else {
     await db.insert(schema.player).values({ name, userId, discordId, color });
   }

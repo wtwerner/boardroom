@@ -7,7 +7,8 @@ import { getGroupRanking, getMembers, getNewToRank, getRankingLists, getRankingP
 import { RankingEditor } from "./ranking-editor";
 import { HEAVY_WEIGHT } from "@/lib/tier";
 import { CASUAL_NIGHT } from "@/config";
-import { TIERS } from "@/db/enums";
+import { TIERS, type Tier } from "@/db/enums";
+import { TIER_LABEL } from "@/lib/tier";
 import { RankingTabs, TierSwitch, tierHref, tierParam } from "./tabs";
 
 export const metadata: Metadata = { title: "Rankings" };
@@ -32,6 +33,9 @@ async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">
   const mine = lists[me.id] ?? [];
   const games = await getRankingPool(me.id, me.playerId, mine, tier);
   const voters = members.filter((m) => lists[m.id]?.length);
+  const waiting = Object.fromEntries(TIERS.map((t) => [t, toRank.filter((g) => g.tier === t).length])) as Record<Tier, number>;
+  // Each list is ranked on its own, so finishing one is easy to mistake for finishing both
+  const other = TIERS.find((t) => t !== tier)!;
 
   return (
     <div className="space-y-8">
@@ -39,8 +43,15 @@ async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">
         <TierSwitch
           current={tier}
           path="/rankings"
-          waiting={Object.fromEntries(TIERS.map((t) => [t, toRank.filter((g) => g.tier === t).length]))}
+          waiting={waiting}
         />
+        {waiting[tier] === 0 && waiting[other] > 0 && (
+          <p className="w-fit rounded-lg border border-meeple-yellow/70 bg-meeple-yellow/10 px-3 py-2 text-sm">
+            Nothing new to place here, but {waiting[other] === 1 ? "a game you've played is" : `${waiting[other]} games you've played are`} waiting
+            in <strong className="font-semibold">{TIER_LABEL[other]}</strong>.{" "}
+            <TextLink href={tierHref("/rankings", other)}>Rank {waiting[other] === 1 ? "it" : "them"} next</TextLink>
+          </p>
+        )}
         <p className="max-w-2xl text-sm text-slate">
           {tier === "heavy"
             ? `BGG weight ${HEAVY_WEIGHT} and up${CASUAL_NIGHT ? ", whichever kind of event they were played at" : ""}.`

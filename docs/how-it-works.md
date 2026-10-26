@@ -7,14 +7,15 @@ The product in detail, for anyone changing it: how the group uses each part, whe
 There are no admins. Everyone who can sign in can do everything, including logging, deleting and merging. It's meant for a small group that trusts each other, so who can sign in is the one thing to get right (see [Who can sign in](#who-can-sign-in)).
 
 **First visit (each member).**
-1. Sign in with Discord. You're matched to your name in past plays: by Discord id if you were @-mentioned, otherwise by name, when only one player has it (with two, you start fresh and merge yours in). The first sign-in lands on **Get set up** (`/welcome`).
+1. Sign in with Discord. You're matched to your name in past plays: by Discord id if you were @-mentioned, otherwise by name, when only one player has it (with two, you start fresh and merge yours in). If the group already renamed that player ("Sam" for a handle like "sambo99"), you keep their name, not your Discord one. The first sign-in lands on **Get set up** (`/welcome`).
 2. Get set up walks through each step on one page, with the forms right there:
+   - **Check your name.** It starts as your Discord name; most people switch to their first name. Saving it, changed or not, ticks the step (`user.nameChosenAt`).
    - **Find yourself in past plays.** This appears only when nothing is linked to you yet. Old posts may call you "Alex" while you signed in as "alexb". Merge the old name into you.
    - **Rate the games you've played** (Rankings, then Rate games): one tap per game, from 😍 to 🙅, plus *Want to play* and 🔥 *Must play*.
-   - **Rank them**, a few "this or that?" questions each, then drag to adjust.
-   - **Add your BGG collection** and **your Board Game Arena name**. Both optional. BGG takes your username, or the CSV export until the BGG API token is approved.
+   - **Rank them**, a few "this or that?" questions each, then drag to adjust. Heavy and light games are separate lists, so the step has a button for each and is done when each list you've played games in is fully ranked or has 10 in it (`rankLists` in `src/lib/setup.ts`). Rankings points to the other list once there's nothing new in the one you're on.
+   - **Add your BoardGameGeek collection** and **your Board Game Arena name**. Both optional, and both spelled out, since the two are easy to mix up: BGG is where people list the games they own, BGA is for playing online. BGG takes your username, or the CSV export until the BGG API token is approved.
 
-   It also says where events are posted and lets you pick your meeple color. Rating and ranking are the steps that count (`src/lib/setup.ts`): until they're done, Home shows one line with how far along you are and the next step, and taps through to Get set up. It never puts the whole checklist on Home. Settings links to the page too.
+   It also says where events are posted and lets you pick your meeple color. The name, rating and ranking are the steps that count (`src/lib/setup.ts`): until they're done, Home shows one line with how far along you are and the next step, and taps through to Get set up. It never puts the whole checklist on Home. Settings links to the page too.
 
    Later, when tastes have moved on, **Replay this or that** (on Rankings) ranks everything again from scratch: your old list stays hidden, every answer feeds a Bradley–Terry fit (`src/lib/pairwise.ts`) so one odd pick doesn't sink a game, and nothing changes until you save the result.
 3. Settings also has your display name and meeple color.

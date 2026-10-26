@@ -508,9 +508,15 @@ export async function renamePlayer(playerId: number, rawName: string): Promise<A
       aliases: [...new Set([...target.aliases, target.name.toLowerCase()])].filter((a) => a !== name.toLowerCase()),
     })
     .where(eq(schema.player.id, playerId));
-  if (target.userId) await db.update(schema.user).set({ name }).where(eq(schema.user.id, target.userId));
+  if (target.userId) {
+    // Saving their own name, even unchanged, is the first step of getting set up
+    await db
+      .update(schema.user)
+      .set({ name, ...(target.userId === me.id && { nameChosenAt: new Date() }) })
+      .where(eq(schema.user.id, target.userId));
+  }
   refresh();
-  return { ok: true, message: `Renamed to ${name}.${clash ? sharedName(clash.name) : ""}` };
+  return { ok: true, message: `${name === target.name ? "Saved" : `Renamed to ${name}`}.${clash ? sharedName(clash.name) : ""}` };
 }
 
 const sharedName = (name: string) =>

@@ -5,6 +5,7 @@ import { MUST_PLAY_LIMIT, type MeepleColor, type Night, type Sentiment, type Tie
 import { localDate, recentMonths } from "./nights";
 import { matchByName, playerLabels } from "./players";
 import { groupRanking } from "./ranking";
+import { rankLists } from "./setup";
 import { gameTier } from "./tier";
 
 const { game, play, playPlayer, player, collectionItem, opinion, ranking, user } = schema;
@@ -412,12 +413,15 @@ export async function getSetupStatus(me: { id: string; bggUsername: string | nul
     db.select({ n: count() }).from(opinion).where(and(eq(opinion.userId, me.id), isNotNull(opinion.sentiment))),
     db.select({ gameId: ranking.gameId }).from(ranking).where(eq(ranking.userId, me.id)),
     getRateableGames(me.id, me.playerId),
-    db.select({ bga: user.bgaUsername }).from(user).where(eq(user.id, me.id)),
+    db.select({ bga: user.bgaUsername, nameChosenAt: user.nameChosenAt }).from(user).where(eq(user.id, me.id)),
   ]);
   const unratedPlayed = played.filter((g) => !g.sentiment).length;
   const rankedIds = new Set(rankedRows.map((r) => r.gameId));
   const unrankedPlayed = played.filter((g) => !rankedIds.has(g.id)).length;
+  const tiers = await getGameTiers(played.map((g) => g.id));
+  const lists = rankLists(played.map((g) => ({ id: g.id, tier: tiers.get(g.id) ?? "light" })), rankedIds);
   return {
+    nameDone: Boolean(profile?.nameChosenAt),
     collection: Boolean(me.bggUsername) || shelf.n > 0,
     bga: Boolean(profile?.bga),
     played: played.length,
@@ -429,8 +433,9 @@ export async function getSetupStatus(me: { id: string; bggUsername: string | nul
     // Nothing played yet means nothing to rate
     rateDone: rated.n >= 10 || unratedPlayed === 0,
     unrankedPlayed,
-    // Setup only asks for a solid start; later plays are nudged separately
-    rankDone: unrankedPlayed === 0 || rankedIds.size >= 10,
+    /** Each ranking list they've played games for, and how far into it they are */
+    lists,
+    rankDone: lists.every((l) => l.done),
   };
 }
 

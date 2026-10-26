@@ -52,7 +52,7 @@ export function BggForm({ username }: { username: string | null }) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveBggUsername, null);
   return (
     <form action={action} className="space-y-2">
-      <label className="block text-sm font-medium" htmlFor="bggUsername">Your BGG username</label>
+      <label className="block text-sm font-medium" htmlFor="bggUsername">Your BoardGameGeek username</label>
       <div className="flex gap-2">
         <input id="bggUsername" name="bggUsername" defaultValue={username ?? ""} autoComplete="off" className={clsx(input, "flex-1")} />
         <button className={buttonClass("primary")} disabled={pending}>{pending ? "Syncing…" : "Save and sync"}</button>
@@ -66,7 +66,7 @@ export function BgaForm({ username, premium }: { username: string | null; premiu
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveBgaProfile, null);
   return (
     <form action={action} className="space-y-2">
-      <label className="block text-sm font-medium" htmlFor="bgaUsername">Your BGA name</label>
+      <label className="block text-sm font-medium" htmlFor="bgaUsername">Your Board Game Arena name</label>
       <div className="flex flex-wrap gap-2">
         <input id="bgaUsername" name="bgaUsername" defaultValue={username ?? ""} autoComplete="off" maxLength={40} className={clsx(input, "min-w-40 flex-1")} />
         <button className={buttonClass("secondary")} disabled={pending}>{pending ? "Saving…" : "Save"}</button>

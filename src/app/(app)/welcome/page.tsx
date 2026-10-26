@@ -9,12 +9,14 @@ import { db, schema } from "@/db";
 import { Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass } from "@/components/ui";
 import { channelUrl, commandName, eventsChannel, postsNights } from "@/lib/discord";
 import { discordAppUrl } from "@/lib/discord-components";
-import { getNewToRank, getPlayers, getSetupStatus } from "@/lib/queries";
+import { getPlayers, getSetupStatus } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
 import { type SetupStep, setupProgress, setupSteps } from "@/lib/setup";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
+import { inSentence } from "@/lib/text";
+import { TIER_LABEL } from "@/lib/tier";
 import { tierHref } from "../rankings/tabs";
-import { BgaForm, BggForm, ColorPicker, MergePlayersForm } from "../settings/settings-forms";
+import { BgaForm, BggForm, ColorPicker, MergePlayersForm, RenamePlayerForm } from "../settings/settings-forms";
 
 export const metadata: Metadata = { title: "Get set up" };
 
@@ -32,10 +34,9 @@ export default function WelcomePage() {
 
 async function Welcome() {
   const me = await requireUser();
-  const [status, players, toRank, [profile]] = await Promise.all([
+  const [status, players, [profile]] = await Promise.all([
     getSetupStatus(me),
     getPlayers(),
-    getNewToRank(me.id, me.playerId),
     db.select({ bga: schema.user.bgaUsername, premium: schema.user.bgaPremium }).from(schema.user).where(eq(schema.user.id, me.id)),
   ]);
   const steps = setupSteps(status);
@@ -45,6 +46,12 @@ async function Welcome() {
   const eventsUrl = events && channelUrl(events);
 
   const body: Record<SetupStep["key"], ReactNode> = {
+    name: (
+      <>
+        <p>It&apos;s what everyone sees on plays, rankings and events. It starts as your Discord name, but most people here go by their first name.</p>
+        {me.playerId && <RenamePlayerForm players={[{ id: me.playerId, name: me.name }]} myPlayerId={me.playerId} label="Your name" />}
+      </>
+    ),
     claim: (
       <>
         <p>Old posts may list you under another name, like &ldquo;Alex&rdquo; when you signed in as &ldquo;alexb&rdquo;. Merge it into you so those plays count as yours.</p>
@@ -66,21 +73,33 @@ async function Welcome() {
     rank: (
       <>
         <p>
-          Put the games you&apos;ve played in order, best first. Each one takes a few quick &ldquo;this or that?&rdquo; questions; drag to adjust.
-          {status.played > 0 && ` ${status.ranked} of ${status.played} placed.`}
+          Put the games you&apos;ve played in order, best first. Each one takes a few quick &ldquo;this or that?&rdquo; questions; drag to adjust.{" "}
+          {TIER_LABEL.heavy} and {inSentence(TIER_LABEL.light)} are ranked separately, so there&apos;s a list for each.
         </p>
-        {status.played > 0 && (
-          <Link href={tierHref("/rankings", toRank[0]?.tier ?? "heavy")} className={buttonClass(status.rankDone ? "secondary" : "primary")}>
-            Rank games
-          </Link>
+        {status.lists.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {status.lists.map((l) => (
+              <Link key={l.tier} href={tierHref("/rankings", l.tier)} className={buttonClass(l.done ? "secondary" : "primary", "gap-2")}>
+                {l.done && <Check className="size-4" strokeWidth={3} aria-hidden />}
+                Rank {inSentence(TIER_LABEL[l.tier])}
+                <span className="tabular text-xs font-normal opacity-80">
+                  {l.ranked} of {l.played}
+                </span>
+              </Link>
+            ))}
+          </div>
         )}
       </>
     ),
     bgg: (
       <>
         <p>
-          Your games join the shared shelf, so the planner knows what&apos;s in reach and Discover knows what you don&apos;t need. No BGG account? Skip
-          it, or <TextLink href="/settings#bgg">import a CSV</TextLink>.
+          <a href="https://boardgamegeek.com" target="_blank" rel="noreferrer" className="text-accent underline-offset-4 hover:underline">
+            BoardGameGeek
+          </a>{" "}
+          (BGG) is where a lot of people keep track of the games they own. Add your username there and your games join the shared shelf, so the
+          planner knows what&apos;s in reach and Discover knows what you don&apos;t need. Not on BGG? Skip this one. You can also{" "}
+          <TextLink href="/settings#bgg">import a CSV</TextLink> from BGG instead of a username.
         </p>
         <BggForm username={me.bggUsername} />
       </>
@@ -88,7 +107,11 @@ async function Welcome() {
     bga: (
       <>
         <p>
-          For playing online between game nights: the others find you on the <TextLink href="/online">Online</TextLink> page.
+          <a href="https://boardgamearena.com" target="_blank" rel="noreferrer" className="text-accent underline-offset-4 hover:underline">
+            Board Game Arena
+          </a>{" "}
+          (BGA) is a different site, for playing online between game nights. If you play there, add the name you play under so the others can find
+          you on the <TextLink href="/online">Online</TextLink> page.
         </p>
         <BgaForm username={profile?.bga ?? null} premium={profile?.premium ?? false} />
       </>

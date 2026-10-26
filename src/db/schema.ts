@@ -36,6 +36,8 @@ export const user = sqliteTable("user", {
   bgaUsername: text("bga_username"),
   /** BGA Premium: they can open tables for Premium games */
   bgaPremium: integer("bga_premium", { mode: "boolean" }).notNull().default(false),
+  /** When they saved the name the group sees, the first step of getting set up. Until then it's their Discord name */
+  nameChosenAt: integer("name_chosen_at", { mode: "timestamp_ms" }),
   ...timestamps,
 });
 
