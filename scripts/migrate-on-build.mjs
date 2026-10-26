@@ -21,17 +21,44 @@ const skip = !process.env.DATABASE_URL
       ? "SKIP_MIGRATE=1"
       : null;
 
-if (skip) {
-  console.log(`Migrations: skipped (${skip})`);
-} else {
+const ATTEMPTS = 3;
+const RETRY_DELAY_MS = 5000;
+
+// Turso sometimes drops a build machine's connection mid-run ("fetch failed", "other side closed").
+// Retrying is safe: pending migrations are applied in one transaction, and applied ones are skipped.
+// A failed SQL statement has no "fetch failed" in its causes, so it fails on the first attempt.
+function isConnectionError(error) {
+  for (let e = error; e; e = e.cause) {
+    if (e instanceof TypeError && e.message === "fetch failed") return true;
+  }
+  return false;
+}
+
+async function migrateOnce() {
   const client = createClient({ url: process.env.DATABASE_URL, authToken: process.env.DATABASE_AUTH_TOKEN });
   try {
     await migrate(drizzle(client), { migrationsFolder: "drizzle" });
-    console.log("Migrations: applied");
-  } catch (error) {
-    console.error("Migrations: failed\n", error);
-    process.exit(1);
   } finally {
     client.close();
+  }
+}
+
+if (skip) {
+  console.log(`Migrations: skipped (${skip})`);
+} else {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await migrateOnce();
+      console.log("Migrations: applied");
+      break;
+    } catch (error) {
+      if (attempt < ATTEMPTS && isConnectionError(error)) {
+        console.warn(`Migrations: lost the database connection (attempt ${attempt} of ${ATTEMPTS}), retrying\n`, error);
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+        continue;
+      }
+      console.error("Migrations: failed\n", error);
+      process.exit(1);
+    }
   }
 }
