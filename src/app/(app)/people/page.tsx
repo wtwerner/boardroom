@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME } from "@/config";
-import { Avatar, Empty, Meeple, NewBadge, PageHeader, Panel, Section, Skeleton, formatDate } from "@/components/ui";
+import { Avatar, Empty, GameCover, Meeple, NewBadge, PageHeader, Panel, Section, Skeleton, formatDate } from "@/components/ui";
+import { TIERS } from "@/db/enums";
 import { hasMemberRole, listGuildMembers } from "@/lib/discord";
 import { localDate } from "@/lib/nights";
 import { inSentence } from "@/lib/text";
+import { TIER_TAG } from "@/lib/tier";
 import { requireUser } from "@/lib/session";
 import { getPeople, getPlayers, isNewMember, type PersonCard } from "@/lib/queries";
 import { canWelcome, coreNightName, welcomeName } from "@/lib/welcome";
@@ -136,18 +138,35 @@ function MemberCard({ member: m, isMe }: { member: PersonCard; isMe: boolean }) 
     `${m.owned} owned`,
     `${m.rated} rated`,
   ];
+  const tops = TIERS.flatMap((tier) => (m.top[tier] ? [{ tier, game: m.top[tier] }] : []));
   return (
-    <Link href={`/people/${m.id}`} className="flex items-center gap-3 rounded-xl border border-line bg-card p-3 hover:border-ink/40">
-      <Avatar src={m.image} name={m.name} color={m.color} className="size-11" />
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="truncate font-semibold">{m.name}</span>
-          {isMe && <span className="text-xs text-slate">you</span>}
-          {isNewMember(m.joinedAt) && <NewBadge />}
+    <Link href={`/people/${m.id}`} className="block h-full rounded-xl border border-line bg-card p-3 hover:border-ink/40">
+      <span className="flex items-center gap-3">
+        <Avatar src={m.image} name={m.name} color={m.color} className="size-11" />
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="truncate font-semibold">{m.name}</span>
+            {isMe && <span className="text-xs text-slate">you</span>}
+            {isNewMember(m.joinedAt) && <NewBadge />}
+          </span>
+          <span className="block text-xs text-slate">Joined {formatDate(localDate(m.joinedAt), { month: "short", day: "numeric" })}</span>
+          <span className="tabular block text-xs text-slate">{stats.join(" · ")}</span>
         </span>
-        <span className="block text-xs text-slate">Joined {formatDate(localDate(m.joinedAt), { month: "short", day: "numeric" })}</span>
-        <span className="tabular block text-xs text-slate">{stats.join(" · ")}</span>
       </span>
+      {tops.length > 0 && (
+        // Their #1 in each ranking list
+        <span className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
+          {tops.map(({ tier, game }) => (
+            <span key={tier} className="flex items-center gap-2.5">
+              <GameCover src={game.thumbnail} name={game.name} size="sm" />
+              <span className="min-w-0">
+                <span className="block text-xs text-slate">Top {inSentence(TIER_TAG[tier])}</span>
+                <span className="block truncate text-sm font-medium">{game.name}</span>
+              </span>
+            </span>
+          ))}
+        </span>
+      )}
     </Link>
   );
 }

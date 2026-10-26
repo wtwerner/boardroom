@@ -1,7 +1,7 @@
 import "server-only";
 import { and, count, countDistinct, desc, eq, inArray, isNotNull, isNull, max, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { MUST_PLAY_LIMIT, type MeepleColor, type Night, type Sentiment, type Tier } from "@/db/enums";
+import { MUST_PLAY_LIMIT, TIERS, type MeepleColor, type Night, type Sentiment, type Tier } from "@/db/enums";
 import { localDate, recentMonths } from "./nights";
 import { matchByName, playerLabels } from "./players";
 import { groupRanking } from "./ranking";
@@ -605,10 +605,11 @@ export type PersonCard = Awaited<ReturnType<typeof getPeople>>["members"][number
 
 /**
  * Everyone with an account, newest first, with how much of their history and
- * shelf is in. Regulars from the play logs who haven't signed up come separately.
+ * shelf is in, and the game at the top of each of their rankings. Regulars from
+ * the play logs who haven't signed up come separately.
  */
 export async function getPeople() {
-  const [members, owned, rated, attendance, welcomed] = await Promise.all([
+  const [members, owned, rated, attendance, welcomed, lists] = await Promise.all([
     db
       .select({
         id: user.id,
@@ -641,7 +642,15 @@ export async function getPeople() {
       .leftJoin(user, eq(user.id, player.welcomedBy))
       .where(and(isNotNull(player.welcomedAt), isNull(player.userId)))
       .orderBy(desc(player.welcomedAt)),
+    getTieredRankingLists(),
   ]);
+  const topIds = TIERS.flatMap((t) => Object.values(lists[t]).map((list) => list[0]));
+  const topGames = topIds.length
+    ? await db.select({ id: game.id, name: game.name, thumbnail: game.thumbnail }).from(game).where(inArray(game.id, topIds))
+    : [];
+  const gameById = new Map(topGames.map((g) => [g.id, g]));
+  const topOf = (userId: string) =>
+    Object.fromEntries(TIERS.map((t) => [t, gameById.get(lists[t][userId]?.[0] ?? -1) ?? null])) as Record<Tier, (typeof topGames)[number] | null>;
   const ownedBy = new Map(owned.map((o) => [o.userId, o.n]));
   const ratedBy = new Map(rated.map((r) => [r.userId, r.n]));
   const seatsOf = new Map(attendance.map((a) => [a.id, a]));
@@ -652,6 +661,7 @@ export async function getPeople() {
       rated: ratedBy.get(m.id) ?? 0,
       nights: (m.playerId && seatsOf.get(m.playerId)?.nights) || 0,
       plays: (m.playerId && seatsOf.get(m.playerId)?.plays) || 0,
+      top: topOf(m.id),
     })),
     welcomed: welcomed.map((w) => ({ ...w, welcomedAt: w.welcomedAt!, nights: seatsOf.get(w.id)?.nights ?? 0 })),
     // One-off guests aren't worth listing, and anyone welcomed is listed with them
