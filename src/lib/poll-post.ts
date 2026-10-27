@@ -167,7 +167,8 @@ async function card(poll: PollDetail): Promise<PollCard> {
     kind: poll.night,
     kindName: CASUAL_NIGHT ? NIGHT_NAMES[poll.night] : null,
     dates: poll.dates.map((d) => ({ id: d.id, startsAt: d.startsAt, past: d.past, voters: d.voters.map((x) => ({ name: x.name, discordId: x.discordId })) })),
-    pollUrl: SITE_URL ? `${SITE_URL}/plan#poll-${poll.id}` : null,
+    // Most of the casual night's channel can't open the site, as with its nights' posts
+    pollUrl: SITE_URL && poll.night === "core" ? `${SITE_URL}/plan#poll-${poll.id}` : null,
     siteName: SITE_NAME,
     emoji: await fetchAppEmoji(),
   };

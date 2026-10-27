@@ -70,6 +70,10 @@ describe("buildPollMessage", () => {
     expect(buttons.at(-1)?.url).toBe("https://boardroom.example/plan#poll-3");
   });
 
+  it("leaves the site's link off when there's none to give, as for a casual night's poll", () => {
+    expect(allButtons(buildPollMessage({ ...base, pollUrl: null })).map((b) => b.label)).toEqual(["Works for me", "Works for me", "Suggest a date", "Pick the date", "Call it off"]);
+  });
+
   it("strikes a date that's gone by and takes its button away", () => {
     const m = buildPollMessage({ ...base, dates: [{ ...base.dates[0], past: true }, base.dates[1]] });
     expect(componentText(m.components)).toContain("📅 ~~<t:1793926800:F>~~ · gone by");

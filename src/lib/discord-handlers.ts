@@ -401,7 +401,7 @@ async function newPoll(i: Interaction, form: Record<string, string>) {
     try {
       if (!postsNights(night)) {
         const setting = eventsChannel(night) ? "DISCORD_BOT_TOKEN" : night === "casual" ? "DISCORD_CASUAL_EVENTS_CHANNEL_ID" : "DISCORD_CORE_EVENTS_CHANNEL_ID";
-        done += ` It isn't posted in Discord: ${setting} isn't set. People can vote on Plan.`;
+        done += ` It isn't posted in Discord: ${setting} isn't set.${night === "core" ? " People can vote on Plan." : ""}`;
       } else if ((await syncPollPost(row.id)) === "posted") await joinPollThread(row.id, [player.id]);
       const posted = await db.query.datePoll.findFirst({ where: eq(schema.datePoll.id, row.id), columns: { url: true } });
       done += posted?.url ? ` It's posted: ${posted.url}` : "";
@@ -495,6 +495,6 @@ async function pickDate(i: Interaction, pollId: number, form: Record<string, str
   const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
   const { night } = await pickPollDate(pollId, optionId, { title, location: form.location || null }, userId);
   announcePickedLater(pollId, optionId, { playerId: player.id });
-  const plan = SITE_URL ? `\nPlan it: ${SITE_URL}/events/${night.id}` : "";
+  const plan = SITE_URL && night.night === "core" ? `\nPlan it: ${SITE_URL}/events/${night.id}` : "";
   return reply(`Picked <t:${unix(option.startsAt)}:F> for **${escape(title)}**. The poll's post is the event now; people answer on it.${plan}`);
 }
