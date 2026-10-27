@@ -28,7 +28,7 @@ pnpm sync:discord                                   # the same sync as the night
 
 `scripts/with-env.mjs` loads `.env.discord` for these. Variables already set win over the file, so a secret manager can fill them in instead (`op run --env-file=.env.discord -- pnpm dev:discord` with 1Password, say).
 
-Nights' buttons and `/event` need Discord to reach your machine: give the test application its own Interactions Endpoint URL through a tunnel ([Testing it locally](docs/discord-setup.md#testing-it-locally)). The pure parts (`src/lib/interactions.ts`, `when.ts`, `night-message.ts`, `discord-commands.ts`) have tests that run without Discord.
+Nights' buttons and `/event` need Discord to reach your machine: give the test application its own Interactions Endpoint URL through a tunnel ([Testing it locally](docs/discord-setup.md#testing-it-locally)). The pure parts (`src/lib/interactions.ts`, `when.ts`, `night-message.ts`, `poll-message.ts`, `discord-commands.ts`) have tests that run without Discord.
 
 ## Before you open a pull request
 

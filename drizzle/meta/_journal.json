@@ -15,6 +15,13 @@
       "when": 1793023744701,
       "tag": "0001_exotic_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1793133010008,
+      "tag": "0002_lush_viper",
+      "breakpoints": true
     }
   ]
 }

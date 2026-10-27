@@ -243,7 +243,7 @@ if (CASUAL_NIGHT) {
 async function main() {
   // Start clean
   for (const t of [
-    schema.planReady, schema.planVote, schema.gamePlan, schema.gameNight, schema.suggestionVote, schema.suggestion, schema.ranking, schema.opinion, schema.playPlayer, schema.play,
+    schema.datePollVote, schema.datePollOption, schema.datePoll, schema.planReady, schema.planVote, schema.gamePlan, schema.gameNight, schema.suggestionVote, schema.suggestion, schema.ranking, schema.opinion, schema.playPlayer, schema.play,
     schema.player, schema.collectionItem, schema.game, schema.session, schema.account, schema.user, schema.syncState,
   ]) {
     await db.delete(t);
@@ -399,6 +399,17 @@ async function main() {
     })
     .returning();
   await rsvp(after.id, { "u-sam": "going", "u-alex": "going", "u-jordan": "going", "u-casey": "maybe" });
+
+  // A poll finding a date for the night after those, with a few votes in
+  const [poll] = await db.insert(schema.datePoll).values({ night: "core", title: "Brass all-nighter", location: "Alex's", createdBy: "u-alex" }).returning();
+  const offered = await db
+    .insert(schema.datePollOption)
+    .values([21, 22, 23].map((days) => ({ pollId: poll.id, startsAt: zonedToUtc(isoDate(new Date(nextFriday.getTime() + days * DAY)), days === 22 ? "14:00" : "19:00", TIME_ZONE) })))
+    .returning();
+  const playerOf = async (userId: string) => (await db.select({ id: schema.player.id }).from(schema.player).where(eq(schema.player.userId, userId)))[0].id;
+  for (const [option, userIds] of [[offered[0], ["u-alex", "u-jordan"]], [offered[1], ["u-alex", "u-sam", "u-casey"]]] as const) {
+    for (const userId of userIds) await db.insert(schema.datePollVote).values({ optionId: option.id, playerId: await playerOf(userId), votedAt: new Date() });
+  }
 
   // The next casual night, with a bring list and one owner asked to bring theirs
   if (CASUAL_NIGHT) {

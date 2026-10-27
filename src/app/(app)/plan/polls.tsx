@@ -1,0 +1,353 @@
+"use client";
+
+import { useOptimistic, useState, useTransition } from "react";
+import { CalendarPlus, Check, ExternalLink, Plus, X } from "lucide-react";
+import clsx from "clsx";
+import { type MeepleColor, POLL_MAX_DATES } from "@/db/enums";
+import { callOffPoll, pickPollDate, setPollVote, startPoll, suggestPollDate } from "@/app/actions";
+import { DateInput } from "@/components/date-input";
+import { PlayerChip, buttonClass } from "@/components/ui";
+import { discordAppUrl } from "@/lib/discord-components";
+import { rankDates } from "@/lib/poll-message";
+
+type Voter = { playerId: number; name: string; userId: string | null };
+
+/** A poll as Plan shows it, with its dates already written out in the group's time zone */
+export type PollView = {
+  id: number;
+  title: string;
+  location: string | null;
+  /** Its post in Discord */
+  url: string | null;
+  /** The time its dates start at, for suggesting another */
+  usualTime: string;
+  dates: {
+    id: number;
+    startsAt: string;
+    /** "Thu, Nov 5" and "7:00 PM" */
+    label: string;
+    time: string;
+    past: boolean;
+    voters: Voter[];
+    /** What the night's called if it's picked without a title: "11/5/26 Game Night" */
+    defaultTitle: string;
+  }[];
+};
+
+const field = "w-full rounded-md border border-line bg-table px-2.5 py-1.5 text-sm";
+
+/**
+ * A poll to find a date: each date with who it works for and Works for me, then suggesting
+ * another, picking one (which makes the night and opens its page) or calling it off. The same
+ * as the buttons on its post in Discord.
+ */
+export function PollCard({ poll, myPlayerId, colors, hasTitle }: { poll: PollView; myPlayerId: number | null; colors: Record<string, MeepleColor | null>; hasTitle: boolean }) {
+  const [open, setOpen] = useState<"suggest" | "pick" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const run = (fn: () => Promise<{ ok: boolean; error?: string }>, after?: () => void) =>
+    start(async () => {
+      const res = await fn();
+      setError(res.ok ? null : (res.error ?? null));
+      if (res.ok) after?.();
+    });
+
+  return (
+    <article id={`poll-${poll.id}`} className="scroll-mt-20 space-y-3 rounded-xl border border-line bg-card p-4">
+      <header className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h3 className="font-display text-lg leading-tight">{poll.title}</h3>
+          <p className="text-sm text-slate">{["Picking a date", poll.location].filter(Boolean).join(" · ")}</p>
+        </div>
+        {poll.url && (
+          <a href={discordAppUrl(poll.url) ?? poll.url} className="inline-flex items-center gap-1.5 text-sm font-medium text-accent underline-offset-4 hover:underline">
+            <ExternalLink className="size-3.5" /> Open in Discord
+          </a>
+        )}
+      </header>
+
+      <ul className="space-y-2">
+        {poll.dates.map((d) => (
+          <DateRow key={d.id} date={d} myPlayerId={myPlayerId} colors={colors} onError={setError} />
+        ))}
+      </ul>
+
+      {open === "suggest" && (
+        <SuggestForm
+          usualTime={poll.usualTime}
+          pending={pending}
+          onCancel={() => setOpen(null)}
+          onSubmit={(input) => run(() => suggestPollDate(poll.id, input), () => setOpen(null))}
+        />
+      )}
+      {open === "pick" && (
+        <PickForm
+          poll={poll}
+          hasTitle={hasTitle}
+          pending={pending}
+          onCancel={() => setOpen(null)}
+          onSubmit={(optionId, input) => run(() => pickPollDate(poll.id, optionId, input))}
+        />
+      )}
+      {error && <p role="alert" className="text-sm text-meeple-red">{error}</p>}
+
+      {!open && (
+        <div className="flex flex-wrap gap-2">
+          {poll.dates.length < POLL_MAX_DATES && (
+            <button type="button" onClick={() => setOpen("suggest")} className={buttonClass("secondary", "px-2.5 py-1.5 text-xs")}>
+              <CalendarPlus className="size-3.5" /> Suggest a date
+            </button>
+          )}
+          {poll.dates.some((d) => !d.past) && (
+            <button type="button" onClick={() => setOpen("pick")} className={buttonClass("primary", "px-2.5 py-1.5 text-xs")}>
+              <Check className="size-3.5" strokeWidth={3} /> Pick the date
+            </button>
+          )}
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              if (confirm(`Call off ${poll.title} without picking a date?`)) run(() => callOffPoll(poll.id));
+            }}
+            className={buttonClass("ghost", "px-2.5 py-1.5 text-xs")}
+          >
+            Call it off
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+function DateRow({
+  date,
+  myPlayerId,
+  colors,
+  onError,
+}: {
+  date: PollView["dates"][number];
+  myPlayerId: number | null;
+  colors: Record<string, MeepleColor | null>;
+  onError: (error: string | null) => void;
+}) {
+  const [voters, setVoters] = useOptimistic(date.voters, (_v, next: Voter[]) => next);
+  const [pending, start] = useTransition();
+  const mine = voters.some((v) => v.playerId === myPlayerId);
+
+  return (
+    <li className={clsx("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-table/50 px-3 py-2", date.past && "opacity-60")}>
+      <span className="min-w-36">
+        <span className={clsx("block font-semibold", date.past && "line-through")}>{date.label}</span>
+        <span className="block text-xs text-slate">{date.past ? "Gone by" : date.time}</span>
+      </span>
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1" aria-label={`Works for ${voters.length}`}>
+        {voters.length ? (
+          voters.map((v) => <PlayerChip key={v.playerId} name={v.name} color={v.userId ? (colors[v.userId] ?? null) : null} />)
+        ) : (
+          <span className="text-xs text-slate">Nobody yet</span>
+        )}
+      </span>
+      {!date.past && (
+        <button
+          type="button"
+          aria-pressed={mine}
+          disabled={pending || myPlayerId === null}
+          onClick={() =>
+            start(async () => {
+              setVoters(mine ? voters.filter((v) => v.playerId !== myPlayerId) : [...voters, { playerId: myPlayerId!, name: "You", userId: null }]);
+              const res = await setPollVote(date.id, !mine);
+              onError(res.ok ? null : res.error);
+            })
+          }
+          className={buttonClass(mine ? "primary" : "secondary", "px-2.5 py-1.5 text-xs")}
+        >
+          {mine && <Check className="size-3.5" strokeWidth={3} />}
+          Works for me
+        </button>
+      )}
+    </li>
+  );
+}
+
+function SuggestForm({
+  usualTime,
+  pending,
+  onCancel,
+  onSubmit,
+}: {
+  usualTime: string;
+  pending: boolean;
+  onCancel: () => void;
+  onSubmit: (input: { date: string; time: string }) => void;
+}) {
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const f = new FormData(e.currentTarget);
+        onSubmit({ date: String(f.get("date") ?? ""), time: String(f.get("time") ?? "") });
+      }}
+    >
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Date</span>
+        <DateInput name="date" required className={field} />
+      </label>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Starts</span>
+        <input name="time" type="time" required defaultValue={usualTime} className={field} />
+      </label>
+      <button className={buttonClass("primary")} disabled={pending}>
+        {pending ? "Adding…" : "Add it"}
+      </button>
+      <button type="button" onClick={onCancel} className={buttonClass("ghost")}>
+        Cancel
+      </button>
+    </form>
+  );
+}
+
+/** Pick one of the dates, the most votes first, with the night's name and place */
+function PickForm({
+  poll,
+  hasTitle,
+  pending,
+  onCancel,
+  onSubmit,
+}: {
+  poll: PollView;
+  hasTitle: boolean;
+  pending: boolean;
+  onCancel: () => void;
+  onSubmit: (optionId: number, input: { title: string; location: string | null }) => void;
+}) {
+  const ranked = rankDates(poll.dates);
+  const [picked, setPicked] = useState(ranked[0]?.id ?? null);
+  const placeholder = ranked.find((d) => d.id === picked)?.defaultTitle ?? "";
+
+  return (
+    <form
+      className="space-y-3 rounded-lg border border-line p-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (picked === null) return;
+        const f = new FormData(e.currentTarget);
+        onSubmit(picked, { title: String(f.get("title") ?? ""), location: String(f.get("location") ?? "") || null });
+      }}
+    >
+      <fieldset className="space-y-1.5">
+        <legend className="mb-1 text-sm font-medium">Which date</legend>
+        {ranked.map((d) => (
+          <label key={d.id} className="flex items-center gap-2 text-sm">
+            <input type="radio" name="date" checked={picked === d.id} onChange={() => setPicked(d.id)} />
+            <span>
+              {d.label}, {d.time}
+              <span className="text-slate"> · {d.voters.length ? `${d.voters.length} can make it` : "nobody yet"}</span>
+            </span>
+          </label>
+        ))}
+      </fieldset>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Name</span>
+        <input name="title" maxLength={100} defaultValue={hasTitle ? poll.title : ""} placeholder={placeholder} className={field} />
+      </label>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Where</span>
+        <input name="location" maxLength={200} defaultValue={poll.location ?? ""} className={field} />
+      </label>
+      <p className="text-xs text-slate">This makes the event. Its post asks the people that date works for whether they&apos;re coming.</p>
+      <div className="flex gap-2">
+        <button className={buttonClass("primary")} disabled={pending || picked === null}>
+          {pending ? "Making it…" : "Make the event"}
+        </button>
+        <button type="button" onClick={onCancel} className={buttonClass("ghost")}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Start a poll: a few dates, each with a time, and optionally a name and place */
+export function PollForm({ namePlaceholder, discord }: { namePlaceholder: string; discord: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState([0, 1]);
+  const [next, setNext] = useState(2);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className={buttonClass("secondary")}>
+        <CalendarPlus className="size-4" /> Find a date
+      </button>
+    );
+  }
+
+  return (
+    <form
+      className="max-w-lg space-y-3 rounded-xl border border-line bg-card p-4"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const f = new FormData(e.currentTarget);
+        const dates = rows.map((r) => ({ date: String(f.get(`date-${r}`) ?? ""), time: String(f.get(`time-${r}`) ?? "") })).filter((d) => d.date);
+        start(async () => {
+          const res = await startPoll({ title: String(f.get("title") ?? ""), location: String(f.get("location") ?? "") || null, dates });
+          if (!res.ok) setError(res.error);
+          else {
+            setError(null);
+            setOpen(false);
+            setRows([0, 1]);
+          }
+        });
+      }}
+    >
+      <p className="text-sm text-slate">
+        Offer a few dates and everyone says which work.{discord ? " It's posted to Discord too, where people can vote." : ""}
+      </p>
+      <fieldset className="space-y-2">
+        <legend className="mb-1 text-sm font-medium">Dates</legend>
+        {rows.map((r, i) => (
+          <div key={r} className="flex items-center gap-2">
+            <DateInput name={`date-${r}`} required={i === 0} aria-label={`Date ${i + 1}`} className={field} />
+            <input name={`time-${r}`} type="time" required defaultValue="19:00" aria-label={`Time ${i + 1}`} className={clsx(field, "w-32")} />
+            {rows.length > 1 && (
+              <button type="button" aria-label={`Remove date ${i + 1}`} onClick={() => setRows(rows.filter((x) => x !== r))} className="rounded p-1 text-slate hover:text-meeple-red">
+                <X className="size-4" />
+              </button>
+            )}
+          </div>
+        ))}
+        {rows.length < POLL_MAX_DATES && (
+          <button
+            type="button"
+            onClick={() => {
+              setRows([...rows, next]);
+              setNext(next + 1);
+            }}
+            className={buttonClass("ghost", "px-2 py-1 text-xs")}
+          >
+            <Plus className="size-3.5" /> Another date
+          </button>
+        )}
+      </fieldset>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Name</span>
+        <input name="title" maxLength={100} placeholder={`${namePlaceholder} (optional)`} className={field} />
+      </label>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Where</span>
+        <input name="location" maxLength={200} placeholder="Sam's place" className={field} />
+      </label>
+      {error && <p role="alert" className="text-sm text-meeple-red">{error}</p>}
+      <div className="flex gap-2">
+        <button className={buttonClass("primary")} disabled={pending}>
+          {pending ? "Starting…" : "Start the poll"}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className={buttonClass("ghost")}>
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}

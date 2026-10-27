@@ -2,20 +2,21 @@ import { describe, expect, it } from "vitest";
 import { botCommands, kindOfChannel, nightCommands, welcomeCommandName } from "./discord-commands";
 
 describe("nightCommands", () => {
-  it("has new, edit and cancel under the group's command name", () => {
+  it("has new, poll, edit and cancel under the group's command name", () => {
     const [command] = nightCommands("event");
     expect(command.name).toBe("event");
-    expect(command.options.map((o) => o.name)).toEqual(["new", "edit", "cancel"]);
+    expect(command.options.map((o) => o.name)).toEqual(["new", "poll", "edit", "cancel"]);
     expect(nightCommands("session")[0].name).toBe("session");
   });
 
-  it("makes a night with a form, not options typed after the command", () => {
-    const [newNight] = nightCommands("event")[0].options;
+  it("makes a night or a poll with a form, not options typed after the command", () => {
+    const [newNight, poll] = nightCommands("event")[0].options;
     expect(newNight).not.toHaveProperty("options");
+    expect(poll).not.toHaveProperty("options");
   });
 
   it("picks the night to edit or cancel from a list as people type", () => {
-    const [, edit, cancel] = nightCommands("event")[0].options;
+    const [, , edit, cancel] = nightCommands("event")[0].options;
     expect(edit.options?.[0]).toMatchObject({ name: "event", required: true, autocomplete: true });
     expect(cancel.options?.[0]).toMatchObject({ name: "event", required: true, autocomplete: true });
   });

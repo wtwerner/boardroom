@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { CASUAL_NIGHT, GROUP_NIGHTS, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { NIGHTS, type Night, type RsvpStatus } from "@/db/enums";
+import { NIGHTS, type Night, POLL_MAX_DATES, type RsvpStatus } from "@/db/enums";
 import { commandName, editInteractionReply, eventsChannel, playsChannel, postsNights } from "./discord";
 import {
   APPLICATION_COMMAND,
@@ -29,7 +29,11 @@ import {
 import { answerBringAsk, cancelNight, createNight, editNight, ownNight, playerForDiscordUser, playerNamed, setRsvp } from "./night-store";
 import { joinThread, postInThread, syncNightPost, syncNightPostLater, upcomingOwnNights } from "./night-post";
 import { localDate, nightTitle, nightWhen } from "./nights";
-import { formatForForm, parseWhen } from "./when";
+import { inSentence } from "./text";
+import { formatForForm, parseDateList, parseTime, parseWhen } from "./when";
+import { addPollDate, cancelPoll, createPoll, loadPoll, ownPoll, pickPollDate, setPollVote } from "./poll-store";
+import { announcePickedLater, joinPollThread, pollTitle, syncPollPost, syncPollPostLater } from "./poll-post";
+import { dateChoiceLabel, rankDates } from "./poll-message";
 import { kindOfChannel } from "./discord-commands";
 import { escape } from "./discord-components";
 import { alreadyIn, canWelcome, welcomeCandidate, welcomeName, welcomeToGroup } from "./welcome";
@@ -92,6 +96,7 @@ async function command(i: Interaction) {
   const { sub, values } = commandOptions(i.data.options);
   if (!isMember(i)) return reply(MEMBERS_ONLY());
   if (sub === "new") return newNightForm(i);
+  if (sub === "poll") return newPollForm(i);
   const nightId = Number(values.event);
   if (!Number.isInteger(nightId)) return reply("Pick an event from the list.");
   if (sub === "edit") return editForm(await ownNight(nightId));
@@ -103,7 +108,7 @@ async function command(i: Interaction) {
     ]);
   }
   const cmd = commandName();
-  return reply(`Try /${cmd} new, /${cmd} edit or /${cmd} cancel.`);
+  return reply(`Try /${cmd} new, /${cmd} poll, /${cmd} edit or /${cmd} cancel.`);
 }
 
 /** Nights to pick from as people type, soonest first */
@@ -121,9 +126,10 @@ async function autocomplete(i: Interaction) {
 
 async function component(i: Interaction) {
   const action = parseActionId(i.data?.custom_id);
-  if (!action || action.kind === "new") return reply("That button is from an older version. The event's post has the current ones.");
+  if (!action || action.kind === "new" || action.kind === "newPoll") return reply("That button is from an older version. The event's post has the current ones.");
   if (action.kind === "welcome") return welcomeConfirmed(i, action.userId);
   if (action.kind === "bring") return bringAnswer(i, action);
+  if (action.kind === "pollVote" || action.kind === "pollAdd" || action.kind === "pollPick" || action.kind === "pollOff") return pollButton(i, action);
   const n = await ownNight(action.nightId);
 
   if (action.kind === "rsvp") {
@@ -165,6 +171,9 @@ async function submitted(i: Interaction) {
   if (action?.kind === "for") return answerFor(i, action.nightId, form);
   if (!isMember(i)) return reply(MEMBERS_ONLY());
   if (action?.kind === "new") return newNight(i, form);
+  if (action?.kind === "newPoll") return newPoll(i, form);
+  if (action?.kind === "pollAdd") return suggestDate(i, action.pollId, form);
+  if (action?.kind === "pollPick") return pickDate(i, action.pollId, form);
   if (action?.kind !== "edit") return reply("That form is from an older version. Try again.");
 
   const n = await ownNight(action.nightId);
@@ -342,3 +351,131 @@ async function lastNight(night: Night) {
 }
 
 const unix = (d: Date) => Math.floor(d.getTime() / 1000);
+
+// Polls to find a date: the core group's nights only, so they're for members
+
+/** /event poll opens the form, with the last night's time and place filled in */
+async function newPollForm(i: Interaction) {
+  if (!(await accountFor(i))) return signInFirst();
+  if (!postsNights("core")) return reply("Polls are posted in the events channel, and DISCORD_CORE_EVENTS_CHANNEL_ID isn't set. Start one on Plan instead.");
+  const last = await lastNight("core");
+  return modal(actionId({ kind: "newPoll" }), "Find a date", [
+    {
+      id: "dates",
+      label: "Dates to pick from",
+      description: `Up to ${POLL_MAX_DATES}. Give one a time of its own (sat 2pm), or it starts at the time below.`,
+      placeholder: "thu, sat 2pm, 11/7",
+      required: true,
+      long: true,
+      maxLength: 300,
+    },
+    { id: "time", label: "Time", value: last.time, placeholder: "7pm", required: true, maxLength: 20 },
+    { id: "title", label: "Title", placeholder: `Optional: what the ${inSentence(NIGHT_NAMES.core)} will be called`, maxLength: 100 },
+    { id: "location", label: "Where", value: last.location ?? undefined, maxLength: 100 },
+  ]);
+}
+
+/** The /event poll form sent back: save the poll, then post it */
+async function newPoll(i: Interaction, form: Record<string, string>) {
+  const userId = await accountFor(i);
+  if (!userId) return signInFirst();
+  const time = parseTime(form.time ?? "");
+  if (!time) return reply(`Couldn't read "${form.time}" as a time. Try 7pm or 19:00.`);
+  const dates = parseDateList(form.dates ?? "", time, new Date(), TIME_ZONE, POLL_MAX_DATES);
+  if ("error" in dates) return reply(dates.error);
+
+  const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
+  const row = await createPoll({ night: "core", title: form.title || null, location: form.location || null, dates: dates.map((d) => d.startsAt) }, userId);
+  const title = pollTitle(row);
+
+  after(async () => {
+    let done = `Offered ${dates.length} ${dates.length === 1 ? "date" : "dates"} for **${escape(title)}**: ${dates.map((d) => `<t:${unix(d.startsAt)}:F>`).join(", ")}.`;
+    try {
+      if ((await syncPollPost(row.id)) === "posted") await joinPollThread(row.id, [player.id]);
+      const posted = await db.query.datePoll.findFirst({ where: eq(schema.datePoll.id, row.id), columns: { url: true } });
+      done += posted?.url ? ` It's posted: ${posted.url}` : "";
+    } catch (err) {
+      console.error(`Couldn't post poll ${row.id}`, err);
+      done += " Its post didn't go up; it'll try again the next time someone votes on the site.";
+    }
+    await editInteractionReply(i.application_id, i.token, { content: done }).catch((err) => console.error("Couldn't finish the reply", err));
+  });
+  return deferReply();
+}
+
+type PollAction = Extract<NonNullable<ReturnType<typeof parseActionId>>, { kind: "pollVote" | "pollAdd" | "pollPick" | "pollOff" }>;
+
+/** The buttons on a poll's post, and the question Call it off asks */
+async function pollButton(i: Interaction, action: PollAction) {
+  if (!isMember(i)) return reply(NOT_THIS_ONE());
+
+  if (action.kind === "pollVote") {
+    const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
+    const { pollId, on } = await setPollVote(action.optionId, player.id);
+    syncPollPostLater(pollId, on ? { join: player.id } : {});
+    return deferUpdate();
+  }
+
+  const poll = await loadPoll(action.pollId);
+  if (!poll) return reply("That poll's gone.");
+  if (poll.status !== "open") return reply(poll.status === "picked" ? "A date's already been picked for that." : "That poll's over.");
+  const title = pollTitle(poll);
+
+  if (action.kind === "pollAdd") {
+    const usual = poll.dates[0] ? formatForForm(new Date(poll.dates[0].startsAt), TIME_ZONE).time : "7:00 pm";
+    return modal(actionId({ kind: "pollAdd", pollId: poll.id }), "Suggest a date", [
+      { id: "date", label: "Date", placeholder: "thu, 11/7 or Nov 7", required: true, maxLength: 40 },
+      { id: "time", label: "Time", value: usual, placeholder: "7pm", required: true, maxLength: 20 },
+    ]);
+  }
+
+  if (action.kind === "pollPick") {
+    const ranked = rankDates(poll.dates);
+    if (!ranked.length) return reply("Every date on it has gone by. Suggest another first.");
+    return modal(actionId({ kind: "pollPick", pollId: poll.id }), "Pick the date", [
+      {
+        id: "date",
+        label: "Date",
+        description: "Picking it makes the event, and asks the people it works for if they're coming.",
+        options: ranked.map((d) => ({ label: dateChoiceLabel(d.startsAt, d.voters.length, TIME_ZONE), value: String(d.id) })),
+        selected: String(ranked[0].id),
+      },
+      { id: "title", label: "Title", value: poll.title ?? undefined, placeholder: `Empty: "${nightTitle(poll.night, localDate(new Date(ranked[0].startsAt)))}", with its date`, maxLength: 100 },
+      { id: "location", label: "Where", value: poll.location ?? undefined, maxLength: 100 },
+    ]);
+  }
+
+  if (!action.sure) {
+    return ask(`Call off **${escape(title)}** without picking a date? Its post will say so.`, [
+      { label: "Call it off", customId: actionId({ kind: "pollOff", pollId: poll.id, sure: true }), danger: true },
+    ]);
+  }
+  await cancelPoll(poll.id);
+  syncPollPostLater(poll.id, { note: `❌ <@${i.member!.user.id}> called it off.` });
+  return updateReply(`Called off **${escape(title)}**.`);
+}
+
+/** The Suggest a date form sent back */
+async function suggestDate(i: Interaction, pollId: number, form: Record<string, string>) {
+  const when = parseWhen(form.date ?? "", form.time ?? "", new Date(), TIME_ZONE);
+  if ("error" in when) return reply(when.error);
+  const row = await addPollDate(pollId, when.startsAt);
+  syncPollPostLater(pollId, { note: `📅 <@${i.member!.user.id}> suggested <t:${unix(when.startsAt)}:F>.` });
+  return reply(`Added <t:${unix(when.startsAt)}:F> to **${escape(pollTitle(row))}**.`);
+}
+
+/** The Pick the date form sent back: the night's made, and the poll's post becomes its post */
+async function pickDate(i: Interaction, pollId: number, form: Record<string, string>) {
+  const userId = await accountFor(i);
+  if (!userId) return signInFirst();
+  const poll = await ownPoll(pollId);
+  const optionId = Number(form.date);
+  const option = await db.query.datePollOption.findFirst({ where: and(eq(schema.datePollOption.id, optionId), eq(schema.datePollOption.pollId, pollId)) });
+  if (!option) return reply("Pick a date from the list.");
+  const title = form.title || poll.title || nightTitle(poll.night, localDate(option.startsAt));
+  const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
+  const { night } = await pickPollDate(pollId, optionId, { title, location: form.location || null }, userId);
+  announcePickedLater(pollId, optionId, { playerId: player.id });
+  const plan = SITE_URL ? `\nPlan it: ${SITE_URL}/events/${night.id}` : "";
+  return reply(`Picked <t:${unix(option.startsAt)}:F> for **${escape(title)}**. The poll's post is the event now; people answer on it.${plan}`);
+}

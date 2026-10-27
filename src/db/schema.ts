@@ -8,7 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/sqlite-core";
-import { type MeepleColor, NIGHTS, RSVP_STATUSES, SENTIMENTS, TIERS } from "./enums";
+import { type MeepleColor, NIGHTS, POLL_STATUSES, RSVP_STATUSES, SENTIMENTS, TIERS } from "./enums";
 
 const timestamps = {
   createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -400,6 +400,59 @@ export const planReady = sqliteTable(
       .references(() => user.id, { onDelete: "cascade" }),
   },
   (t) => [primaryKey({ columns: [t.planId, t.userId] })],
+);
+
+/**
+ * Finding a date before there's a night: a few dates posted to the core group's events channel
+ * (with a thread) or offered on Plan, each voted on by whoever it works for. Picking one makes
+ * the night, and the poll's post and thread become the night's.
+ */
+export const datePoll = sqliteTable("date_poll", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  /** The kind of night it's finding a date for; only the core group's so far */
+  night: text("night", { enum: NIGHTS }).notNull().default("core"),
+  /** What the night will be called; empty for the usual title with its date */
+  title: text("title"),
+  location: text("location"),
+  status: text("status", { enum: POLL_STATUSES }).notNull().default("open"),
+  /** The night it became, once a date was picked */
+  gameNightId: integer("game_night_id").references(() => gameNight.id, { onDelete: "set null" }),
+  /** Its post in Discord, the channel and the post's thread, as for a night */
+  channelId: text("channel_id"),
+  messageId: text("message_id"),
+  threadId: text("thread_id"),
+  url: text("url"),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  ...timestamps,
+});
+
+/** One date and time a poll offers */
+export const datePollOption = sqliteTable(
+  "date_poll_option",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    pollId: integer("poll_id")
+      .notNull()
+      .references(() => datePoll.id, { onDelete: "cascade" }),
+    startsAt: integer("starts_at", { mode: "timestamp_ms" }).notNull(),
+    ...timestamps,
+  },
+  (t) => [index("date_poll_option_poll_idx").on(t.pollId)],
+);
+
+/** "Works for me" on one of a poll's dates. By player, like answers for a night, so Discord's buttons work without an account. */
+export const datePollVote = sqliteTable(
+  "date_poll_vote",
+  {
+    optionId: integer("option_id")
+      .notNull()
+      .references(() => datePollOption.id, { onDelete: "cascade" }),
+    playerId: integer("player_id")
+      .notNull()
+      .references(() => player.id, { onDelete: "cascade" }),
+    votedAt: integer("voted_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.optionId, t.playerId] })],
 );
 
 // ---------------------------------------------------------------------------

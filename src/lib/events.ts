@@ -195,8 +195,9 @@ export async function getNightsByDate(keys: { night: Night; date: string }[]) {
 
 /**
  * A fingerprint of everything a night's page (or Plan, with no id) shows that can change
- * elsewhere: the night, answers, games, votes and prep. Open pages compare it every few
- * seconds and refresh when it moves, so a change made in Discord shows up without a reload.
+ * elsewhere: the night, answers, games, votes and prep, and on Plan the polls to find a date.
+ * Open pages compare it every few seconds and refresh when it moves, so a change made in
+ * Discord shows up without a reload.
  */
 export async function nightsVersion(nightId?: number) {
   const only = (col: unknown) => (nightId ? sql`where ${col} = ${nightId}` : sql``);
@@ -207,7 +208,8 @@ export async function nightsVersion(nightId?: number) {
       (select coalesce(max(responded_at), 0) || ':' || count(*) || ':' || coalesce(sum(guests), 0) from night_rsvp ${only(sql`game_night_id`)}) || '|' ||
       (select coalesce(max(updated_at), 0) || ':' || count(*) || ':' || coalesce(sum(chosen), 0) from game_plan ${only(sql`game_night_id`)}) || '|' ||
       (select count(*) from plan_vote v join game_plan p on p.id = v.plan_id ${only(sql`p.game_night_id`)}) || '|' ||
-      (select count(*) from plan_ready r join game_plan p on p.id = r.plan_id ${only(sql`p.game_night_id`)}) as v
+      (select count(*) from plan_ready r join game_plan p on p.id = r.plan_id ${only(sql`p.game_night_id`)}) ||
+      ${nightId ? sql`''` : sql`'|' || (select coalesce(max(updated_at), 0) || ':' || count(*) from date_poll) || ':' || (select count(*) from date_poll_option) || ':' || (select count(*) from date_poll_vote)`} as v
   `);
   return row?.v ?? "";
 }

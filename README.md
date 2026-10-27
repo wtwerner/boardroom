@@ -15,6 +15,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind 4 · Drizzle + SQLite (Turso) �
 - **Play log, kept in step with Discord.** Log a night's games from its event page, or on the Plays page, and they're posted to the group's channel. The morning after, whoever made the event gets a DM if nothing's been logged yet. Plays people write in Discord by hand are imported too, back to the channel's first message.
 - **Ratings and rankings.** Rate games with a tap, and rank the ones you've played with quick "this or that?" questions. Heavy and light games are ranked separately, so a party game never has to beat a long strategy game. The group's favorites come from everyone's lists.
 - **Events in Discord.** Make an event on the site or with `/event new`, and it's posted to the events channel with its own thread. People answer Going, Maybe or Can't make it with the post's buttons or on the site, and can answer for someone else, even someone who isn't in Discord yet. Changing the event in either place updates the post and tells the thread. A few hours before it starts, a reply on the post pings whoever's going or a maybe.
+- **Finding a date.** Not sure when the next one is? Offer a few dates on Plan or with `/event poll`, and everyone taps the ones that work for them. Pick one and the poll's post turns into the event's post, keeping its thread, with a ping asking people to say if they're coming.
 - **Planning a night.** Start from who's coming and get the shelf scored for that table: what they love, what they want to play, what hasn't been played in a while, and what suits the player count. Propose games, vote, lock one in, and the rules and teach videos are linked for prep.
 - **Discover.** Games nobody owns, scored against everyone's taste with a calibrated "chance you'd like it", plus Claude's picks for the group or just for you.
 - **A casual night too, if you have one.** A second, lighter night with guests, with its own channels and recommendations. Instead of voting on a game, people say what they're bringing, or ask whoever owns a game to bring it, and the bot DMs them to answer. When a casual regular wants in on the core group's nights, any member can invite them from People or from Discord's right-click menu.
@@ -84,7 +85,7 @@ The button copies this repo into your GitHub account and asks for the variables 
 | `DISCORD_WELCOME_CHANNEL_ID` | Optional: where someone invited to the core group's nights is greeted, instead of the core group's events channel (see [Inviting people](docs/discord-setup.md#part-5-inviting-people-to-the-core-groups-nights-optional)) |
 | `DISCORD_CORE_EVENTS_CHANNEL_ID`, `DISCORD_CASUAL_EVENTS_CHANNEL_ID` | Optional: where each kind of night is posted, with its thread |
 | `DISCORD_PUBLIC_KEY` | Optional: turns on the buttons on nights' posts and the `/event` command (see [Nights in Discord](docs/discord-setup.md#part-4-nights-in-discord-optional)) |
-| `DISCORD_COMMAND_NAME` | Optional: the slash command's name instead of `event` (`/event new`, `edit`, `cancel`). Run `pnpm discord:commands` again after changing it |
+| `DISCORD_COMMAND_NAME` | Optional: the slash command's name instead of `event` (`/event new`, `poll`, `edit`, `cancel`). Run `pnpm discord:commands` again after changing it |
 | `DISCORD_CORE_NIGHT_PING`, `DISCORD_CASUAL_NIGHT_PING` | Optional: who a night's post pings when it first goes up: `here`, `everyone` or a role id. Unset pings nobody |
 | `BETTER_AUTH_URL` | The site's address. On Vercel it defaults to the project's production domain, so set it only for a custom domain or another host |
 
@@ -118,7 +119,7 @@ After that, a nightly cron (`vercel.json`, 09:00 UTC) syncs Discord, BGG collect
 
 ### Reminders and the morning after
 
-With nights posted in Discord ([Part 4](docs/discord-setup.md#part-4-nights-in-discord-optional)), Boardroom replies to a night's post a few hours before it starts, pinging whoever's going or a maybe, and the morning after it DMs whoever made the night if nothing's been logged for it. Vercel's Hobby crons only run once a day, so something else calls `/api/cron/tick` through the day. The repo has a GitHub Actions workflow for it (`.github/workflows/tick.yml`): add two repository secrets and it runs every 15 minutes.
+With nights posted in Discord ([Part 4](docs/discord-setup.md#part-4-nights-in-discord-optional)), Boardroom replies to a night's post a few hours before it starts, pinging whoever's going or a maybe, and the morning after it DMs whoever made the night if nothing's been logged for it. The same tick closes polls whose dates have all gone by. Vercel's Hobby crons only run once a day, so something else calls `/api/cron/tick` through the day. The repo has a GitHub Actions workflow for it (`.github/workflows/tick.yml`): add two repository secrets and it runs every 15 minutes.
 
 ```sh
 gh secret set SITE_URL      # https://<your-domain>

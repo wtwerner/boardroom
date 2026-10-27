@@ -22,6 +22,16 @@ export const RSVP_STATUSES = ["going", "maybe", "declined", "waitlist"] as const
 export type RsvpStatus = (typeof RSVP_STATUSES)[number];
 
 /**
+ * Where a poll to find a night's date stands: open for votes, picked (it became a night, and
+ * its post became the night's), called off, or closed because every date went by.
+ */
+export const POLL_STATUSES = ["open", "picked", "cancelled", "closed"] as const;
+export type PollStatus = (typeof POLL_STATUSES)[number];
+
+/** The most dates a poll can offer: each is a row with a button on its post, and Discord caps a message's parts */
+export const POLL_MAX_DATES = 8;
+
+/**
  * Games are ranked against their own kind: the longer, heavier games the core group plans
  * nights around, and lighter casual games. Which night a game was played on doesn't decide it.
  * These are stored keys; what the lists are called on the site is set in src/config.ts.

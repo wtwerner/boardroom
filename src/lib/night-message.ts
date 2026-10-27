@@ -163,7 +163,7 @@ export function changeNote(
   return changes.length ? `${person(by)} changed the event:\n${changes.join("\n")}` : null;
 }
 
-function person(p: CardPerson) {
+export function person(p: CardPerson) {
   const name = p.discordId ? `<@${p.discordId}>` : escape(p.name);
   return p.guests ? `${name} +${p.guests}` : name;
 }

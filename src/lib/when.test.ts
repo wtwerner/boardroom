@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatForForm, parseDate, parseTime, parseWhen } from "./when";
+import { formatForForm, parseDate, parseDateList, parseTime, parseWhen } from "./when";
 
 const TZ = "America/Chicago";
 // Wednesday, Oct 21 2026, 8 pm in Chicago (already Thursday in UTC)
@@ -105,5 +105,47 @@ describe("formatForForm", () => {
     const shown = formatForForm(new Date("2026-10-30T00:00:00Z"), TZ);
     expect(shown).toEqual({ date: "Thu Oct 29", time: "7:00 pm" });
     expect(parseWhen(shown.date, shown.time, now, TZ)).toMatchObject({ date: "2026-10-29", time: "19:00" });
+  });
+});
+
+describe("parseDateList", () => {
+  const list = (text: string, max = 8) => {
+    const r = parseDateList(text, "19:00", now, TZ, max);
+    return "error" in r ? r : r.map((w) => `${w.date} ${w.time}`);
+  };
+
+  it("reads dates separated by commas, each at the default time, soonest first", () => {
+    expect(list("sat, thu, 10/29")).toEqual(["2026-10-22 19:00", "2026-10-24 19:00", "2026-10-29 19:00"]);
+  });
+
+  it("reads one date per line, keeping a weekday and its date together", () => {
+    expect(list("Thu, Oct 29\nSat Oct 31")).toEqual(["2026-10-29 19:00", "2026-10-31 19:00"]);
+  });
+
+  it("lets each date have its own time", () => {
+    expect(list("sat 2pm, 11/7 at 6, fri 19:30, sun noon")).toEqual(["2026-10-23 19:30", "2026-10-24 14:00", "2026-10-25 12:00", "2026-11-07 18:00"]);
+  });
+
+  it("doesn't read a day of the month as a time", () => {
+    expect(list("Oct 29, Nov 7")).toEqual(["2026-10-29 19:00", "2026-11-07 19:00"]);
+  });
+
+  it("keeps a year after a comma with its date", () => {
+    expect(list("Jan 8, 2027, Jan 9")).toEqual(["2027-01-08 19:00", "2027-01-09 19:00"]);
+  });
+
+  it("drops a date given twice", () => {
+    expect(list("thu, 10/22, Thursday")).toEqual(["2026-10-22 19:00"]);
+  });
+
+  it("says which date couldn't be read or has gone by", () => {
+    expect(list("thu, someday")).toEqual({ error: 'Couldn\'t read "someday" as a date. Try thu, 10/29 or Oct 29.' });
+    // 8 pm Wednesday: 7 pm tonight is over
+    expect(list("today")).toEqual({ error: '"today" has already gone by. Pick dates that are coming up.' });
+    expect(list("")).toEqual({ error: "Give a date or two to pick from." });
+  });
+
+  it("holds as many dates as a poll fits", () => {
+    expect(list("thu, fri, sat", 2)).toEqual({ error: "That's 3 dates; a poll fits 2." });
   });
 });

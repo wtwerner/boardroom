@@ -7,7 +7,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { CLAUDE_IDEAS_PER_DAY, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
+import { MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { hasAnthropicKey, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
 import { canPostToDiscord, deletePlaysMessage, discordCode, editPlaysMessage, fetchAppEmoji, hasInteractions, postPlaysMessage, sendDirectMessage } from "@/lib/discord";
@@ -25,6 +25,10 @@ import { zonedToUtc } from "@/lib/nights";
 import { answerBringAsk as saveBringAnswer, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
 import { welcomeToGroup as welcome } from "@/lib/welcome";
+import { addPollDate, cancelPoll, createPoll, ownPoll, pickPollDate as savePickedDate, setPollVote as savePollVote } from "@/lib/poll-store";
+import { announcePickedLater, syncPollPostLater } from "@/lib/poll-post";
+import { escape } from "@/lib/discord-components";
+import { nightTitle } from "@/lib/nights";
 import { welcomeSummary } from "@/lib/welcome-message";
 import { bringAskDm } from "@/lib/bring-message";
 import {
@@ -605,6 +609,8 @@ export async function mergePlayers(fromId: number, intoId: number): Promise<Acti
       delete from play_player where player_id = ${fromId}
       and play_id in (select play_id from play_player where player_id = ${intoId})`);
     await tx.update(schema.playPlayer).set({ playerId: intoId }).where(eq(schema.playPlayer.playerId, fromId));
+    // Dates they said work for them; one both already said works stays as it is
+    await tx.run(sql`update or ignore date_poll_vote set player_id = ${intoId} where player_id = ${fromId}`);
     await tx.delete(schema.player).where(eq(schema.player.id, fromId));
     await tx
       .update(schema.player)
@@ -692,6 +698,96 @@ export async function deleteNight(id: number): Promise<ActionResult> {
     return fail(err);
   }
   redirect("/plan");
+}
+
+// Polls to find a date, for the core group's nights: they change here or in Discord, and their posts follow
+
+const DateTime = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), time: z.string().regex(/^\d{2}:\d{2}$/) });
+
+const PollInput = z.object({
+  title: z.string().trim().max(100),
+  location: z.string().trim().max(200).nullable(),
+  dates: z.array(DateTime).min(1).max(POLL_MAX_DATES),
+});
+
+/** How the thread names me: a mention when I'm linked to Discord */
+async function mentionMe(me: { id: string; name: string }) {
+  const discordId = (await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } }))?.discordId;
+  return discordId ? `<@${discordId}>` : `**${escape(me.name)}**`;
+}
+
+export async function startPoll(input: z.infer<typeof PollInput>): Promise<ActionResult> {
+  const me = await requireUser();
+  const parsed = PollInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: `Give between one and ${POLL_MAX_DATES} dates, each with a time.` };
+  const { title, location, dates } = parsed.data;
+  try {
+    const row = await createPoll({ night: "core", title: title || null, location, dates: dates.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)) }, me.id);
+    syncPollPostLater(row.id, { creator: await playerForUser(me) });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
+}
+
+/** Say one of a poll's dates works for me, or take it back */
+export async function setPollVote(optionId: number, on: boolean): Promise<ActionResult> {
+  const me = await requireUser();
+  try {
+    const playerId = await playerForUser(me);
+    const { pollId } = await savePollVote(optionId, playerId, on);
+    syncPollPostLater(pollId, on ? { join: playerId } : {});
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
+}
+
+export async function suggestPollDate(pollId: number, input: z.infer<typeof DateTime>): Promise<ActionResult> {
+  const me = await requireUser();
+  const parsed = DateTime.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "It needs a date and a time." };
+  try {
+    const startsAt = zonedToUtc(parsed.data.date, parsed.data.time, TIME_ZONE);
+    await addPollDate(pollId, startsAt);
+    syncPollPostLater(pollId, { note: `📅 ${await mentionMe(me)} suggested <t:${Math.floor(startsAt.getTime() / 1000)}:F>.` });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
+}
+
+/** Pick one of a poll's dates: the night's made (its post is the poll's, once it's posted) and its page opens */
+export async function pickPollDate(pollId: number, optionId: number, input: { title: string; location: string | null }): Promise<ActionResult> {
+  const me = await requireUser();
+  let id: number;
+  try {
+    const poll = await ownPoll(pollId);
+    const option = await db.query.datePollOption.findFirst({ where: and(eq(schema.datePollOption.id, optionId), eq(schema.datePollOption.pollId, pollId)) });
+    if (!option) return { ok: false, error: "Pick a date from the list." };
+    const title = input.title.trim().slice(0, 100) || nightTitle(poll.night, option.startsAt.toLocaleDateString("en-CA", { timeZone: TIME_ZONE }));
+    const location = input.location?.trim().slice(0, 200) || null;
+    ({ night: { id } } = await savePickedDate(pollId, optionId, { title, location }, me.id));
+    announcePickedLater(pollId, optionId, { playerId: await playerForUser(me) });
+  } catch (err) {
+    return fail(err);
+  }
+  redirect(`/events/${id}`);
+}
+
+export async function callOffPoll(pollId: number): Promise<ActionResult> {
+  const me = await requireUser();
+  try {
+    await cancelPoll(pollId);
+    syncPollPostLater(pollId, { note: `❌ ${await mentionMe(me)} called it off.` });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
 }
 
 /** What the open page compares to notice changes made elsewhere (in Discord, or by someone else) */

@@ -19,13 +19,14 @@ export function nightCommands(name: string) {
   return [
     {
       name,
-      description: "Make, change or cancel a game event",
+      description: "Make, change or cancel a game event, or find a date for one",
       type: 1,
       contexts: [GUILD_CONTEXT],
       // Leaving default_member_permissions out lets everyone use it; the server owner can narrow
       // that under Server Settings → Integrations, and the bot checks the member role itself
       options: [
         { name: "new", description: "Make an event: a form opens for the date, time, title and place", type: SUB_COMMAND },
+        { name: "poll", description: "Not sure when? Offer a few dates and let people say which work", type: SUB_COMMAND },
         { name: "edit", description: "Change an event's title, date, time, place or seats", type: SUB_COMMAND, options: [event] },
         { name: "cancel", description: "Cancel an event", type: SUB_COMMAND, options: [event] },
       ],

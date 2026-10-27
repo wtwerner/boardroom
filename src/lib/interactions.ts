@@ -31,6 +31,7 @@ const STRING_SELECT = 3;
 const USER_SELECT = 5;
 const LABEL = 18;
 const SHORT = 1;
+const PARAGRAPH = 2;
 
 export type InteractionUser = { id: string; username: string; global_name?: string | null };
 
@@ -97,9 +98,21 @@ export type Action =
   /** Invite someone to the core group's nights: the confirm button after Invite to … */
   | { kind: "welcome"; userId: string }
   /** Answer being asked to bring a game to a casual night: the buttons on the DM */
-  | { kind: "bring"; planId: number; yes: boolean };
+  | { kind: "bring"; planId: number; yes: boolean }
+  /** A poll to find a date: the form /event poll opens */
+  | { kind: "newPoll" }
+  /** Works for me, on one of a poll's dates */
+  | { kind: "pollVote"; optionId: number }
+  /** Suggest another date and Pick the date on a poll's post, and the forms they open */
+  | { kind: "pollAdd"; pollId: number }
+  | { kind: "pollPick"; pollId: number }
+  /** Call it off on a poll's post, and `sure` on the button that confirms it */
+  | { kind: "pollOff"; pollId: number; sure?: boolean };
 
 const RSVP_CODES: Record<string, RsvpStatus> = { y: "going", m: "maybe", n: "declined" };
+
+/** A poll's actions in custom_ids, kept short */
+const POLL_CODES = { pollVote: "pv", pollAdd: "padd", pollPick: "ppick", pollOff: "poff" } as const;
 
 export function actionId(a: Action): string {
   switch (a.kind) {
@@ -111,6 +124,15 @@ export function actionId(a: Action): string {
       return `v1:welcome:${a.userId}`;
     case "bring":
       return `v1:bring:${a.planId}:${a.yes ? "y" : "n"}`;
+    case "newPoll":
+      return "v1:newpoll";
+    case "pollVote":
+      return `v1:${POLL_CODES.pollVote}:${a.optionId}`;
+    case "pollAdd":
+    case "pollPick":
+      return `v1:${POLL_CODES[a.kind]}:${a.pollId}`;
+    case "pollOff":
+      return `v1:${POLL_CODES.pollOff}:${a.pollId}${a.sure ? ":y" : ""}`;
     default:
       return `v1:${a.kind}:${a.nightId}`;
   }
@@ -120,6 +142,15 @@ export function parseActionId(id: string | undefined): Action | null {
   const [v, kind, rawNight, code] = (id ?? "").split(":");
   if (v !== "v1") return null;
   if (kind === "new") return { kind };
+  if (kind === "newpoll") return { kind: "newPoll" };
+  const poll = (Object.entries(POLL_CODES) as [keyof typeof POLL_CODES, string][]).find(([, code]) => code === kind)?.[0];
+  if (poll) {
+    const id = Number(rawNight);
+    if (!Number.isInteger(id) || id <= 0) return null;
+    if (poll === "pollVote") return { kind: poll, optionId: id };
+    if (poll === "pollOff") return code === "y" ? { kind: poll, pollId: id, sure: true } : { kind: poll, pollId: id };
+    return { kind: poll, pollId: id };
+  }
   // Discord ids are too big for a Number, so they stay strings
   if (kind === "welcome") return /^\d{15,20}$/.test(rawNight ?? "") ? { kind, userId: rawNight } : null;
   if (kind === "bring") {
@@ -221,7 +252,7 @@ export const choices = (list: { name: string; value: string }[]) => ({
 });
 
 export type FormField =
-  | { id: string; label: string; value?: string; placeholder?: string; required?: boolean; maxLength?: number; description?: string }
+  | { id: string; label: string; value?: string; placeholder?: string; required?: boolean; maxLength?: number; description?: string; /** Several lines */ long?: boolean }
   | { id: string; label: string; options: { label: string; value: string }[]; selected?: string; description?: string }
   /** Pick someone in the server; optional */
   | { id: string; label: string; user: true; placeholder?: string; description?: string };
@@ -249,7 +280,7 @@ export function modal(customId: string, title: string, fields: FormField[]) {
             : {
                 type: TEXT_INPUT,
                 custom_id: f.id,
-                style: SHORT,
+                style: f.long ? PARAGRAPH : SHORT,
                 required: f.required ?? false,
                 max_length: f.maxLength ?? 100,
                 ...(f.value ? { value: f.value.slice(0, f.maxLength ?? 100) } : {}),

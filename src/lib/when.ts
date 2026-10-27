@@ -111,3 +111,35 @@ export function formatForForm(startsAt: Date, timeZone: string) {
     time: part({ hour: "numeric", minute: "2-digit" }).toLowerCase(),
   };
 }
+
+/** A time at the end of a date ("sat 2pm", "11/7 at 6", "fri 19:30"). A bare number needs "at", so "Oct 7" stays a date. */
+const TRAILING_TIME = /\s+(?:(?:at|@)\s*)?(noon|midnight|\d{1,2}(?::\d{2})?\s*[ap]\.?m?\.?|\d{1,2}:\d{2})$/i;
+const AT_HOUR = /\s+(?:at|@)\s*(\d{1,2})$/i;
+
+/**
+ * The dates someone offers for a poll, one per line or separated by commas: "thu", "sat 2pm",
+ * "11/7 at 6". A date without its own time takes `defaultTime`. Soonest first, without repeats,
+ * or a sentence saying which one couldn't be read or has gone by.
+ */
+export function parseDateList(text: string, defaultTime: string, now: Date, timeZone: string, max: number): When[] | { error: string } {
+  // One per line; on a single line, commas split them, but a year after a comma stays with its date ("Oct 29, 2026")
+  const pieces = (/\n/.test(text.trim()) ? text.split(/[\n;]+/) : text.split(/[,;]+/)).map((p) => p.trim()).filter(Boolean);
+  const entries: string[] = [];
+  for (const p of pieces) {
+    if (/^\d{4}$/.test(p) && entries.length) entries[entries.length - 1] += ` ${p}`;
+    else entries.push(p);
+  }
+  if (!entries.length) return { error: "Give a date or two to pick from." };
+
+  const found = new Map<number, When>();
+  for (const entry of entries) {
+    const timed = entry.match(TRAILING_TIME) ?? entry.match(AT_HOUR);
+    const dateText = timed ? entry.slice(0, timed.index).trim() : entry;
+    const when = parseWhen(dateText, timed?.[1] ?? defaultTime, now, timeZone);
+    if ("error" in when) return when;
+    if (when.startsAt.getTime() < now.getTime()) return { error: `"${entry}" has already gone by. Pick dates that are coming up.` };
+    found.set(when.startsAt.getTime(), when);
+  }
+  if (found.size > max) return { error: `That's ${found.size} dates; a poll fits ${max}.` };
+  return [...found.values()].sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+}

@@ -44,6 +44,12 @@ describe("action ids", () => {
       { kind: "welcome", userId: "100000000000000001" },
       { kind: "bring", planId: 41, yes: true },
       { kind: "bring", planId: 41, yes: false },
+      { kind: "newPoll" },
+      { kind: "pollVote", optionId: 88 },
+      { kind: "pollAdd", pollId: 3 },
+      { kind: "pollPick", pollId: 3 },
+      { kind: "pollOff", pollId: 3 },
+      { kind: "pollOff", pollId: 3, sure: true },
     ] as const) {
       expect(parseActionId(actionId(a))).toEqual(a);
     }
@@ -65,6 +71,8 @@ describe("action ids", () => {
     expect(parseActionId("v1:welcome:")).toBeNull();
     expect(parseActionId("v1:bring:41")).toBeNull();
     expect(parseActionId("v1:bring:0:y")).toBeNull();
+    expect(parseActionId("v1:pv:0")).toBeNull();
+    expect(parseActionId("v1:ppick:abc")).toBeNull();
   });
 });
 
@@ -124,6 +132,11 @@ describe("modal", () => {
     expect(m.data.components[0]).toMatchObject({ type: 18, label: "Kind of night", component: { type: 3, custom_id: "kind" } });
     expect((m.data.components[0].component as { options: { default: boolean }[] }).options.map((o) => o.default)).toEqual([false, true]);
     expect(m.data.components[1]).toMatchObject({ type: 18, component: { type: 4, custom_id: "title", value: "Thursday heavy", required: true } });
+  });
+
+  it("makes a long text field several lines tall", () => {
+    const m = modal("v1:newpoll", "Find a date", [{ id: "dates", label: "Dates", long: true, maxLength: 300 }]);
+    expect(m.data.components[0].component).toMatchObject({ type: 4, style: 2, max_length: 300 });
   });
 
   it("makes a member picker optional", () => {

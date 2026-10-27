@@ -64,7 +64,7 @@ The bot can't do anything beyond those permissions. It only acts in the channels
 
 ## Part 4: nights in Discord (optional)
 
-Boardroom can post each night to an events channel: a card with when and where, who's coming and the plan so far, buttons to answer Going, Maybe or Can't make it (the symbols the card heads each list with), to answer for **Someone else…** and to **Edit** it, and a thread for talking it over. Members also get `/event new`, `/event edit` and `/event cancel` (`DISCORD_COMMAND_NAME` picks another word than `event`). Everything goes through the same night on the site, so answering or changing it in either place updates the other.
+Boardroom can post each night to an events channel: a card with when and where, who's coming and the plan so far, buttons to answer Going, Maybe or Can't make it (the symbols the card heads each list with), to answer for **Someone else…** and to **Edit** it, and a thread for talking it over. Members also get `/event new`, `/event poll`, `/event edit` and `/event cancel` (`DISCORD_COMMAND_NAME` picks another word than `event`). `/event poll` posts a few dates to the core group's events channel for people to vote on; picking one turns that post into the night's. Everything goes through the same night on the site, so answering or changing it in either place updates the other.
 
 1. Make a channel for each kind of night, or reuse ones the group already has (a text channel or a forum). Copy their IDs into `DISCORD_CORE_EVENTS_CHANNEL_ID` and, for a casual night, `DISCORD_CASUAL_EVENTS_CHANNEL_ID`.
 2. In the developer portal, **General Information** tab: copy the **Public Key** into `DISCORD_PUBLIC_KEY`. Deploy, so the site has it.
@@ -75,7 +75,7 @@ Boardroom can post each night to an events channel: a card with when and where, 
    node scripts/with-env.mjs .env.production pnpm discord:commands
    ```
 
-5. Optional: to ping people when a night is posted, set `DISCORD_CORE_NIGHT_PING` and `DISCORD_CASUAL_NIGHT_PING` to `here`, `everyone` or a role's id (right-click the role → **Copy Role ID**). Only the first post pings; edits never do. `here`, `everyone` and a role that isn't **Allow anyone to @mention this role** need the bot's role to have **Mention @everyone, @here, and All Roles**, which the invite link leaves out; the owner can give it under **Server Settings → Roles**.
+5. Optional: to ping people when a night (or a poll to find its date) is posted, set `DISCORD_CORE_NIGHT_PING` and `DISCORD_CASUAL_NIGHT_PING` to `here`, `everyone` or a role's id (right-click the role → **Copy Role ID**). Only the first post pings; edits never do. `here`, `everyone` and a role that isn't **Allow anyone to @mention this role** need the bot's role to have **Mention @everyone, @here, and All Roles**, which the invite link leaves out; the owner can give it under **Server Settings → Roles**.
 6. Optional: for the reminder before each night and the morning-after DM asking for its plays, set up [the tick](../README.md#reminders-and-the-morning-after).
 7. If the bot was added with the older invite link (`permissions=68608`), have the owner open the new one from Part 1: authorizing it again updates the bot's role. Or give the bot's role **Create Public Threads** and **Send Messages in Threads** in the events channels.
 
@@ -124,7 +124,7 @@ Set the test application's endpoint to `https://<tunnel>/api/discord/interaction
 | Sync runs but imports nothing | Message Content Intent is off (Part 1, step 3) |
 | Discord shows "Invalid OAuth2 redirect_uri" | The callback URL isn't listed under OAuth2 → Redirects exactly |
 | Discord won't save the Interactions Endpoint URL | The site isn't deployed with `DISCORD_PUBLIC_KEY` yet, or the key is from another application |
-| `/event` doesn't show up, or the old `/night` still does | `pnpm discord:commands` hasn't been run against this server, or the bot was added without the `bot` scope |
+| `/event poll` (or `/event` itself) doesn't show up, or the old `/night` still does | `pnpm discord:commands` hasn't been run against this server, or the bot was added without the `bot` scope |
 | Inviting someone says the bot can't hand out roles | The bot's role lacks **Manage Roles**, or sits below the group's role in Server Settings → Roles (Part 5) |
 | **Invite to …** isn't on the right-click menu, or has an old name | `pnpm discord:commands` hasn't been run since updating or renaming the core group's night (Part 4, step 4). Only people with Manage Roles see it until the owner adds the member role (Part 5) |
 | A night's post or thread doesn't appear | The bot's role can't post or make threads in the events channel (Part 2, step 4). The site logs the reason; the next change to the night tries again |
