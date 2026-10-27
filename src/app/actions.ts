@@ -5,7 +5,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
-import { CLAUDE_IDEAS_PER_DAY, SITE_URL, TIME_ZONE } from "@/config";
+import { CLAUDE_IDEAS_PER_DAY, GROUP_NIGHTS, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { hasAnthropicKey, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
@@ -700,11 +700,12 @@ export async function deleteNight(id: number): Promise<ActionResult> {
   redirect("/plan");
 }
 
-// Polls to find a date, for the core group's nights: they change here or in Discord, and their posts follow
+// Polls to find a date for a night: they change here or in Discord, and their posts follow
 
 const DateTime = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), time: z.string().regex(/^\d{2}:\d{2}$/) });
 
 const PollInput = z.object({
+  night: z.enum(NIGHTS),
   title: z.string().trim().max(100),
   location: z.string().trim().max(200).nullable(),
   dates: z.array(DateTime).min(1).max(POLL_MAX_DATES),
@@ -720,9 +721,9 @@ export async function startPoll(input: z.infer<typeof PollInput>): Promise<Actio
   const me = await requireUser();
   const parsed = PollInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: `Give between one and ${POLL_MAX_DATES} dates, each with a time.` };
-  const { title, location, dates } = parsed.data;
+  const { night, title, location, dates } = parsed.data;
   try {
-    const row = await createPoll({ night: "core", title: title || null, location, dates: dates.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)) }, me.id);
+    const row = await createPoll({ night: GROUP_NIGHTS.includes(night) ? night : "core", title: title || null, location, dates: dates.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)) }, me.id);
     syncPollPostLater(row.id, { creator: await playerForUser(me) });
   } catch (err) {
     return fail(err);

@@ -31,7 +31,7 @@ import { joinThread, postInThread, syncNightPost, syncNightPostLater, upcomingOw
 import { localDate, nightTitle, nightWhen } from "./nights";
 import { inSentence } from "./text";
 import { formatForForm, parseDateList, parseTime, parseWhen } from "./when";
-import { addPollDate, cancelPoll, createPoll, loadPoll, ownPoll, pickPollDate, reopenPoll, setPollVote } from "./poll-store";
+import { addPollDate, cancelPoll, createPoll, loadPoll, ownPoll, pickPollDate, pollOfDate, reopenPoll, setPollVote } from "./poll-store";
 import { announcePickedLater, joinPollThread, pollTitle, syncPollPost, syncPollPostLater } from "./poll-post";
 import { dateChoiceLabel, rankDates } from "./poll-message";
 import { kindOfChannel } from "./discord-commands";
@@ -354,12 +354,19 @@ const unix = (d: Date) => Math.floor(d.getTime() / 1000);
 
 // Polls to find a date: the core group's nights only, so they're for members
 
-/** /event poll opens the form, with the last night's time and place filled in */
+/**
+ * /event poll opens the form, with the last night's time and place filled in. With a casual
+ * night it's for whichever kind's channel it was run in, which the form can change, as /event new.
+ */
 async function newPollForm(i: Interaction) {
   if (!(await accountFor(i))) return signInFirst();
-  if (!postsNights("core")) return reply("Polls are posted in the events channel, and DISCORD_CORE_EVENTS_CHANNEL_ID isn't set. Start one on Plan instead.");
-  const last = await lastNight("core");
+  const fromChannel = kindOfChannel(i.channel_id, Object.fromEntries(GROUP_NIGHTS.map((k) => [k, [eventsChannel(k), playsChannel(k)]])));
+  const night: Night = CASUAL_NIGHT && fromChannel ? fromChannel : "core";
+  const last = await lastNight(night);
   return modal(actionId({ kind: "newPoll" }), "Find a date", [
+    ...(CASUAL_NIGHT
+      ? [{ id: "kind", label: "Kind of event", options: GROUP_NIGHTS.map((k) => ({ label: NIGHT_NAMES[k], value: k })), selected: night }]
+      : []),
     {
       id: "dates",
       label: "Dates to pick from",
@@ -370,7 +377,7 @@ async function newPollForm(i: Interaction) {
       maxLength: 300,
     },
     { id: "time", label: "Time", value: last.time, placeholder: "7pm", required: true, maxLength: 20 },
-    { id: "title", label: "Title", placeholder: `Optional: what the ${inSentence(NIGHT_NAMES.core)} will be called`, maxLength: 100 },
+    { id: "title", label: "Title", placeholder: `Optional: what the ${CASUAL_NIGHT ? "event" : inSentence(NIGHT_NAMES.core)} will be called`, maxLength: 100 },
     { id: "location", label: "Where", value: last.location ?? undefined, maxLength: 100 },
   ]);
 }
@@ -384,14 +391,18 @@ async function newPoll(i: Interaction, form: Record<string, string>) {
   const dates = parseDateList(form.dates ?? "", time, new Date(), TIME_ZONE, POLL_MAX_DATES);
   if ("error" in dates) return reply(dates.error);
 
+  const night: Night = CASUAL_NIGHT && NIGHTS.includes(form.kind as Night) ? (form.kind as Night) : "core";
   const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
-  const row = await createPoll({ night: "core", title: form.title || null, location: form.location || null, dates: dates.map((d) => d.startsAt) }, userId);
+  const row = await createPoll({ night, title: form.title || null, location: form.location || null, dates: dates.map((d) => d.startsAt) }, userId);
   const title = pollTitle(row);
 
   after(async () => {
     let done = `Offered ${dates.length} ${dates.length === 1 ? "date" : "dates"} for **${escape(title)}**: ${dates.map((d) => `<t:${unix(d.startsAt)}:F>`).join(", ")}.`;
     try {
-      if ((await syncPollPost(row.id)) === "posted") await joinPollThread(row.id, [player.id]);
+      if (!postsNights(night)) {
+        const setting = eventsChannel(night) ? "DISCORD_BOT_TOKEN" : night === "casual" ? "DISCORD_CASUAL_EVENTS_CHANNEL_ID" : "DISCORD_CORE_EVENTS_CHANNEL_ID";
+        done += ` It isn't posted in Discord: ${setting} isn't set. People can vote on Plan.`;
+      } else if ((await syncPollPost(row.id)) === "posted") await joinPollThread(row.id, [player.id]);
       const posted = await db.query.datePoll.findFirst({ where: eq(schema.datePoll.id, row.id), columns: { url: true } });
       done += posted?.url ? ` It's posted: ${posted.url}` : "";
     } catch (err) {
@@ -407,7 +418,9 @@ type PollAction = Extract<NonNullable<ReturnType<typeof parseActionId>>, { kind:
 
 /** The buttons on a poll's post, and the question Call it off asks */
 async function pollButton(i: Interaction, action: PollAction) {
-  if (!isMember(i)) return reply(NOT_THIS_ONE());
+  // Votes are for whoever the night is for: members for the core group's, anyone for the casual one
+  const row = action.kind === "pollVote" ? await pollOfDate(action.optionId) : await ownPoll(action.pollId);
+  if (!mayAnswer(i, row.night)) return reply(NOT_THIS_ONE());
 
   if (action.kind === "pollVote") {
     const player = await playerForDiscordUser(i.member!.user.id, memberName(i));

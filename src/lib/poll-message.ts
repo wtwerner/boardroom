@@ -1,11 +1,11 @@
 /**
- * A poll's post in the core group's events channel, as a Components V2 message: each date
+ * A poll's post in its kind of night's events channel, as a Components V2 message: each date
  * offered (in each reader's own time zone) with who it works for and a button to say it works
  * for you, then buttons to suggest another, pick one, or call it off (and reopen it). Picking a date turns the
  * post into the night's (night-message.ts). Pure so it can be tested; poll-post.ts sends it.
  */
 
-import type { PollStatus } from "@/db/enums";
+import type { Night, PollStatus } from "@/db/enums";
 import { type AppEmoji, buttonEmoji, icon } from "./icons";
 import { type Action, actionId } from "./interactions";
 import { type CardPerson, type NightPing, person } from "./night-message";
@@ -22,6 +22,7 @@ export type PollCard = {
   location: string | null;
   /** Never "picked": by then the post is the night's */
   status: Exclude<PollStatus, "picked">;
+  kind: Night;
   /** What the kind of night is called, when the group has more than one kind */
   kindName: string | null;
   dates: PollDate[];
@@ -68,7 +69,7 @@ export function buildPollMessage(p: PollCard, ping?: NightPing | null): { flags:
     components: [
       // Above the card, on the first post only: edits drop it, and never ping
       ...(ping ? [{ type: TEXT, content: ping.text }] : []),
-      { type: CONTAINER, accent_color: open ? NIGHT_ACCENT.core : DONE_ACCENT, components: card },
+      { type: CONTAINER, accent_color: open ? NIGHT_ACCENT[p.kind] : DONE_ACCENT, components: card },
       ...(row.length ? [{ type: ACTION_ROW, components: row }] : []),
     ],
   };

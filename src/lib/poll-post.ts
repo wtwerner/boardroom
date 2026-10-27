@@ -164,6 +164,7 @@ async function card(poll: PollDetail): Promise<PollCard> {
     title: pollTitle(poll),
     location: poll.location,
     status: poll.status === "picked" ? "closed" : poll.status,
+    kind: poll.night,
     kindName: CASUAL_NIGHT ? NIGHT_NAMES[poll.night] : null,
     dates: poll.dates.map((d) => ({ id: d.id, startsAt: d.startsAt, past: d.past, voters: d.voters.map((x) => ({ name: x.name, discordId: x.discordId })) })),
     pollUrl: SITE_URL ? `${SITE_URL}/plan#poll-${poll.id}` : null,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { componentText } from "./discord-message";
+import { NIGHT_ACCENT } from "./discord-components";
 import { parseActionId } from "./interactions";
 import { nightPing } from "./night-message";
 import { type PollCard, buildPollMessage, dateChoiceLabel, pickedMessage, pollThreadName, rankDates } from "./poll-message";
@@ -12,6 +13,7 @@ const base: PollCard = {
   title: "November heavy",
   location: "Sam's place",
   status: "open",
+  kind: "core",
   kindName: null,
   dates: [
     { id: 21, startsAt: "2026-11-06T01:00:00.000Z", past: false, voters: [sam, alex] },
@@ -85,8 +87,10 @@ describe("buildPollMessage", () => {
     expect(allButtons(closed)).toEqual([]);
   });
 
-  it("names the kind of night when the group has two", () => {
-    expect(componentText(buildPollMessage({ ...base, kindName: "Game night" }).components)).toContain("-# Picking a date · Game night");
+  it("names the kind of night when the group has two, in its color", () => {
+    const m = buildPollMessage({ ...base, kind: "casual", kindName: "Game night" });
+    expect(componentText(m.components)).toContain("-# Picking a date · Game night");
+    expect(m.components[0]).toMatchObject({ accent_color: NIGHT_ACCENT.casual });
   });
 
   it("pings above the card on the first post only", () => {

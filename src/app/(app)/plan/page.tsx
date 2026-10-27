@@ -13,7 +13,6 @@ import { NightForm } from "../events/night-form";
 import { calledOffPolls, openPolls } from "@/lib/poll-store";
 import { pollTitle } from "@/lib/poll-post";
 import { localDate, nightTitle, nightWhen } from "@/lib/nights";
-import { titleCase } from "@/lib/text";
 import { CalledOffPoll, PollCard, PollForm, type PollView } from "./polls";
 
 export const metadata: Metadata = { title: "Plan" };
@@ -44,6 +43,7 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
     id: p.id,
     title: pollTitle(p),
     hasTitle: Boolean(p.title),
+    kindName: GROUP_NIGHTS.length > 1 ? NIGHT_NAMES[p.night] : null,
     location: p.location,
     url: p.posted ? p.url : null,
     usualTime: p.dates[0] ? nightWhen(p.dates[0].startsAt, TIME_ZONE).clock : "19:00",
@@ -60,7 +60,6 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
       };
     }),
   }));
-  // Polls only find dates for the core group's nights
   const pollSection = (
     <Section title="Picking a date" id="polls">
       {pollViews.length === 0 && <p className="mb-3 text-sm text-slate">Not sure when the next one is? Offer a few dates and see which work.</p>}
@@ -78,7 +77,7 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
           ))}
         </ul>
       )}
-      <PollForm namePlaceholder={titleCase(NIGHT_NAMES.core)} discord={postsNights("core")} />
+      <PollForm setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, discord: GROUP_NIGHTS.some(postsNights) }} />
     </Section>
   );
 

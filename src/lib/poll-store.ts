@@ -37,6 +37,13 @@ export async function ownPoll(id: number) {
   return row;
 }
 
+/** The poll one of its dates is on */
+export async function pollOfDate(optionId: number) {
+  const option = await db.query.datePollOption.findFirst({ where: eq(o.id, optionId), columns: { pollId: true } });
+  if (!option) throw new Error("That date isn't on the poll anymore.");
+  return ownPoll(option.pollId);
+}
+
 function assertOpen(row: { status: PollStatus }) {
   if (row.status === "picked") throw new Error("A date's already been picked for that.");
   if (row.status === "cancelled") throw new Error("That was called off.");

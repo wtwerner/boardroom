@@ -3,12 +3,14 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { CalendarPlus, Check, ExternalLink, Plus, Undo2, X } from "lucide-react";
 import clsx from "clsx";
-import { type MeepleColor, POLL_MAX_DATES } from "@/db/enums";
+import { type MeepleColor, type Night, POLL_MAX_DATES } from "@/db/enums";
 import { callOffPoll, pickPollDate, reopenPoll, setPollVote, startPoll, suggestPollDate } from "@/app/actions";
 import { DateInput } from "@/components/date-input";
 import { PlayerChip, buttonClass } from "@/components/ui";
 import { discordAppUrl } from "@/lib/discord-components";
 import { rankDates } from "@/lib/poll-message";
+import { titleCase } from "@/lib/text";
+import type { NightSetup } from "../events/night-form";
 
 type Voter = { playerId: number; name: string; userId: string | null };
 
@@ -16,6 +18,8 @@ type Voter = { playerId: number; name: string; userId: string | null };
 export type PollView = {
   id: number;
   title: string;
+  /** What its kind of night is called, when the group has more than one kind */
+  kindName: string | null;
   location: string | null;
   /** Its post in Discord */
   url: string | null;
@@ -57,7 +61,7 @@ export function PollCard({ poll, myPlayerId, colors, hasTitle }: { poll: PollVie
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="font-display text-lg leading-tight">{poll.title}</h3>
-          <p className="text-sm text-slate">{["Picking a date", poll.location].filter(Boolean).join(" · ")}</p>
+          <p className="text-sm text-slate">{["Picking a date", poll.kindName, poll.location].filter(Boolean).join(" · ")}</p>
         </div>
         {poll.url && (
           <a href={discordAppUrl(poll.url) ?? poll.url} className="inline-flex items-center gap-1.5 text-sm font-medium text-accent underline-offset-4 hover:underline">
@@ -295,9 +299,10 @@ function PickForm({
   );
 }
 
-/** Start a poll: a few dates, each with a time, and optionally a name and place */
-export function PollForm({ namePlaceholder, discord }: { namePlaceholder: string; discord: boolean }) {
+/** Start a poll: which kind of night (when the group has two), a few dates, each with a time, and optionally a name and place */
+export function PollForm({ setup }: { setup: NightSetup }) {
   const [open, setOpen] = useState(false);
+  const [night, setNight] = useState<Night>("core");
   const [rows, setRows] = useState([0, 1]);
   const [next, setNext] = useState(2);
   const [error, setError] = useState<string | null>(null);
@@ -319,7 +324,7 @@ export function PollForm({ namePlaceholder, discord }: { namePlaceholder: string
         const f = new FormData(e.currentTarget);
         const dates = rows.map((r) => ({ date: String(f.get(`date-${r}`) ?? ""), time: String(f.get(`time-${r}`) ?? "") })).filter((d) => d.date);
         start(async () => {
-          const res = await startPoll({ title: String(f.get("title") ?? ""), location: String(f.get("location") ?? "") || null, dates });
+          const res = await startPoll({ night, title: String(f.get("title") ?? ""), location: String(f.get("location") ?? "") || null, dates });
           if (!res.ok) setError(res.error);
           else {
             setError(null);
@@ -330,8 +335,27 @@ export function PollForm({ namePlaceholder, discord }: { namePlaceholder: string
       }}
     >
       <p className="text-sm text-slate">
-        Offer a few dates and everyone says which work.{discord ? " It's posted to Discord too, where people can vote." : ""}
+        Offer a few dates and everyone says which work.{setup.discord ? " It's posted to Discord too, where people can vote." : ""}
       </p>
+      {setup.nights.length > 1 && (
+        <fieldset className="flex gap-1.5">
+          <legend className="sr-only">Which kind of event</legend>
+          {setup.nights.map((n) => (
+            <button
+              key={n}
+              type="button"
+              aria-pressed={night === n}
+              onClick={() => setNight(n)}
+              className={clsx(
+                "rounded-full border px-3 py-1.5 text-sm",
+                night === n ? "border-ink/80 bg-felt text-felt-ink shadow-token" : "border-line bg-card",
+              )}
+            >
+              {setup.names[n]}
+            </button>
+          ))}
+        </fieldset>
+      )}
       <fieldset className="space-y-2">
         <legend className="mb-1 text-sm font-medium">Dates</legend>
         {rows.map((r, i) => (
@@ -360,7 +384,7 @@ export function PollForm({ namePlaceholder, discord }: { namePlaceholder: string
       </fieldset>
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Name</span>
-        <input name="title" maxLength={100} placeholder={`${namePlaceholder} (optional)`} className={field} />
+        <input name="title" maxLength={100} placeholder={`${titleCase(setup.names[night])} (optional)`} className={field} />
       </label>
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Where</span>
