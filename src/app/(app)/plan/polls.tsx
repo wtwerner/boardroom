@@ -1,10 +1,10 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import { CalendarPlus, Check, ExternalLink, Plus, X } from "lucide-react";
+import { CalendarPlus, Check, ExternalLink, Plus, Undo2, X } from "lucide-react";
 import clsx from "clsx";
 import { type MeepleColor, POLL_MAX_DATES } from "@/db/enums";
-import { callOffPoll, pickPollDate, setPollVote, startPoll, suggestPollDate } from "@/app/actions";
+import { callOffPoll, pickPollDate, reopenPoll, setPollVote, startPoll, suggestPollDate } from "@/app/actions";
 import { DateInput } from "@/components/date-input";
 import { PlayerChip, buttonClass } from "@/components/ui";
 import { discordAppUrl } from "@/lib/discord-components";
@@ -38,8 +38,8 @@ const field = "w-full rounded-md border border-line bg-table px-2.5 py-1.5 text-
 
 /**
  * A poll to find a date: each date with who it works for and Works for me, then suggesting
- * another, picking one (which makes the night and opens its page) or calling it off. The same
- * as the buttons on its post in Discord.
+ * another, picking one (which makes the night and opens its page) or calling it off, which
+ * CalledOffPoll can undo. The same as the buttons on its post in Discord.
  */
 export function PollCard({ poll, myPlayerId, colors, hasTitle }: { poll: PollView; myPlayerId: number | null; colors: Record<string, MeepleColor | null>; hasTitle: boolean }) {
   const [open, setOpen] = useState<"suggest" | "pick" | null>(null);
@@ -116,6 +116,33 @@ export function PollCard({ poll, myPlayerId, colors, hasTitle }: { poll: PollVie
         </div>
       )}
     </article>
+  );
+}
+
+/** A poll that was called off while one of its dates is still coming up, so it can be reopened with its votes */
+export function CalledOffPoll({ id, title }: { id: number; title: string }) {
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  return (
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate">
+      <span>
+        <span className="line-through">{title}</span> · called off
+      </span>
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            const res = await reopenPoll(id);
+            setError(res.ok ? null : res.error);
+          })
+        }
+        className={buttonClass("ghost", "px-2 py-1 text-xs")}
+      >
+        <Undo2 className="size-3.5" /> {pending ? "Reopening…" : "Reopen"}
+      </button>
+      {error && <span role="alert" className="text-meeple-red">{error}</span>}
+    </li>
   );
 }
 

@@ -107,12 +107,14 @@ export type Action =
   | { kind: "pollAdd"; pollId: number }
   | { kind: "pollPick"; pollId: number }
   /** Call it off on a poll's post, and `sure` on the button that confirms it */
-  | { kind: "pollOff"; pollId: number; sure?: boolean };
+  | { kind: "pollOff"; pollId: number; sure?: boolean }
+  /** Reopen, on the post of a poll that was called off */
+  | { kind: "pollReopen"; pollId: number };
 
 const RSVP_CODES: Record<string, RsvpStatus> = { y: "going", m: "maybe", n: "declined" };
 
 /** A poll's actions in custom_ids, kept short */
-const POLL_CODES = { pollVote: "pv", pollAdd: "padd", pollPick: "ppick", pollOff: "poff" } as const;
+const POLL_CODES = { pollVote: "pv", pollAdd: "padd", pollPick: "ppick", pollOff: "poff", pollReopen: "preo" } as const;
 
 export function actionId(a: Action): string {
   switch (a.kind) {
@@ -130,6 +132,7 @@ export function actionId(a: Action): string {
       return `v1:${POLL_CODES.pollVote}:${a.optionId}`;
     case "pollAdd":
     case "pollPick":
+    case "pollReopen":
       return `v1:${POLL_CODES[a.kind]}:${a.pollId}`;
     case "pollOff":
       return `v1:${POLL_CODES.pollOff}:${a.pollId}${a.sure ? ":y" : ""}`;

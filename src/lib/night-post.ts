@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lt, or } from "drizzle-orm";
 import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { addToThread, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
+import { type MessageBody, addToThread, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
 import { type NightDetail, loadNight } from "./events";
 import { type CardPerson, type NightCard, buildNightMessage, changeNote, goneMessage, nightPing, threadName } from "./night-message";
 
@@ -31,7 +31,7 @@ export async function syncNightPost(nightId: number): Promise<"posted" | "edited
   if (row.messageId && !isClaim(row.messageId) && row.channelId !== channelId) {
     // It changed kind: the post (and its thread) moves to the other kind's channel
     await removePost(row);
-    await db.update(schema.gameNight).set({ channelId: null, messageId: null, threadId: null, url: null }).where(eq(schema.gameNight.id, row.id));
+    await db.update(schema.gameNight).set({ channelId: null, messageId: null, threadId: null, threadCardId: null, url: null }).where(eq(schema.gameNight.id, row.id));
     row.messageId = null;
   }
 
@@ -40,9 +40,12 @@ export async function syncNightPost(nightId: number): Promise<"posted" | "edited
   const body = buildNightMessage(await card(n));
 
   if (row.messageId && !isClaim(row.messageId)) {
-    if (await editMessage(await postChannel(row), row.messageId, body)) return "edited";
+    if (await editMessage(await postChannel(row), row.messageId, body)) {
+      await syncThreadCopy(row, body, saveNightCopy(row.id));
+      return "edited";
+    }
     // Someone deleted the post: post it again below
-    await db.update(schema.gameNight).set({ messageId: null, threadId: null, url: null }).where(eq(schema.gameNight.id, row.id));
+    await db.update(schema.gameNight).set({ messageId: null, threadId: null, threadCardId: null, url: null }).where(eq(schema.gameNight.id, row.id));
   }
   if (n.cancelled || n.past) return null;
 
@@ -74,12 +77,47 @@ export async function syncNightPost(nightId: number): Promise<"posted" | "edited
     const now = await loadNight(nightId);
     const latest = now && buildNightMessage(await card(now));
     if (latest && JSON.stringify(latest) !== JSON.stringify(first)) await editMessage(where, posted.messageId, latest);
+    await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, latest ?? body, saveNightCopy(row.id));
   } catch (err) {
     await db.update(schema.gameNight).set({ messageId: null }).where(and(eq(schema.gameNight.id, row.id), eq(schema.gameNight.messageId, claim)));
     throw err;
   }
   return "posted";
 }
+
+/**
+ * A copy of a post's card as the first message in its thread. Discord shows the post at the top
+ * of its thread, but its buttons only work in the channel, so the copy's are the ones to press
+ * there. Kept in step with the post, and made on the next change for posts from before there
+ * were copies. A forum post is in its own thread already and needs none. `save` swaps the stored
+ * id from `was` to the new copy's, false when another request got there first. Never throws:
+ * the post itself is what matters.
+ */
+export async function syncThreadCopy(
+  row: { channelId: string | null; messageId: string | null; threadId: string | null; threadCardId: string | null },
+  body: MessageBody,
+  save: (id: string, was: string | null) => Promise<boolean>,
+) {
+  if (!row.channelId || !row.threadId || !row.messageId || isClaim(row.messageId)) return;
+  try {
+    if (await isForumChannel(row.channelId)) return;
+    if (row.threadCardId && (await editMessage(row.threadId, row.threadCardId, body))) return;
+    const copy = await postMessage(row.threadId, body);
+    if (!(await save(copy.id, row.threadCardId))) await deleteMessage(row.threadId, copy.id);
+  } catch (err) {
+    console.error(`Couldn't update the card in thread ${row.threadId}`, err);
+  }
+}
+
+const saveNightCopy = (nightId: number) => async (id: string, was: string | null) => {
+  const n = schema.gameNight;
+  const saved = await db
+    .update(n)
+    .set({ threadCardId: id })
+    .where(and(eq(n.id, nightId), was ? eq(n.threadCardId, was) : isNull(n.threadCardId)))
+    .returning({ id: n.id });
+  return saved.length > 0;
+};
 
 /**
  * Add people who are going or might be to the night's thread, so it shows in their channel
@@ -152,13 +190,15 @@ export async function postInThread(nightId: number, content: string) {
  * Take a night's post (and its thread, when the bot may) out of Discord, for a night that's
  * deleted or moved to the other kind's channel
  */
-export async function removePost(row: Pick<typeof schema.gameNight.$inferSelect, "channelId" | "messageId" | "threadId">) {
+export async function removePost(row: Pick<typeof schema.gameNight.$inferSelect, "channelId" | "messageId" | "threadId"> & { threadCardId?: string | null }) {
   if (!row.messageId || isClaim(row.messageId) || !row.channelId) return;
   const forum = await isForumChannel(row.channelId);
   // Deleting a thread needs Manage Threads, which the bot may not have
   const threadGone = row.threadId ? await deleteThread(row.threadId).then(() => true, () => false) : false;
   if (!forum) {
     await deleteMessage(row.channelId, row.messageId).catch((err) => console.error("Couldn't delete the night's post", err));
+    // A thread that stays keeps the copy of the card, whose buttons would act on what's gone
+    if (!threadGone && row.threadId && row.threadCardId) await deleteMessage(row.threadId, row.threadCardId).catch((err) => console.error("Couldn't delete the card in the night's thread", err));
   } else if (!threadGone && row.threadId) {
     // A forum post is its thread: when it can't go, its card says the night is gone instead
     await editMessage(row.threadId, row.messageId, goneMessage()).catch((err) => console.error("Couldn't mark the night's post gone", err));

@@ -148,6 +148,30 @@ export async function cancelPoll(pollId: number) {
   return row;
 }
 
+/** Open again after being called off, while one of its dates is still coming up. Its votes are kept. */
+export async function reopenPoll(pollId: number) {
+  const row = await ownPoll(pollId);
+  if (row.status === "open") throw new Error("That's still open.");
+  if (row.status !== "cancelled") assertOpen(row);
+  const dates = await db.select({ startsAt: o.startsAt }).from(o).where(eq(o.pollId, pollId));
+  if (!dates.some((d) => d.startsAt.getTime() >= Date.now())) throw new Error("Every date on that has gone by. Start a new poll instead.");
+  const reopened = await db.update(p).set({ status: "open" }).where(and(eq(p.id, pollId), eq(p.status, "cancelled"))).returning({ id: p.id });
+  if (!reopened.length) throw new Error("Someone just reopened that.");
+  return row;
+}
+
+/** Polls called off that could be reopened: one of their dates is still coming up. Oldest first. */
+export async function calledOffPolls(now = new Date()) {
+  const rows = await db
+    .select({ id: p.id, last: max(o.startsAt) })
+    .from(p)
+    .innerJoin(o, eq(o.pollId, p.id))
+    .where(eq(p.status, "cancelled"))
+    .groupBy(p.id)
+    .orderBy(asc(p.createdAt));
+  return loadPolls(rows.filter((r) => r.last && r.last.getTime() >= now.getTime()).map((r) => r.id));
+}
+
 /**
  * Pick one of a poll's dates: the night is made, and the poll's post and thread become the
  * night's, so poll-post.ts turns the post into the night's card. Nobody's answered for: the
@@ -165,7 +189,7 @@ export async function pickPollDate(pollId: number, optionId: number, fields: { t
   if (!claimed.length) throw new Error("Someone just picked a date for that.");
   try {
     const night = await createNight({ night: row.night, title: fields.title, startsAt: option.startsAt, location: fields.location }, userId);
-    const post = row.messageId && !isClaim(row.messageId) ? { channelId: row.channelId, messageId: row.messageId, threadId: row.threadId, url: row.url } : null;
+    const post = row.messageId && !isClaim(row.messageId) ? { channelId: row.channelId, messageId: row.messageId, threadId: row.threadId, threadCardId: row.threadCardId, url: row.url } : null;
     if (post) await db.update(schema.gameNight).set(post).where(eq(schema.gameNight.id, night.id));
     await db.update(p).set({ gameNightId: night.id }).where(eq(p.id, pollId));
     return { night, hadPost: Boolean(post) };

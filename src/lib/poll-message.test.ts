@@ -74,10 +74,12 @@ describe("buildPollMessage", () => {
     expect(allButtons(m).filter((b) => b.label === "Works for me")).toHaveLength(1);
   });
 
-  it("shows a poll that was called off, or ran out of dates, without buttons", () => {
+  it("shows a poll that was called off with only Reopen, and one that ran out of dates without buttons", () => {
     const off = buildPollMessage({ ...base, status: "cancelled" });
     expect(componentText(off.components)).toContain("## ~~November heavy~~\n🚫 **Called off**");
-    expect(allButtons(off)).toEqual([]);
+    expect(allButtons(off).map((b) => parseActionId(b.custom_id))).toEqual([{ kind: "pollReopen", pollId: 3 }]);
+    const offAndGone = buildPollMessage({ ...base, status: "cancelled", dates: base.dates.map((d) => ({ ...d, past: true })) });
+    expect(allButtons(offAndGone)).toEqual([]);
     const closed = buildPollMessage({ ...base, status: "closed" });
     expect(componentText(closed.components)).toContain("Every date has gone by.");
     expect(allButtons(closed)).toEqual([]);

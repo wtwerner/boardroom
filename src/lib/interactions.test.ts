@@ -50,6 +50,7 @@ describe("action ids", () => {
       { kind: "pollPick", pollId: 3 },
       { kind: "pollOff", pollId: 3 },
       { kind: "pollOff", pollId: 3, sure: true },
+      { kind: "pollReopen", pollId: 3 },
     ] as const) {
       expect(parseActionId(actionId(a))).toEqual(a);
     }

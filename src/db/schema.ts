@@ -313,6 +313,8 @@ export const gameNight = sqliteTable(
     channelId: text("channel_id"),
     messageId: text("message_id"),
     threadId: text("thread_id"),
+    /** A copy of its post's card in the thread, whose buttons work there (night-post.ts) */
+    threadCardId: text("thread_card_id"),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     /** When its channel got the reminder that it's starting soon; cleared when it moves */
     remindedAt: integer("reminded_at", { mode: "timestamp_ms" }),
@@ -421,6 +423,7 @@ export const datePoll = sqliteTable("date_poll", {
   channelId: text("channel_id"),
   messageId: text("message_id"),
   threadId: text("thread_id"),
+  threadCardId: text("thread_card_id"),
   url: text("url"),
   createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   ...timestamps,

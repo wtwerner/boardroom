@@ -25,7 +25,7 @@ import { zonedToUtc } from "@/lib/nights";
 import { answerBringAsk as saveBringAnswer, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
 import { welcomeToGroup as welcome } from "@/lib/welcome";
-import { addPollDate, cancelPoll, createPoll, ownPoll, pickPollDate as savePickedDate, setPollVote as savePollVote } from "@/lib/poll-store";
+import { addPollDate, cancelPoll, createPoll, ownPoll, pickPollDate as savePickedDate, reopenPoll as saveReopened, setPollVote as savePollVote } from "@/lib/poll-store";
 import { announcePickedLater, syncPollPostLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
 import { nightTitle } from "@/lib/nights";
@@ -783,6 +783,19 @@ export async function callOffPoll(pollId: number): Promise<ActionResult> {
   try {
     await cancelPoll(pollId);
     syncPollPostLater(pollId, { note: `❌ ${await mentionMe(me)} called it off.` });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
+}
+
+/** Open a poll that was called off again, votes and all */
+export async function reopenPoll(pollId: number): Promise<ActionResult> {
+  const me = await requireUser();
+  try {
+    await saveReopened(pollId);
+    syncPollPostLater(pollId, { note: `↩️ ${await mentionMe(me)} reopened it.` });
   } catch (err) {
     return fail(err);
   }

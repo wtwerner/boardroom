@@ -293,10 +293,20 @@ export async function replyToMessage(channelId: string, messageId: string, body:
   return msg;
 }
 
-/** Rewrite a message the bot posted. False when it's gone (someone deleted it). */
+/**
+ * Rewrite a message the bot posted. False when it's gone (someone deleted it). One in a thread
+ * that archived itself (a week without a message) takes no edits, so the thread's opened again.
+ */
 export async function editMessage(channelId: string, messageId: string, body: MessageBody) {
-  const msg = await discordFetch<DiscordMessage>(`/channels/${channelId}/messages/${messageId}`, { method: "PATCH", body: { ...body, allowed_mentions: { parse: [] } } });
-  return msg !== null;
+  const edit = async () =>
+    (await discordFetch<DiscordMessage>(`/channels/${channelId}/messages/${messageId}`, { method: "PATCH", body: { ...body, allowed_mentions: { parse: [] } } })) !== null;
+  try {
+    return await edit();
+  } catch (err) {
+    if (!(err instanceof Error && /"code":\s*50083/.test(err.message))) throw err;
+    await discordFetch(`/channels/${channelId}`, { method: "PATCH", body: { archived: false } });
+    return edit();
+  }
 }
 
 export async function deleteMessage(channelId: string, messageId: string) {

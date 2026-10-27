@@ -10,11 +10,11 @@ import { getMembers } from "@/lib/queries";
 import { commandName, postsNights } from "@/lib/discord";
 import { getPastNights, getUpcomingNights } from "@/lib/events";
 import { NightForm } from "../events/night-form";
-import { openPolls } from "@/lib/poll-store";
+import { calledOffPolls, openPolls } from "@/lib/poll-store";
 import { pollTitle } from "@/lib/poll-post";
 import { localDate, nightTitle, nightWhen } from "@/lib/nights";
 import { titleCase } from "@/lib/text";
-import { PollCard, PollForm, type PollView } from "./polls";
+import { CalledOffPoll, PollCard, PollForm, type PollView } from "./polls";
 
 export const metadata: Metadata = { title: "Plan" };
 
@@ -36,7 +36,7 @@ export default function PlanPage(props: PageProps<"/plan">) {
 async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["searchParams"] }) {
   const me = await requireUser();
   const shown = Math.max(PAST_STEP, Math.min(500, Number((await searchParams).past) || PAST_STEP));
-  const [nights, past, members, polls] = await Promise.all([getUpcomingNights(), getPastNights(shown), getMembers(), openPolls()]);
+  const [nights, past, members, polls, calledOff] = await Promise.all([getUpcomingNights(), getPastNights(shown), getMembers(), openPolls(), calledOffPolls()]);
   const colors = Object.fromEntries(members.map((m) => [m.id, m.color]));
   const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
 
@@ -70,6 +70,13 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
             <PollCard key={p.id} poll={p} hasTitle={hasTitle} myPlayerId={me.playerId} colors={colors} />
           ))}
         </div>
+      )}
+      {calledOff.length > 0 && (
+        <ul className="mb-4 space-y-1.5">
+          {calledOff.map((p) => (
+            <CalledOffPoll key={p.id} id={p.id} title={pollTitle(p)} />
+          ))}
+        </ul>
       )}
       <PollForm namePlaceholder={titleCase(NIGHT_NAMES.core)} discord={postsNights("core")} />
     </Section>

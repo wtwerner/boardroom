@@ -4,7 +4,7 @@ import { and, eq, inArray, isNotNull, isNull, like, lt, or } from "drizzle-orm";
 import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { addToThread, editMessage, eventsChannel, fetchAppEmoji, messageUrl, nightPingSetting, postMessage, postWithThread, postsNights, renameThread, replyToMessage } from "./discord";
-import { isClaim, joinThread, postChannel, removePost, syncNightPost } from "./night-post";
+import { isClaim, joinThread, postChannel, removePost, syncNightPost, syncThreadCopy } from "./night-post";
 import { nightPing, threadName } from "./night-message";
 import { type PollCard, buildPollMessage, pickedMessage, pollThreadName } from "./poll-message";
 import { type PollDetail, loadPoll } from "./poll-store";
@@ -34,8 +34,11 @@ export async function syncPollPost(pollId: number): Promise<"posted" | "edited" 
   const body = buildPollMessage(await card(poll));
 
   if (row.messageId && !isClaim(row.messageId)) {
-    if (await editMessage(await postChannel(row), row.messageId, body)) return "edited";
-    await db.update(p).set({ messageId: null, threadId: null, url: null }).where(eq(p.id, row.id));
+    if (await editMessage(await postChannel(row), row.messageId, body)) {
+      await syncThreadCopy(row, body, savePollCopy(row.id));
+      return "edited";
+    }
+    await db.update(p).set({ messageId: null, threadId: null, threadCardId: null, url: null }).where(eq(p.id, row.id));
   }
   if (row.status !== "open") return null;
 
@@ -64,12 +67,22 @@ export async function syncPollPost(pollId: number): Promise<"posted" | "edited" 
     }
     const latest = now && buildPollMessage(await card(now));
     if (latest && JSON.stringify(latest) !== JSON.stringify(first)) await editMessage(posted.messageChannelId, posted.messageId, latest);
+    await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, latest ?? body, savePollCopy(row.id));
   } catch (err) {
     await db.update(p).set({ messageId: null }).where(and(eq(p.id, row.id), eq(p.messageId, claim)));
     throw err;
   }
   return "posted";
 }
+
+const savePollCopy = (pollId: number) => async (id: string, was: string | null) => {
+  const saved = await db
+    .update(p)
+    .set({ threadCardId: id })
+    .where(and(eq(p.id, pollId), was ? eq(p.threadCardId, was) : isNull(p.threadCardId)))
+    .returning({ id: p.id });
+  return saved.length > 0;
+};
 
 /** Add these players to the poll's thread, so it shows in their channel list */
 export async function joinPollThread(pollId: number, playerIds: number[]) {

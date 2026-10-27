@@ -1,7 +1,7 @@
 /**
  * A poll's post in the core group's events channel, as a Components V2 message: each date
  * offered (in each reader's own time zone) with who it works for and a button to say it works
- * for you, then buttons to suggest another, pick one, or call it off. Picking a date turns the
+ * for you, then buttons to suggest another, pick one, or call it off (and reopen it). Picking a date turns the
  * post into the night's (night-message.ts). Pure so it can be tested; poll-post.ts sends it.
  */
 
@@ -58,7 +58,10 @@ export function buildPollMessage(p: PollCard, ping?: NightPing | null): { flags:
         button({ kind: "pollOff", pollId: p.id }, "Call it off", buttonEmoji(e, "cancelled")),
         ...(p.pollUrl ? [{ type: BUTTON, style: LINK_BUTTON_STYLE, label: `Open in ${p.siteName}`.slice(0, 80), url: p.pollUrl }] : []),
       ]
-    : [];
+    : // Called off by mistake, or plans changed back: it can open again while a date's still coming up
+      p.status === "cancelled" && p.dates.some((d) => !d.past)
+      ? [button({ kind: "pollReopen", pollId: p.id }, "Reopen", buttonEmoji(e, "vote"))]
+      : [];
 
   return {
     flags: COMPONENTS_V2,

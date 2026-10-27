@@ -31,7 +31,7 @@ import { joinThread, postInThread, syncNightPost, syncNightPostLater, upcomingOw
 import { localDate, nightTitle, nightWhen } from "./nights";
 import { inSentence } from "./text";
 import { formatForForm, parseDateList, parseTime, parseWhen } from "./when";
-import { addPollDate, cancelPoll, createPoll, loadPoll, ownPoll, pickPollDate, setPollVote } from "./poll-store";
+import { addPollDate, cancelPoll, createPoll, loadPoll, ownPoll, pickPollDate, reopenPoll, setPollVote } from "./poll-store";
 import { announcePickedLater, joinPollThread, pollTitle, syncPollPost, syncPollPostLater } from "./poll-post";
 import { dateChoiceLabel, rankDates } from "./poll-message";
 import { kindOfChannel } from "./discord-commands";
@@ -129,7 +129,7 @@ async function component(i: Interaction) {
   if (!action || action.kind === "new" || action.kind === "newPoll") return reply("That button is from an older version. The event's post has the current ones.");
   if (action.kind === "welcome") return welcomeConfirmed(i, action.userId);
   if (action.kind === "bring") return bringAnswer(i, action);
-  if (action.kind === "pollVote" || action.kind === "pollAdd" || action.kind === "pollPick" || action.kind === "pollOff") return pollButton(i, action);
+  if (action.kind === "pollVote" || action.kind === "pollAdd" || action.kind === "pollPick" || action.kind === "pollOff" || action.kind === "pollReopen") return pollButton(i, action);
   const n = await ownNight(action.nightId);
 
   if (action.kind === "rsvp") {
@@ -403,7 +403,7 @@ async function newPoll(i: Interaction, form: Record<string, string>) {
   return deferReply();
 }
 
-type PollAction = Extract<NonNullable<ReturnType<typeof parseActionId>>, { kind: "pollVote" | "pollAdd" | "pollPick" | "pollOff" }>;
+type PollAction = Extract<NonNullable<ReturnType<typeof parseActionId>>, { kind: "pollVote" | "pollAdd" | "pollPick" | "pollOff" | "pollReopen" }>;
 
 /** The buttons on a poll's post, and the question Call it off asks */
 async function pollButton(i: Interaction, action: PollAction) {
@@ -413,6 +413,12 @@ async function pollButton(i: Interaction, action: PollAction) {
     const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
     const { pollId, on } = await setPollVote(action.optionId, player.id);
     syncPollPostLater(pollId, on ? { join: player.id } : {});
+    return deferUpdate();
+  }
+
+  if (action.kind === "pollReopen") {
+    await reopenPoll(action.pollId);
+    syncPollPostLater(action.pollId, { note: `↩️ <@${i.member!.user.id}> reopened it.` });
     return deferUpdate();
   }
 
