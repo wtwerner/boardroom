@@ -167,11 +167,12 @@ function DateRow({
 
   return (
     <li className={clsx("flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-table/50 px-3 py-2", date.past && "opacity-60")}>
-      <span className="min-w-36">
+      {/* On a phone the voters get their own line under the date and button, so they don't squeeze into a column */}
+      <span className="min-w-36 flex-1 sm:flex-none">
         <span className={clsx("block font-semibold", date.past && "line-through")}>{date.label}</span>
         <span className="block text-xs text-slate">{date.past ? "Gone by" : date.time}</span>
       </span>
-      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1" aria-label={`Works for ${voters.length}`}>
+      <span className="order-last flex w-full min-w-0 flex-wrap items-center gap-1 sm:order-none sm:w-auto sm:flex-1" aria-label={`Works for ${voters.length}`}>
         {voters.length ? (
           voters.map((v) => <PlayerChip key={v.playerId} name={v.name} color={v.userId ? (colors[v.userId] ?? null) : null} />)
         ) : (

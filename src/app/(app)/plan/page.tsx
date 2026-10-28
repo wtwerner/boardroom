@@ -43,7 +43,8 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
     id: p.id,
     title: pollTitle(p),
     hasTitle: Boolean(p.title),
-    kindName: GROUP_NIGHTS.length > 1 ? NIGHT_NAMES[p.night] : null,
+    // Untitled, it's named for its kind already
+    kindName: GROUP_NIGHTS.length > 1 && p.title ? NIGHT_NAMES[p.night] : null,
     location: p.location,
     url: p.posted ? p.url : null,
     usualTime: p.dates[0] ? nightWhen(p.dates[0].startsAt, TIME_ZONE).clock : "19:00",
