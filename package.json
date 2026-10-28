@@ -15,6 +15,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "seed:dev": "tsx --conditions=react-server --env-file=.env.local scripts/seed-dev.ts",
+    "reset:demo": "tsx --conditions=react-server scripts/reset-demo.ts",
     "sync": "tsx --conditions=react-server scripts/sync.ts",
     "sync:discord": "node scripts/with-env.mjs .env.discord tsx --conditions=react-server scripts/sync.ts",
     "discord:commands": "tsx --conditions=react-server scripts/discord-commands.ts",

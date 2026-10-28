@@ -68,6 +68,12 @@ Signing in is with Discord, and only for people in the group's server (`DISCORD_
 
 Without a role, anyone in the server can sign in, which suits a server that's just the group. Settings warns about it, since everyone who signs in can delete and merge. In a bigger server, or one the casual night's players share, set the role.
 
+### The demo
+
+The demo is a site of its own with `DEMO=on`, its own database, and no Discord. The sign-in page has a button for each of the made-up members (Sam, Alex, Jordan and Casey, from `src/lib/demo.ts`) instead of Discord's, every page says it's a demo, and the nightly cron (`/api/cron/sync`) puts the group back as it was instead of syncing: it wipes the group's data and everyone's sessions and seeds the group again, dated from that day, so its nights are always coming up (`resetDemo` in `src/lib/demo-seed.ts`, the same data as `pnpm seed:dev`). It needs no network, since the games' BGG details are in the seed. `DEMO` is ignored, and the reset refuses to run, with `DISCORD_BOT_TOKEN` or `DISCORD_GUILD_ID` set, so a group's own site can't be wiped by mistake. The sign-in buttons only work for those four members.
+
+To run one: a Vercel project and a Turso database of its own, with `DEMO=on`, `CASUAL_NIGHT=on` (so both kinds of night show), `DATABASE_URL`, `DATABASE_AUTH_TOKEN`, `BETTER_AUTH_SECRET`, `CRON_SECRET` and `APP_TIMEZONE`. The build applies the migrations; seed it the first time with `pnpm reset:demo` and those variables, or by calling the cron.
+
 ## How data gets in
 
 | Source | How | When |
@@ -109,7 +115,8 @@ A name with only one player is still matched to them, though, so a new Lee in a 
 - `src/lib/pairwise.ts`: the ranking replay: picks the most informative "this or that?" and fits all the answers (pure, tested)
 - `src/lib/ai.ts` / `insights.ts`: Claude calls and the group context they're given
 - `src/lib/setup.ts`: the steps of getting set up, shared by Get set up and Home's banner (pure, tested)
+- `src/lib/demo.ts` / `demo-seed.ts`: the made-up group of `pnpm seed:dev` and the demo, and when its nights fall (pure, tested), and writing it to the database
 - `src/lib/welcome.ts` / `welcome-message.ts`: inviting someone to the core group's nights (the role, the hello and the DM), and what the bot says (pure, tested)
 - `src/lib/bring-message.ts`: the DM asking someone to bring a game to a casual night, and its answers (pure, tested)
 - `src/app/actions.ts`: every mutation (each one re-checks the session)
-- `scripts/`: the sync, the dev seed, registering Discord commands, and the build's migration step
+- `scripts/`: the sync, the dev seed and the demo's reset, registering Discord commands, and the build's migration step

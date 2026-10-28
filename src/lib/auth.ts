@@ -60,13 +60,16 @@ async function linkPlayer(userId: string, name: string, discordId: string | null
 export const auth = betterAuth({
   baseURL: SITE_URL,
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
-  socialProviders: {
-    discord: {
-      clientId: process.env.DISCORD_CLIENT_ID!,
-      clientSecret: process.env.DISCORD_CLIENT_SECRET!,
-      mapProfileToUser: (profile) => ({ email: discordAccountEmail(profile) }),
-    },
-  },
+  // Without a Discord application (local development, a demo) there's no way to sign in but the shortcut in dev-login.ts
+  socialProviders: process.env.DISCORD_CLIENT_ID
+    ? {
+        discord: {
+          clientId: process.env.DISCORD_CLIENT_ID,
+          clientSecret: process.env.DISCORD_CLIENT_SECRET!,
+          mapProfileToUser: (profile) => ({ email: discordAccountEmail(profile) }),
+        },
+      }
+    : {},
   user: {
     additionalFields: {
       discordId: { type: "string", required: false, input: false },

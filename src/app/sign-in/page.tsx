@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { SITE_NAME } from "@/config";
+import { DEMO, SITE_NAME } from "@/config";
 import { Meeple } from "@/components/ui";
 import { SignInButton } from "./sign-in-button";
 import { SignInOrRetry } from "./sign-in-error";
-import { DevLogin } from "./dev-login";
+import { DemoLogin, DevLogin } from "./dev-login";
 
 export const metadata: Metadata = { title: "Sign in" };
 
@@ -19,15 +19,23 @@ export default function SignInPage() {
         </div>
         <h1 className="font-display text-5xl">{SITE_NAME}</h1>
         <p className="mt-3 text-felt-ink/75">What our group plays, loves, and should play next.</p>
-        <div className="mt-8">
-          <Suspense fallback={<SignInButton />}>
-            <SignInOrRetry />
-          </Suspense>
-        </div>
-        <p className="mt-6 text-xs text-felt-ink/60">Only members of the group&apos;s Discord server can get in.</p>
-        <Suspense>
-          <DevLogin />
-        </Suspense>
+        {DEMO ? (
+          <div className="mt-8">
+            <DemoLogin />
+          </div>
+        ) : (
+          <>
+            <div className="mt-8">
+              <Suspense fallback={<SignInButton />}>
+                <SignInOrRetry />
+              </Suspense>
+            </div>
+            <p className="mt-6 text-xs text-felt-ink/60">Only members of the group&apos;s Discord server can get in.</p>
+            <Suspense>
+              <DevLogin />
+            </Suspense>
+          </>
+        )}
       </div>
     </main>
   );

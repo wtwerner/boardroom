@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { count, eq } from "drizzle-orm";
+import { DEMO } from "@/config";
 import { db, schema } from "@/db";
 import { PageHeader, Panel, Section, Skeleton } from "@/components/ui";
 import { requireUser } from "@/lib/session";
@@ -101,8 +102,10 @@ async function Settings() {
 
       <Section id="players" title="Players" className="scroll-mt-6">
         <p className="mb-3 text-sm text-slate">
-          Everyone who appears in a play log. Link each person to their Discord account so plays posted from here tag them.
-          Anyone @-mentioned in an imported message is linked already, and members are linked when they sign in.
+          Everyone who appears in a play log.
+          {/* A demo has no Discord to link anyone to */}
+          {!DEMO &&
+            " Link each person to their Discord account so plays posted from here tag them. Anyone @-mentioned in an imported message is linked already, and members are linked when they sign in."}
         </p>
         <Panel className="mb-4 divide-y divide-line">
           {players.map((p) => (
@@ -112,12 +115,14 @@ async function Settings() {
                 {p.userId && <span className="text-xs text-slate"> (member)</span>}
                 <span className="tabular block text-xs text-slate">{plays.get(p.id) ?? 0} {plays.get(p.id) === 1 ? "play" : "plays"}</span>
               </span>
-              <PlayerDiscordLink
-                playerId={p.id}
-                discordId={p.discordId}
-                isMember={Boolean(p.userId)}
-                members={discordMembers}
-              />
+              {!DEMO && (
+                <PlayerDiscordLink
+                  playerId={p.id}
+                  discordId={p.discordId}
+                  isMember={Boolean(p.userId)}
+                  members={discordMembers}
+                />
+              )}
             </div>
           ))}
         </Panel>

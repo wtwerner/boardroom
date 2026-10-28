@@ -4,6 +4,7 @@
  */
 
 import type { Night } from "@/db/enums";
+import { demoRefusal } from "@/lib/demo";
 import { titleCase } from "@/lib/text";
 
 const env = (name: string) => process.env[name]?.trim() || undefined;
@@ -70,3 +71,11 @@ export const CLAUDE = env("CLAUDE") === "on";
 
 /** Claude's picks each person can ask for in a day, which keeps the Anthropic bill predictable */
 export const CLAUDE_IDEAS_PER_DAY = num("CLAUDE_IDEAS_PER_DAY", 5);
+
+/**
+ * A public demo on a made-up group (src/lib/demo.ts): anyone can sign in as one of its members,
+ * every page says it's a demo, and the nightly cron puts the group back as it was instead of
+ * syncing. On with DEMO=on, and only on a site without Discord set up, so a real group's site
+ * can't turn it on by mistake.
+ */
+export const DEMO = demoRefusal(process.env) === null;

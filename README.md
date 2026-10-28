@@ -2,6 +2,8 @@
 
 A private site for a board game group that plays together regularly. It keeps the group's play history, what everyone thinks of each game, and a shared shelf built from everyone's BoardGameGeek collections. It also plans each game night: who's coming, what to play, and what to read or watch beforehand. Events and plays go to and from the group's Discord, and Claude can suggest what to play or buy next.
 
+**[Try the demo](https://try-boardroom.vercel.app)**, with a made-up group you can sign in as. Change anything you like: it all resets every night.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/home-dark.jpg">
   <img alt="Home: the events coming up, the last one, plays and who shows up on each kind of night, the most played games, the group's favorites and what people want to play" src="docs/assets/screenshots/home.jpg">
@@ -106,6 +108,7 @@ All optional, as environment variables like the rest (`src/config.ts` reads them
 | `CLAUDE` | off | `on` turns on Claude's picks and reading hand-written play posts the parser can't. Needs `ANTHROPIC_API_KEY`. Off, the site never calls Claude or mentions it |
 | `CLAUDE_IDEAS_PER_DAY` | 5 | Claude's picks each person can ask for in a day |
 | `NIGHT_REMINDER_HOURS` | 3 | How many hours before a night starts its post gets a reply pinging whoever's going or a maybe. `0` turns it off. Needs [the tick](#reminders-and-the-morning-after) |
+| `DEMO` | off | `on` makes the site a public demo on a made-up group (see [The demo](docs/how-it-works.md#the-demo)). Its nightly cron wipes the database, so give it one of its own. Ignored with `DISCORD_BOT_TOKEN` or `DISCORD_GUILD_ID` set |
 
 Changing one needs a redeploy.
 

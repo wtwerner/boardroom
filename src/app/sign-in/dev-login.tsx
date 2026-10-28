@@ -1,5 +1,7 @@
 import { connection } from "next/server";
 import { db, schema } from "@/db";
+import { buttonClass, Meeple } from "@/components/ui";
+import { DEMO_PEOPLE } from "@/lib/demo";
 import { isDevLoginEnabled } from "@/lib/dev-login";
 
 /** Local development only — see src/lib/dev-login.ts. */
@@ -30,5 +32,23 @@ export async function DevLogin() {
         </form>
       )}
     </div>
+  );
+}
+
+/** A demo's sign-in, in place of Discord's: one tap to be one of the made-up members */
+export function DemoLogin() {
+  return (
+    <>
+      <p className="text-sm">It&apos;s a demo with a made-up group. Pick who you want to be:</p>
+      <form action="/api/dev-login" method="post" className="mt-4 grid grid-cols-2 gap-2">
+        {DEMO_PEOPLE.map((p) => (
+          <button key={p.id} name="userId" value={p.id} className={buttonClass("secondary", "py-3 text-base")}>
+            <Meeple color={p.color} className="size-5" />
+            {p.name}
+          </button>
+        ))}
+      </form>
+      <p className="mt-6 text-xs text-felt-ink/60">A real group signs in with Discord. Change anything you like here: it all resets every night.</p>
+    </>
   );
 }

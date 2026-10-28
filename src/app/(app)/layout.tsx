@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense, cache } from "react";
-import { SITE_NAME } from "@/config";
+import { DEMO, SITE_NAME } from "@/config";
 import { MoreMenu, type NavBadges, SideNav, TabBar } from "@/components/nav";
 import { Avatar, Meeple } from "@/components/ui";
 import { getNewToRank } from "@/lib/queries";
@@ -39,6 +39,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       </header>
 
       <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-10 md:pb-16 lg:px-10">
+        {DEMO && <DemoBanner />}
         {children}
         <BggCredit className="mt-12 text-slate hover:text-ink md:hidden" />
       </main>
@@ -49,6 +50,17 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         </Suspense>
       </div>
     </div>
+  );
+}
+
+function DemoBanner() {
+  return (
+    <p role="note" className="-mt-2 mb-6 rounded-lg border border-meeple-yellow/60 bg-meeple-yellow/10 px-3 py-2 text-sm md:-mt-4">
+      This is a demo with a made-up group. Change anything you like: it all resets every night.{" "}
+      <a href="https://github.com/wtwerner/boardroom" className="text-accent underline-offset-4 hover:underline">
+        Want one for your group?
+      </a>
+    </p>
   );
 }
 

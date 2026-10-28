@@ -12,7 +12,7 @@ pnpm seed:dev     # a fake group (Sam, Alex, Jordan, Casey) with about 40 plays
 pnpm dev
 ```
 
-Without Discord credentials, the sign-in page has **Sign in as…** buttons for the seeded members. That shortcut only exists under `pnpm dev` with a local `file:` database; production builds strip it out. Add `CASUAL_NIGHT=on` to `.env.local` to see the casual night's side of the site, and run `pnpm seed:dev` again to give it plays and an event. Claude's picks need `CLAUDE=on` and an `ANTHROPIC_API_KEY`.
+Without Discord credentials, the sign-in page has **Sign in as…** buttons for the seeded members. That shortcut only exists under `pnpm dev` with a local `file:` database; production builds strip it out, except on a demo (`DEMO=on`, see [The demo](docs/how-it-works.md#the-demo)), where it signs in as the seeded members and no one else. Add `CASUAL_NIGHT=on` to `.env.local` to see the casual night's side of the site, and run `pnpm seed:dev` again to give it plays and an event. Claude's picks need `CLAUDE=on` and an `ANTHROPIC_API_KEY`.
 
 Read [docs/how-it-works.md](docs/how-it-works.md) before changing scoring, sync or votes. It's how the product works, where the data comes from, and where the code lives.
 

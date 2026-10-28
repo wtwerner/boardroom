@@ -28,7 +28,8 @@ export default function PlaysPage(props: PageProps<"/plays">) {
   return (
     <>
       <PageHeader title="Plays">
-        <SyncDiscordButton />
+        {/* Reading the channel needs the same bot and channel as posting to it */}
+        {canPostToDiscord() && <SyncDiscordButton />}
       </PageHeader>
       <Suspense fallback={<Skeleton className="h-96" />}>
         <Plays searchParams={props.searchParams} />
