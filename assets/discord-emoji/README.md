@@ -12,7 +12,7 @@ The answers carry the site's meeple colors and first plays the gold of a first p
 | `date.png` | `calendar-days` | `#80868e` |
 | `countdown.png` | `hourglass-half` | `#80868e` |
 | `place.png` | `location-dot` | `#80868e` |
-| `bringing.png` | `box-open` | `#80868e` |
+| `bringing.png` | `layer-group` | `#80868e` |
 | `playing.png` | `dice` | `#80868e` |
 | `vote.png` | `check-to-slot` | `#80868e` |
 | `someone.png` | `user-plus` | `#80868e` |
