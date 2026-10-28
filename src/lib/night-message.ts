@@ -24,7 +24,7 @@ import {
 } from "./discord-components";
 
 /** Grey for a night that was cancelled */
-const CANCELLED_ACCENT = 0x8a8f98;
+export const CANCELLED_ACCENT = 0x8a8f98;
 
 export type CardPerson = { name: string; discordId?: string | null; guests?: number };
 export type CardGame = { name: string; bggId?: number | null; imageUrl?: string | null };
@@ -98,19 +98,22 @@ const headcount = (n: NightCard) => n.going.reduce((sum, p) => sum + 1 + (p.gues
  */
 export function buildNightThreadCopy(n: NightCard): { flags: number; components: Component[] } {
   const e = n.emoji ?? {};
-  const tally = n.cancelled
-    ? `${icon(e, "cancelled")} Cancelled`
-    : [
-        `${icon(e, "going")} ${headcount(n)}${n.capacity ? `/${n.capacity}` : ""} going`,
-        n.maybe.length && `${icon(e, "maybe")} ${n.maybe.length} maybe`,
-        n.declined.length && `${icon(e, "declined")} ${n.declined.length} can't`,
-      ]
-        .filter(Boolean)
-        .join(" · ");
+  const tally = n.cancelled ? `${icon(e, "cancelled")} Cancelled` : answerTally(n, e);
   return {
     flags: COMPONENTS_V2,
     components: [{ type: TEXT, content: `-# ${tally}` }, ...nightRows(n, e).map((components) => ({ type: ACTION_ROW, components }))],
   };
+}
+
+/** How many have answered each way, on one line: "✅ 3/6 going · ❔ 1 maybe". Answers nobody's given are left off. */
+export function answerTally(n: NightCard, e: AppEmoji) {
+  return [
+    `${icon(e, "going")} ${headcount(n)}${n.capacity ? `/${n.capacity}` : ""} going`,
+    n.maybe.length && `${icon(e, "maybe")} ${n.maybe.length} maybe`,
+    n.declined.length && `${icon(e, "declined")} ${n.declined.length} can't`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 /**
@@ -140,7 +143,7 @@ function goingBlock(heading: string, people: CardPerson[], others: number) {
 }
 
 /** Text with a game's box beside it */
-function withBox(content: string, name: string, imageUrl: string): Component {
+export function withBox(content: string, name: string, imageUrl: string): Component {
   return { type: SECTION, components: [{ type: TEXT, content }], accessory: { type: THUMBNAIL, media: { url: imageUrl }, description: name } };
 }
 
@@ -198,7 +201,7 @@ function button(action: Action, label: string | null, emoji: { id?: string; name
   return { type: BUTTON, style: SECONDARY, ...(label ? { label } : {}), custom_id: actionId(action), emoji };
 }
 
-function link(g: CardGame) {
+export function link(g: CardGame) {
   return g.bggId ? `[${escape(g.name)}](https://boardgamegeek.com/boardgame/${g.bggId})` : escape(g.name);
 }
 

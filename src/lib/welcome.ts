@@ -82,7 +82,7 @@ export async function welcomeToGroup(discordId: string, by: { name: string; user
     coreNight: coreNightName(),
   };
 
-  const channelId = welcomeChannel();
+  const channelId = await welcomeChannel();
   const [post, dm] = await Promise.all([
     channelId
       ? postMessage(channelId, welcomePost(w), { parse: [], users: [discordId] }).then(

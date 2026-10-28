@@ -83,10 +83,11 @@ The button copies this repo into your GitHub account and asks for the variables 
 | `ANTHROPIC_API_KEY` | Optional: used only with `CLAUDE=on` (below). Create it in a workspace of its own with a monthly spend limit, and mark it Sensitive in Vercel |
 | `DISCORD_CASUAL_CHANNEL_ID` | Optional: the casual night's plays channel |
 | `DISCORD_WELCOME_CHANNEL_ID` | Optional: where someone invited to the core group's nights is greeted, instead of the core group's events channel (see [Inviting people](docs/discord-setup.md#part-5-inviting-people-to-the-core-groups-nights-optional)) |
-| `DISCORD_CORE_EVENTS_CHANNEL_ID`, `DISCORD_CASUAL_EVENTS_CHANNEL_ID` | Optional: where each kind of night is posted, with its thread |
+| `DISCORD_CORE_EVENTS_CHANNEL_ID`, `DISCORD_CASUAL_EVENTS_CHANNEL_ID` | Optional: where each kind of night is posted, with its thread: a text channel or a forum |
+| `DISCORD_CORE_ANNOUNCE_CHANNEL_ID`, `DISCORD_CASUAL_ANNOUNCE_CHANNEL_ID` | Optional: a chat channel each kind of night is announced in, with its details and a link to its post, for events channels people don't read as they chat (a forum, say). The announcement takes the night's ping |
 | `DISCORD_PUBLIC_KEY` | Optional: turns on the buttons on nights' posts and the `/event` command (see [Nights in Discord](docs/discord-setup.md#part-4-nights-in-discord-optional)) |
 | `DISCORD_COMMAND_NAME` | Optional: the slash command's name instead of `event` (`/event new`, `poll`, `edit`, `cancel`). Run `pnpm discord:commands` again after changing it |
-| `DISCORD_CORE_NIGHT_PING`, `DISCORD_CASUAL_NIGHT_PING` | Optional: who a night's post pings when it first goes up: `here`, `everyone` or a role id. Unset pings nobody |
+| `DISCORD_CORE_NIGHT_PING`, `DISCORD_CASUAL_NIGHT_PING` | Optional: who a night's post (or its announcement, when there is one) pings when it first goes up: `here`, `everyone` or a role id. Unset pings nobody |
 | `BETTER_AUTH_URL` | The site's address. On Vercel it defaults to the project's production domain, so set it only for a custom domain or another host |
 
 [`.env.example`](.env.example) lists them all with notes. Once it's deployed, add `https://<your-domain>/api/auth/callback/discord` to the Discord application's OAuth2 redirects.

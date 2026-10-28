@@ -1,8 +1,9 @@
 /**
  * Brings every post that's up in Discord in step with the current code: each coming night's
  * post and its thread's copy are edited, and its thread renamed for its title, and each open
- * poll's post and copy are edited. Run it after a change to how posts look, so the ones already
- * up don't wait for their next change. Safe to run again.
+ * poll's post and copy are edited. Announcements are edited, or posted (without a ping) for
+ * posts that have none since an announce channel was set. Run it after a change to how posts
+ * look, so the ones already up don't wait for their next change. Safe to run again.
  *
  *   pnpm refresh:posts                                            # uses .env.local
  *   op run --env-file=.env.production.op -- pnpm refresh:posts    # production

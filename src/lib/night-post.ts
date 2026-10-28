@@ -3,14 +3,18 @@ import { after } from "next/server";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lt, or } from "drizzle-orm";
 import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { type MessageBody, addToThread, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
+import { type MessageBody, addToThread, announceChannel, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
+import { buildNightAnnouncement } from "./announce-message";
+import { type Announcement, removeAnnouncement, syncAnnouncement } from "./announce-post";
 import { type NightDetail, loadNight } from "./events";
-import { type CardPerson, type NightCard, buildNightMessage, buildNightThreadCopy, changeNote, goneMessage, nightPing, threadName } from "./night-message";
+import { type CardPerson, type NightCard, type NightPing, buildNightMessage, buildNightThreadCopy, changeNote, goneMessage, nightPing, threadName } from "./night-message";
 
 /**
- * Each night Boardroom runs has a post in its events channel and a thread for talking it over.
- * Everything that changes what the post shows calls syncNightPost, wherever the change came
- * from: the site, a button on the post, or a slash command.
+ * Each night Boardroom runs has a post in its events channel and a thread for talking it over,
+ * and, when the group sets a chat channel to announce it in, an announcement there linking to
+ * the post (announce-post.ts). Everything that changes what the post shows calls
+ * syncNightPost, wherever the change came from: the site, a button on the post, or a slash
+ * command.
  */
 
 const GRACE_MS = 12 * 3_600_000;
@@ -20,35 +24,55 @@ const CLAIM_MS = 60_000;
 /**
  * Bring a night's post in step with the night: post it (with its thread) if it has none yet,
  * edit it, or move it when the night changed kind. A post someone deleted is posted again.
- * Does nothing for nights that have been and gone without a post, or when the group hasn't set
- * up posting.
+ * Its announcement in the chat channel, when the group has one, follows it. Does nothing for
+ * nights that have been and gone without a post, or when the group hasn't set up posting.
  */
 export async function syncNightPost(nightId: number): Promise<"posted" | "edited" | null> {
   const row = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId) });
   if (!row || !postsNights(row.night)) return null;
   const channelId = eventsChannel(row.night)!;
 
-  if (row.messageId && !isClaim(row.messageId) && row.channelId !== channelId) {
-    // It changed kind: the post (and its thread) moves to the other kind's channel
+  // It changed kind: the post (with its thread and announcement) moves to the other kind's
+  // channels. A post in a channel that's no longer either kind's (the group moved its events
+  // somewhere else) stays where it is, with its thread, until it's been and gone.
+  const otherKind = eventsChannel(row.night === "core" ? "casual" : "core");
+  if (row.messageId && !isClaim(row.messageId) && row.channelId !== channelId && row.channelId === otherKind) {
     await removePost(row);
-    await db.update(schema.gameNight).set({ channelId: null, messageId: null, threadId: null, threadCardId: null, url: null }).where(eq(schema.gameNight.id, row.id));
-    row.messageId = null;
+    await db
+      .update(schema.gameNight)
+      .set({ channelId: null, messageId: null, threadId: null, threadCardId: null, url: null, announceChannelId: null, announceMessageId: null })
+      .where(eq(schema.gameNight.id, row.id));
+    Object.assign(row, { messageId: null, announceChannelId: null, announceMessageId: null });
   }
 
   const n = await loadNight(nightId);
   if (!n) return null;
   const c = await card(n);
   const body = buildNightMessage(c);
+  const announceTo = announceChannel(row.night);
+  // Nights coming up are announced; one whose post is in the chat channel itself needs none
+  const announce = (shown: NightCard, url: string | null, postedIn: string | null, first?: NightPing | null) =>
+    syncAnnouncement(
+      { channelId: row.announceChannelId, messageId: row.announceMessageId },
+      announceTo,
+      buildNightAnnouncement(shown, url),
+      { post: !n.cancelled && !n.past && postedIn !== announceTo, first: first ? { body: buildNightAnnouncement(shown, url, first), allowedMentions: first.allowedMentions } : undefined },
+      saveNightAnnouncement(row.id),
+    );
 
   if (row.messageId && !isClaim(row.messageId)) {
     if (await editMessage(await postChannel(row), row.messageId, body)) {
       await syncThreadCopy(row, buildNightThreadCopy(c), saveNightCopy(row.id));
+      await announce(c, row.url, row.channelId);
       return "edited";
     }
     // Someone deleted the post: post it again below
     await db.update(schema.gameNight).set({ messageId: null, threadId: null, threadCardId: null, url: null }).where(eq(schema.gameNight.id, row.id));
   }
-  if (n.cancelled || n.past) return null;
+  if (n.cancelled || n.past) {
+    await announce(c, null, null);
+    return null;
+  }
 
   // Claim it, so a second change arriving while this posts doesn't post it twice
   const claim = `pending:${Date.now()}`;
@@ -65,26 +89,38 @@ export async function syncNightPost(nightId: number): Promise<"posted" | "edited
     .returning({ id: schema.gameNight.id });
   if (!claimed.length) return null;
   try {
-    // The first post pings whoever the group set for this kind of night; edits never ping
+    // The first post pings whoever the group set for this kind of night, or its announcement
+    // does when there is one, being where people read; edits never ping
     const ping = nightPing(nightPingSetting(row.night));
-    const first = ping ? buildNightMessage(c, ping) : body;
-    const posted = await postWithThread(channelId, threadName(n.title, n.startsAt, TIME_ZONE), first, ping?.allowedMentions);
+    const pingPost = announceTo ? null : ping;
+    const first = pingPost ? buildNightMessage(c, pingPost) : body;
+    const posted = await postWithThread(channelId, threadName(n.title, n.startsAt, TIME_ZONE), first, pingPost?.allowedMentions);
     const where = posted.messageChannelId;
-    await db
-      .update(schema.gameNight)
-      .set({ channelId, messageId: posted.messageId, threadId: posted.threadId, url: messageUrl(where, posted.messageId) })
-      .where(eq(schema.gameNight.id, row.id));
+    const url = messageUrl(where, posted.messageId);
+    await db.update(schema.gameNight).set({ channelId, messageId: posted.messageId, threadId: posted.threadId, url }).where(eq(schema.gameNight.id, row.id));
     // Anyone who answered while it was being posted was left off it; catch them up
     const now = await loadNight(nightId);
     const latest = now ? await card(now) : c;
     if (now && JSON.stringify(buildNightMessage(latest)) !== JSON.stringify(first)) await editMessage(where, posted.messageId, buildNightMessage(latest));
     await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, buildNightThreadCopy(latest), saveNightCopy(row.id));
+    // A night that already had an announcement (its post was deleted) doesn't ping again
+    await announce(latest, url, channelId, row.announceMessageId ? null : ping);
   } catch (err) {
     await db.update(schema.gameNight).set({ messageId: null }).where(and(eq(schema.gameNight.id, row.id), eq(schema.gameNight.messageId, claim)));
     throw err;
   }
   return "posted";
 }
+
+const saveNightAnnouncement = (nightId: number) => async (next: Announcement, was: string | null) => {
+  const n = schema.gameNight;
+  const saved = await db
+    .update(n)
+    .set({ announceChannelId: next.channelId, announceMessageId: next.messageId })
+    .where(and(eq(n.id, nightId), was ? eq(n.announceMessageId, was) : isNull(n.announceMessageId)))
+    .returning({ id: n.id });
+  return saved.length > 0;
+};
 
 /**
  * A copy of a post's buttons (with a line on where things stand) as the first message in its
@@ -196,10 +232,13 @@ export async function postInThread(nightId: number, content: string) {
 }
 
 /**
- * Take a night's post (and its thread, when the bot may) out of Discord, for a night that's
- * deleted or moved to the other kind's channel
+ * Take a night's post (and its thread, when the bot may) and its announcement out of Discord,
+ * for a night that's deleted or moved to the other kind's channel
  */
-export async function removePost(row: Pick<typeof schema.gameNight.$inferSelect, "channelId" | "messageId" | "threadId"> & { threadCardId?: string | null }) {
+export async function removePost(
+  row: Pick<typeof schema.gameNight.$inferSelect, "channelId" | "messageId" | "threadId"> & { threadCardId?: string | null; announceChannelId?: string | null; announceMessageId?: string | null },
+) {
+  await removeAnnouncement({ channelId: row.announceChannelId ?? null, messageId: row.announceMessageId ?? null });
   if (!row.messageId || isClaim(row.messageId) || !row.channelId) return;
   const forum = await isForumChannel(row.channelId);
   // Deleting a thread needs Manage Threads, which the bot may not have

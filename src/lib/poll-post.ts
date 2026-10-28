@@ -3,15 +3,18 @@ import { after } from "next/server";
 import { and, eq, inArray, isNotNull, isNull, like, lt, or } from "drizzle-orm";
 import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { addToThread, editMessage, eventsChannel, fetchAppEmoji, messageUrl, nightPingSetting, postMessage, postWithThread, postsNights, renameThread, replyToMessage } from "./discord";
+import { addToThread, announceChannel, editMessage, eventsChannel, fetchAppEmoji, messageUrl, nightPingSetting, postMessage, postWithThread, postsNights, renameThread, replyToMessage } from "./discord";
+import { buildPollAnnouncement } from "./announce-message";
+import { type Announcement, syncAnnouncement } from "./announce-post";
 import { isClaim, joinThread, postChannel, removePost, syncNightPost, syncThreadCopy } from "./night-post";
-import { nightPing, threadName } from "./night-message";
+import { type NightPing, nightPing, threadName } from "./night-message";
 import { type PollCard, buildPollMessage, buildPollThreadCopy, pickedMessage, pollThreadName } from "./poll-message";
 import { type PollDetail, loadPoll } from "./poll-store";
 
 /**
  * Each poll has a post in its kind of night's events channel, with a thread for talking it
- * over, until a date is picked: then the post and thread are the night's (night-post.ts).
+ * over, and an announcement in the chat channel when the group has one, until a date is
+ * picked: then the post, thread and announcement are the night's (night-post.ts).
  */
 
 const p = schema.datePoll;
@@ -33,15 +36,29 @@ export async function syncPollPost(pollId: number): Promise<"posted" | "edited" 
   if (!poll) return null;
   const c = await card(poll);
   const body = buildPollMessage(c);
+  const announceTo = announceChannel(row.night);
+  // Open polls are announced; one whose post is in the chat channel itself needs none
+  const announce = (shown: PollCard, url: string | null, postedIn: string | null, first?: NightPing | null) =>
+    syncAnnouncement(
+      { channelId: row.announceChannelId, messageId: row.announceMessageId },
+      announceTo,
+      buildPollAnnouncement(shown, url),
+      { post: row.status === "open" && postedIn !== announceTo, first: first ? { body: buildPollAnnouncement(shown, url, first), allowedMentions: first.allowedMentions } : undefined },
+      savePollAnnouncement(row.id),
+    );
 
   if (row.messageId && !isClaim(row.messageId)) {
     if (await editMessage(await postChannel(row), row.messageId, body)) {
       await syncThreadCopy(row, buildPollThreadCopy(c), savePollCopy(row.id));
+      await announce(c, row.url, row.channelId);
       return "edited";
     }
     await db.update(p).set({ messageId: null, threadId: null, threadCardId: null, url: null }).where(eq(p.id, row.id));
   }
-  if (row.status !== "open") return null;
+  if (row.status !== "open") {
+    await announce(c, null, null);
+    return null;
+  }
 
   const claim = `pending:${Date.now()}`;
   const claimed = await db
@@ -52,14 +69,14 @@ export async function syncPollPost(pollId: number): Promise<"posted" | "edited" 
   if (!claimed.length) return null;
   const channelId = eventsChannel(row.night)!;
   try {
-    // The first post pings whoever the group set for this kind of night, as a night's does
+    // The first post pings whoever the group set for this kind of night, as a night's does, or
+    // its announcement does when there is one
     const ping = nightPing(nightPingSetting(row.night));
-    const first = ping ? buildPollMessage(c, ping) : body;
-    const posted = await postWithThread(channelId, pollThreadName(pollTitle(poll)), first, ping?.allowedMentions);
-    await db
-      .update(p)
-      .set({ channelId, messageId: posted.messageId, threadId: posted.threadId, url: messageUrl(posted.messageChannelId, posted.messageId) })
-      .where(eq(p.id, row.id));
+    const pingPost = announceTo ? null : ping;
+    const first = pingPost ? buildPollMessage(c, pingPost) : body;
+    const posted = await postWithThread(channelId, pollThreadName(pollTitle(poll)), first, pingPost?.allowedMentions);
+    const url = messageUrl(posted.messageChannelId, posted.messageId);
+    await db.update(p).set({ channelId, messageId: posted.messageId, threadId: posted.threadId, url }).where(eq(p.id, row.id));
     const now = await loadPoll(pollId);
     if (now?.status === "picked") {
       // A date was picked while this posted, and the night went up on its own post
@@ -69,12 +86,22 @@ export async function syncPollPost(pollId: number): Promise<"posted" | "edited" 
     const latest = now ? await card(now) : c;
     if (now && JSON.stringify(buildPollMessage(latest)) !== JSON.stringify(first)) await editMessage(posted.messageChannelId, posted.messageId, buildPollMessage(latest));
     await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, buildPollThreadCopy(latest), savePollCopy(row.id));
+    await announce(latest, url, channelId, row.announceMessageId ? null : ping);
   } catch (err) {
     await db.update(p).set({ messageId: null }).where(and(eq(p.id, row.id), eq(p.messageId, claim)));
     throw err;
   }
   return "posted";
 }
+
+const savePollAnnouncement = (pollId: number) => async (next: Announcement, was: string | null) => {
+  const saved = await db
+    .update(p)
+    .set({ announceChannelId: next.channelId, announceMessageId: next.messageId })
+    .where(and(eq(p.id, pollId), was ? eq(p.announceMessageId, was) : isNull(p.announceMessageId)))
+    .returning({ id: p.id });
+  return saved.length > 0;
+};
 
 const savePollCopy = (pollId: number) => async (id: string, was: string | null) => {
   const saved = await db
@@ -124,8 +151,8 @@ async function postInPollThread(pollId: number, content: string) {
 }
 
 /**
- * Once a date's picked: the poll's post becomes the night's card, its thread is renamed for
- * the night, and a reply pings the group and the people the date works for to say whether
+ * Once a date's picked: the poll's post (and announcement) becomes the night's, its thread is
+ * renamed for the night, and a reply pings the group and the people the date works for to say whether
  * they're coming. A poll that was never posted gets the night posted the usual way.
  */
 export function announcePickedLater(pollId: number, optionId: number, by: { playerId: number }) {
@@ -145,7 +172,10 @@ export function announcePickedLater(pollId: number, optionId: number, by: { play
       }
       const voters = poll.dates.find((d) => d.id === optionId)?.voters ?? [];
       const { body, allowedMentions } = pickedMessage({ title: night.title, startsAt: night.startsAt.toISOString(), voters }, nightPing(nightPingSetting(night.night)));
-      await replyToMessage(await postChannel(night), night.messageId!, body, allowedMentions);
+      // On the announcement when there is one, where the night's ping goes; it links to the post
+      const announced = night.announceChannelId && night.announceMessageId && !isClaim(night.announceMessageId);
+      if (announced) await replyToMessage(night.announceChannelId!, night.announceMessageId!, body, allowedMentions);
+      else await replyToMessage(await postChannel(night), night.messageId!, body, allowedMentions);
       await joinThread(night.id, undefined, [by.playerId]);
     } catch (err) {
       console.error(`Couldn't turn poll ${pollId}'s post into its night's`, err);

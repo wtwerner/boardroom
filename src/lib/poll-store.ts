@@ -198,6 +198,10 @@ export async function pickPollDate(pollId: number, optionId: number, fields: { t
     const night = await createNight({ night: row.night, title: fields.title, startsAt: option.startsAt, location: fields.location }, userId);
     const post = row.messageId && !isClaim(row.messageId) ? { channelId: row.channelId, messageId: row.messageId, threadId: row.threadId, threadCardId: row.threadCardId, url: row.url } : null;
     if (post) await db.update(schema.gameNight).set(post).where(eq(schema.gameNight.id, night.id));
+    // Its announcement becomes the night's too, edited into the night's when its post is
+    if (row.announceMessageId && !isClaim(row.announceMessageId)) {
+      await db.update(schema.gameNight).set({ announceChannelId: row.announceChannelId, announceMessageId: row.announceMessageId }).where(eq(schema.gameNight.id, night.id));
+    }
     await db.update(p).set({ gameNightId: night.id }).where(eq(p.id, pollId));
     return { night, hadPost: Boolean(post) };
   } catch (err) {

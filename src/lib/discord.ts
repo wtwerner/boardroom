@@ -97,6 +97,18 @@ export function eventsChannel(night: Night) {
   return (night === "casual" ? process.env.DISCORD_CASUAL_EVENTS_CHANNEL_ID : process.env.DISCORD_CORE_EVENTS_CHANNEL_ID) || null;
 }
 
+/**
+ * Where each kind of night is announced, when its events channel is somewhere people don't
+ * read as they chat (a forum, say): DISCORD_CORE_ANNOUNCE_CHANNEL_ID and
+ * DISCORD_CASUAL_ANNOUNCE_CHANNEL_ID. The announcement shows the details and links to the post,
+ * which has the buttons, and takes the night's ping. Unset, or the events channel itself, there's
+ * no announcement.
+ */
+export function announceChannel(night: Night) {
+  const id = (night === "casual" ? process.env.DISCORD_CASUAL_ANNOUNCE_CHANNEL_ID : process.env.DISCORD_CORE_ANNOUNCE_CHANNEL_ID)?.trim() || null;
+  return id && id !== eventsChannel(night) ? id : null;
+}
+
 /** Whether signing in needs a particular role in the server, rather than just being in it */
 export const hasMemberRole = () => Boolean(process.env.DISCORD_MEMBER_ROLE_ID);
 
@@ -145,12 +157,15 @@ export async function sendDirectMessage(discordUserId: string, body: MessageBody
 
 /**
  * Where someone invited to the core group's nights is greeted: DISCORD_WELCOME_CHANNEL_ID, or
- * else the core group's events channel, or else its plays channel. Never one of the casual
- * night's channels.
+ * else the channel the core group's nights are announced in, its events channel (unless that's
+ * a forum, which only takes posts), or its plays channel. Never one of the casual night's
+ * channels.
  */
-export function welcomeChannel() {
-  const casual = new Set([eventsChannel("casual"), playsChannel("casual")].filter(Boolean));
-  return [process.env.DISCORD_WELCOME_CHANNEL_ID, eventsChannel("core"), playsChannel("core")].find((id) => id && !casual.has(id)) ?? null;
+export async function welcomeChannel() {
+  const casual = new Set([eventsChannel("casual"), announceChannel("casual"), playsChannel("casual")].filter(Boolean));
+  const events = eventsChannel("core");
+  const eventsTakesMessages = events ? !(await isForumChannel(events).catch(() => true)) : false;
+  return [process.env.DISCORD_WELCOME_CHANNEL_ID, announceChannel("core"), eventsTakesMessages && events, playsChannel("core")].find((id) => id && !casual.has(id)) || null;
 }
 
 /**
