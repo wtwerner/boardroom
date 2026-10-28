@@ -67,6 +67,27 @@ describe("reminderMessage", () => {
     expect(m.allowedMentions).toEqual({ parse: [], users: ["100000000000000001", "100000000000000003"] });
   });
 
+  it("reminds whoever's bringing games which ones, without pinging them twice", () => {
+    const m = reminderMessage({
+      title: "Casual night",
+      startsAt,
+      location: null,
+      people: [
+        { name: "Sam", discordId: "100000000000000001" },
+        { name: "Jordan", discordId: "100000000000000003" },
+      ],
+      bringing: [
+        { name: "Sam", discordId: "100000000000000001", game: "Azul" },
+        { name: "Casey", discordId: null, game: "Wingspan" },
+        { name: "Sam", discordId: "100000000000000001", game: "Cascadia" },
+      ],
+    });
+    expect(m.body.content).toBe(
+      "⏰ **Casual night** starts <t:1793318400:R>, at <t:1793318400:t>\n🎲 Don't forget your games: <@100000000000000001> **Azul**, **Cascadia** · Casey **Wingspan**\n<@100000000000000003>",
+    );
+    expect(m.allowedMentions).toEqual({ parse: [], users: ["100000000000000001", "100000000000000003"] });
+  });
+
   it("is one line when nobody's in Discord", () => {
     expect(reminderMessage({ title: "Game night", startsAt, location: null, people: [] }).body.content).toBe("⏰ **Game night** starts <t:1793318400:R>, at <t:1793318400:t>");
   });

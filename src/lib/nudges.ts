@@ -43,18 +43,36 @@ export function logNudgeDue(n: NudgeNight, now: Date, timeZone: string) {
 }
 
 export type ReminderPerson = { name: string; discordId: string | null };
+/** A game someone said they'd bring, one per game */
+export type ReminderBring = ReminderPerson & { game: string };
 
-/** "⏰ Thursday heavy starts in 3 hours", pinging everyone going or a maybe who's in Discord */
-export function reminderMessage(n: { title: string; startsAt: Date; location: string | null; people: ReminderPerson[] }) {
+const mention = (p: ReminderPerson) => (p.discordId ? `<@${p.discordId}>` : escape(p.name));
+
+/**
+ * "⏰ Thursday heavy starts in 3 hours", reminding whoever said they'd bring a game which ones,
+ * and pinging everyone else going or a maybe who's in Discord
+ */
+export function reminderMessage(n: { title: string; startsAt: Date; location: string | null; people: ReminderPerson[]; bringing?: ReminderBring[] }) {
   const unix = Math.floor(n.startsAt.getTime() / 1000);
-  const ids = [...new Set(n.people.flatMap((p) => (p.discordId ? [p.discordId] : [])))];
+  // A line part per person bringing, their games together
+  const byBringer = new Map<string, { who: ReminderPerson; games: string[] }>();
+  for (const b of n.bringing ?? []) {
+    const key = b.discordId ?? b.name;
+    const theirs = byBringer.get(key);
+    if (theirs) theirs.games.push(b.game);
+    else byBringer.set(key, { who: b, games: [b.game] });
+  }
+  const bringers = [...byBringer.values()];
+  const bringerIds = new Set(bringers.flatMap((b) => (b.who.discordId ? [b.who.discordId] : [])));
+  const others = [...new Set(n.people.flatMap((p) => (p.discordId && !bringerIds.has(p.discordId) ? [p.discordId] : [])))];
   const lines = [
     `⏰ **${escape(n.title)}** starts <t:${unix}:R>, at <t:${unix}:t>${n.location ? ` · 📍 ${escape(n.location)}` : ""}`,
-    ids.map((id) => `<@${id}>`).join(" "),
+    bringers.length && `🎲 Don't forget your games: ${bringers.map((b) => `${mention(b.who)} ${b.games.map((g) => `**${escape(g)}**`).join(", ")}`).join(" · ")}`,
+    others.map((id) => `<@${id}>`).join(" "),
   ];
   return {
     body: { content: lines.filter(Boolean).join("\n") },
-    allowedMentions: { parse: [] as [], users: ids },
+    allowedMentions: { parse: [] as [], users: [...bringerIds, ...others] },
   };
 }
 
