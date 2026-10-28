@@ -46,6 +46,7 @@ Which channel the group logs plays in, which one the casual night uses if there 
 - Posts a card in the right channel when someone logs a play on the site. It tags the players without pinging them.
 - Checks that someone signing in to the site is in the server, and has the role if there is one.
 - Posts each game night in its events channel with a thread, and updates the post as people answer with its buttons. Members can make, change and cancel nights with `/event`. Under **Server Settings → Integrations → Boardroom** you can limit who can use the command.
+- A few hours before a night, replies to its post pinging whoever's going or a maybe.
 - DMs someone when a member asks them to bring a game they own to the casual night, with buttons to answer.
 - If you did step 4: gives the group's role to someone a member invites (from the site, or with **Apps → Invite to …** on their right-click menu), says hi to them in the group's channel and DMs them a link to get set up. It never takes a role away.
 - If the group wants a ping when a night is posted (`@here`, or a role that isn't mentionable by everyone), give the **Boardroom** role **Mention @everyone, @here, and All Roles** under **Server Settings → Roles**. Otherwise leave it off.

@@ -51,7 +51,7 @@ function assertOpen(row: { status: PollStatus }) {
 }
 
 /** Polls with their dates and who each works for, soonest date first */
-export async function loadPolls(ids: number[]): Promise<PollDetail[]> {
+async function loadPolls(ids: number[]): Promise<PollDetail[]> {
   if (!ids.length) return [];
   const [polls, dates, votes] = await Promise.all([
     db.select().from(p).where(inArray(p.id, ids)),

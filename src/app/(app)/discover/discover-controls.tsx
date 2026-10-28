@@ -4,7 +4,7 @@ import Link from "next/link";
 import { type ReactNode, useActionState, useOptimistic, useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { Check, ChevronDown, ChevronUp, Plus, Sparkles, X } from "lucide-react";
 import clsx from "clsx";
-import { type ActionResult, addSuggestion, dismissSuggestion, askClaudeForPicks, loadCatalog, setOpinion, takeOffBuyList, unwantGame, voteSuggestion, wantGame } from "@/app/actions";
+import { type ActionResult, addSuggestion, askClaudeForPicks, loadCatalog, setOpinion, takeOffBuyList, unwantGame, wantGame } from "@/app/actions";
 import { buttonClass } from "@/components/ui";
 import type { Night } from "@/db/enums";
 
@@ -213,32 +213,6 @@ export function AddSuggestionForm() {
       <button className={buttonClass("primary")} disabled={pending}>{pending ? "Adding…" : "Add"}</button>
       {state && !state.ok && <p className="text-sm text-meeple-red sm:hidden">{state.error}</p>}
     </form>
-  );
-}
-
-export function SuggestionActions({ id, score, myVote }: { id: number; score: number; myVote: -1 | 0 | 1 }) {
-  const [optimistic, setOptimistic] = useOptimistic({ score, myVote }, (_s, next: { score: number; myVote: -1 | 0 | 1 }) => next);
-  const [, start] = useTransition();
-  const vote = (v: -1 | 1) =>
-    start(async () => {
-      const next = optimistic.myVote === v ? 0 : v;
-      setOptimistic({ myVote: next, score: optimistic.score - optimistic.myVote + next });
-      await voteSuggestion(id, next);
-    });
-
-  return (
-    <div className="flex shrink-0 items-center gap-0.5" aria-label="Votes">
-      <button type="button" aria-label="Vote up" aria-pressed={optimistic.myVote === 1} onClick={() => vote(1)} className={clsx("rounded p-1", optimistic.myVote === 1 ? "text-accent" : "text-slate hover:text-ink")}>
-        <ChevronUp className="size-5" strokeWidth={2.5} />
-      </button>
-      <span className="font-display tabular min-w-5 text-center text-lg">{optimistic.score}</span>
-      <button type="button" aria-label="Vote down" aria-pressed={optimistic.myVote === -1} onClick={() => vote(-1)} className={clsx("rounded p-1", optimistic.myVote === -1 ? "text-meeple-red" : "text-slate hover:text-ink")}>
-        <ChevronDown className="size-5" strokeWidth={2.5} />
-      </button>
-      <button type="button" aria-label="Remove from the list" onClick={() => confirm("Remove this from the buy list?") && start(() => dismissSuggestion(id))} className="ml-1 rounded p-1 text-slate/70 hover:text-ink">
-        <X className="size-3.5" />
-      </button>
-    </div>
   );
 }
 

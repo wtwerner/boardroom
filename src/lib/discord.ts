@@ -450,6 +450,6 @@ export function compareSnowflakes(a: { id: string }, b: { id: string }) {
   return x < y ? -1 : x > y ? 1 : 0;
 }
 
-export function displayName(u: DiscordUser) {
+function displayName(u: DiscordUser) {
   return u.global_name || u.username;
 }

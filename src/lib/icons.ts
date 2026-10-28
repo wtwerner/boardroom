@@ -4,7 +4,7 @@
  * until they're uploaded. Pure; discord.ts looks up the uploaded ones.
  */
 
-export const ICONS = {
+const ICONS = {
   going: "✅",
   maybe: "❔",
   declined: "❌",

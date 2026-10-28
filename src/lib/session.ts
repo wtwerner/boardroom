@@ -8,7 +8,7 @@ import { db, schema } from "@/db";
 import type { MeepleColor } from "@/db/enums";
 import { auth } from "./auth";
 
-export const getSession = cache(async () => {
+const getSession = cache(async () => {
   // A prefetch renders the page ahead of a click and leaves uncached queries hanging. Stop here
   // instead, so Better Auth never starts a lookup it would then log as a failed query.
   await connection();

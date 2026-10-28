@@ -22,7 +22,7 @@ export type SetupFacts = {
   bga: boolean;
 };
 
-export const STEP_TITLE: Record<SetupStepKey, string> = {
+const STEP_TITLE: Record<SetupStepKey, string> = {
   name: "Check your name",
   claim: "Find yourself in past plays",
   rate: "Rate the games you've played",

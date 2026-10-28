@@ -5,10 +5,10 @@
  */
 
 /** What {game} says before a game is locked in */
-export const NO_GAME = "TBD";
+const NO_GAME = "TBD";
 
 /** "2026-10-29" as "10/29" */
-export function titleDate(date: string) {
+function titleDate(date: string) {
   const [, m, d] = date.split("-").map(Number);
   return `${m}/${d}`;
 }

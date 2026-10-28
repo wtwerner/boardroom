@@ -34,10 +34,9 @@ Send the owner [server-owner.md](server-owner.md): it has these steps written fo
 2. Pick the group's server from **Add to server** and choose **Continue**. Only servers where you have Manage Server are listed.
 3. Leave the permissions ticked and choose **Authorize**.
 4. If the plays channel is private or has its own permission settings: open the channel's **Edit Channel → Permissions**, add the bot's role (named after the app), and allow **View Channel**, **Read Message History** and **Send Messages**. Do the same for the casual night's channel if it's logged too, and for the events channels nights are posted in (with **Create Public Threads** and **Send Messages in Threads** as well).
-
 5. If anyone outside the group is in this server (casual players, say), create a role for the group (e.g. "Core group") under **Server Settings → Roles** and give it to each member. The site will let only that role sign in.
 
-The bot can't do anything beyond those permissions. It only acts in the channels the site is configured for, and it doesn't ping anyone. To remove it, use **Server Settings → Integrations** or simply kick it.
+The bot can't do anything beyond those permissions. It only acts in the channels the site is configured for, and it only pings people about nights: whoever's going before one starts, whoever the group picks when one's posted (Part 4), and someone a member invites (Part 5). To remove it, use **Server Settings → Integrations** or kick it.
 
 ## Part 3: connect it (you)
 
@@ -69,7 +68,7 @@ Boardroom can post each night to an events channel: a card with when and where, 
 1. Make a channel for each kind of night, or reuse ones the group already has (a text channel or a forum). Copy their IDs into `DISCORD_CORE_EVENTS_CHANNEL_ID` and, for a casual night, `DISCORD_CASUAL_EVENTS_CHANNEL_ID`.
    - A **text channel** keeps each night's card in the chat, where people can answer without opening anything, with a thread hanging off it.
    - A **forum** gives each night a post of its own, named after it, with the talk underneath and nothing doubled up. People don't watch a forum the way they watch chat, so set `DISCORD_CORE_ANNOUNCE_CHANNEL_ID` (and `DISCORD_CASUAL_ANNOUNCE_CHANNEL_ID`) to the chat channel to announce nights in: the announcement shows when and where, how many are coming and the game, links to the post, and is kept up to date. It takes the night's ping (step 5).
-   - Moving a kind of night's events to a different channel later leaves the nights already posted where they are, threads and all; nights made from then on go to the new one.
+   - Moving a kind of night's events to a different channel later leaves the nights already posted where they are, threads and all; nights made from then on go to the new one. To move the coming ones too, run `pnpm move:posts --move` (without `--move` it lists what would move): each is posted in the new channel without a ping, and the old post and its thread get a note linking to it.
 2. In the developer portal, **General Information** tab: copy the **Public Key** into `DISCORD_PUBLIC_KEY`. Deploy, so the site has it.
 3. On the same tab, set **Interactions Endpoint URL** to `https://<your-domain>/api/discord/interactions` and save. Discord checks the address answers before it saves it.
 4. Register the slash commands in the server, and upload the symbols the posts use as the bot's own emoji (until they're uploaded, posts use plain emoji). Run it again whenever a Boardroom update changes them:
@@ -80,7 +79,6 @@ Boardroom can post each night to an events channel: a card with when and where, 
 
 5. Optional: to ping people when a night (or a poll to find its date) is posted, set `DISCORD_CORE_NIGHT_PING` and `DISCORD_CASUAL_NIGHT_PING` to `here`, `everyone` or a role's id (right-click the role → **Copy Role ID**). Only the first post pings (or its announcement, when nights are announced); edits never do. `here`, `everyone` and a role that isn't **Allow anyone to @mention this role** need the bot's role to have **Mention @everyone, @here, and All Roles**, which the invite link leaves out; the owner can give it under **Server Settings → Roles**.
 6. Optional: for the reminder before each night and the morning-after DM asking for its plays, set up [the tick](../README.md#reminders-and-the-morning-after).
-7. If the bot was added with the older invite link (`permissions=68608`), have the owner open the new one from Part 1: authorizing it again updates the bot's role. Or give the bot's role **Create Public Threads** and **Send Messages in Threads** in the events channels.
 
 ## Part 5: inviting people to the core group's nights (optional)
 
@@ -127,7 +125,7 @@ Set the test application's endpoint to `https://<tunnel>/api/discord/interaction
 | Sync runs but imports nothing | Message Content Intent is off (Part 1, step 3) |
 | Discord shows "Invalid OAuth2 redirect_uri" | The callback URL isn't listed under OAuth2 → Redirects exactly |
 | Discord won't save the Interactions Endpoint URL | The site isn't deployed with `DISCORD_PUBLIC_KEY` yet, or the key is from another application |
-| `/event poll` (or `/event` itself) doesn't show up, or the old `/night` still does | `pnpm discord:commands` hasn't been run against this server, or the bot was added without the `bot` scope |
+| `/event poll` (or `/event` itself) doesn't show up | `pnpm discord:commands` hasn't been run against this server, or the bot was added without the `bot` scope |
 | Inviting someone says the bot can't hand out roles | The bot's role lacks **Manage Roles**, or sits below the group's role in Server Settings → Roles (Part 5) |
 | **Invite to …** isn't on the right-click menu, or has an old name | `pnpm discord:commands` hasn't been run since updating or renaming the core group's night (Part 4, step 4). Only people with Manage Roles see it until the owner adds the member role (Part 5) |
 | A night's post or thread doesn't appear | The bot's role can't post or make threads in the events channel (Part 2, step 4). The site logs the reason; the next change to the night tries again |

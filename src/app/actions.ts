@@ -1291,27 +1291,3 @@ export async function addSuggestion(_prev: ActionResult | null, form: FormData):
   refresh();
   return { ok: true, message: `Added ${match?.name ?? name}.` };
 }
-
-export async function voteSuggestion(suggestionId: number, value: -1 | 0 | 1) {
-  const me = await requireUser();
-  if (value === 0) {
-    await db
-      .delete(schema.suggestionVote)
-      .where(and(eq(schema.suggestionVote.suggestionId, suggestionId), eq(schema.suggestionVote.userId, me.id)));
-  } else {
-    await db
-      .insert(schema.suggestionVote)
-      .values({ suggestionId, userId: me.id, value })
-      .onConflictDoUpdate({
-        target: [schema.suggestionVote.suggestionId, schema.suggestionVote.userId],
-        set: { value },
-      });
-  }
-  refresh();
-}
-
-export async function dismissSuggestion(suggestionId: number) {
-  await requireUser();
-  await db.update(schema.suggestion).set({ dismissed: true }).where(eq(schema.suggestion.id, suggestionId));
-  refresh();
-}

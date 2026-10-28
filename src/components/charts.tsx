@@ -9,7 +9,7 @@ const NIGHT_FILL: Record<Night, string> = { core: "bg-night-core", casual: "bg-n
 export type ByNight = Record<Night, number>;
 
 /** Both series are always named, so color is never the only cue. A group with one kind of night has one series and no legend. */
-export function NightLegend({ totals, unit }: { totals?: ByNight; unit?: string }) {
+function NightLegend({ totals, unit }: { totals?: ByNight; unit?: string }) {
   if (!CASUAL_NIGHT) return null;
   return (
     <ul className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate">

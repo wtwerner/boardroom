@@ -24,7 +24,7 @@ export const SITE_NAME = env("SITE_NAME") ?? "Boardroom";
 
 /**
  * What each kind of night is called, everywhere the site names one: tags, switches, charts,
- * page text, Claude's prompts, and and the titles of nights it makes (see NIGHT_TITLES).
+ * page text, Claude's prompts, and the titles of nights it makes (see NIGHT_TITLES).
  */
 export const NIGHT_NAMES: Record<Night, string> = {
   core: env("CORE_NIGHT_NAME") ?? "Game night",

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, desc, eq, isNotNull, max } from "drizzle-orm";
+import { and, count, desc, eq, isNotNull } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Night, Tier } from "@/db/enums";
 import { type ChanceModel, type GroupChance, chanceOf, groupChance, saidChance, trainChances } from "./chance";
@@ -523,10 +523,4 @@ export async function describeTaste(rec: Recommendations, { forUserId, night }: 
     .map((r) => `${r.name} (${name.get(r.userId)})`);
   if (turnedDown.length) lines.push("", `Marked "not for me" (don't suggest these or close cousins): ${turnedDown.join(", ")}`);
   return lines.filter((l) => l !== "").join("\n");
-}
-
-/** When Claude last suggested anything, overall: used to keep cost down */
-export async function lastClaudeSuggestionAt() {
-  const [row] = await db.select({ at: max(schema.suggestion.createdAt) }).from(schema.suggestion).where(eq(schema.suggestion.source, "ai"));
-  return row?.at ?? null;
 }

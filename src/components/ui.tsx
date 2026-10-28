@@ -14,7 +14,7 @@ const MEEPLE_FILL: Record<MeepleColor, string> = {
   orange: "fill-meeple-orange",
 };
 
-export const MEEPLE_BG: Record<MeepleColor, string> = {
+const MEEPLE_BG: Record<MeepleColor, string> = {
   red: "bg-meeple-red",
   blue: "bg-meeple-blue",
   yellow: "bg-meeple-yellow",

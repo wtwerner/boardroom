@@ -105,7 +105,7 @@ export function fitStrengths(ids: number[], comparisons: Comparison[]): Map<numb
 }
 
 /** P(you'd pick a over b), by the fitted strengths. */
-export const preferProbability = (a: Strength, b: Strength) => 1 / (1 + Math.exp(b.theta - a.theta));
+const preferProbability = (a: Strength, b: Strength) => 1 / (1 + Math.exp(b.theta - a.theta));
 
 /**
  * The most informative question to ask next: p(1 − p) is highest for a coin-flip

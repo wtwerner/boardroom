@@ -43,7 +43,7 @@ export function NightTag({ night, className }: { night: Night; className?: strin
 }
 
 /** Where a night's planning stands, in a line */
-export function nightStatus(n: NightDetail, names: Record<string, string>) {
+function nightStatus(n: NightDetail, names: Record<string, string>) {
   if (n.night === "core") {
     const chosen = n.games.find((g) => g.chosen);
     const goingMembers = new Set(n.going.flatMap((a) => (a.userId ? [a.userId] : [])));

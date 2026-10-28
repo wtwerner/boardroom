@@ -54,7 +54,7 @@ const MANAGE_ROLES = 1 << 28;
  * server owner can let the member role use it under Server Settings → Integrations; the bot
  * still checks the member role itself.
  */
-export const welcomeCommand = (name: string) => ({
+const welcomeCommand = (name: string) => ({
   name,
   type: USER_COMMAND,
   contexts: [GUILD_CONTEXT],

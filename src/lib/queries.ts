@@ -349,7 +349,7 @@ export async function getMustPlayLeft(userId: string, exceptGameId?: number) {
   return Math.max(0, MUST_PLAY_LIMIT - held.n);
 }
 
-export async function getMyOpinions(userId: string) {
+async function getMyOpinions(userId: string) {
   const rows = await db.select().from(opinion).where(eq(opinion.userId, userId));
   return new Map(rows.map((r) => [r.gameId, r]));
 }
@@ -569,27 +569,6 @@ export async function getSuggestions(userId: string) {
   // Hide anything someone has since bought
   const owned = new Set(ownedRows.map((r) => r.id));
   return rows.filter((r) => !r.bggId || !owned.has(r.bggId)).map((r) => ({ ...r, score: Number(r.score), myVote: Number(r.myVote) }));
-}
-
-/** Games on members' BGG wishlists that nobody owns yet. */
-export async function getWishlists() {
-  const rows = await db
-    .select({ id: game.id, name: game.name, thumbnail: game.thumbnail, year: game.year, userId: collectionItem.userId })
-    .from(collectionItem)
-    .innerJoin(game, eq(game.id, collectionItem.gameId))
-    .where(
-      and(
-        eq(collectionItem.wishlist, true),
-        sql`${game.id} not in (select ${collectionItem.gameId} from ${collectionItem} where ${collectionItem.own} = 1)`,
-      ),
-    );
-  const byGame = new Map<number, { id: number; name: string; thumbnail: string | null; year: number | null; userIds: string[] }>();
-  for (const r of rows) {
-    const g = byGame.get(r.id) ?? { id: r.id, name: r.name, thumbnail: r.thumbnail, year: r.year, userIds: [] };
-    g.userIds.push(r.userId);
-    byGame.set(r.id, g);
-  }
-  return [...byGame.values()].sort((a, b) => b.userIds.length - a.userIds.length || a.name.localeCompare(b.name));
 }
 
 // ---------------------------------------------------------------------------

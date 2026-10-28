@@ -46,7 +46,7 @@ export async function createNight(fields: NightFields, createdBy: string) {
   return row;
 }
 
-export const isPast = (n: { startsAt: Date }) => n.startsAt.getTime() < Date.now() - GRACE_MS;
+const isPast = (n: { startsAt: Date }) => n.startsAt.getTime() < Date.now() - GRACE_MS;
 
 /** Change a night's details. Returns how it was, so the thread can be told what moved. */
 export async function editNight(id: number, fields: Partial<NightFields>) {

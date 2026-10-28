@@ -54,7 +54,7 @@ export const hasBggToken = () => Boolean(process.env.BGG_API_TOKEN);
  * read "&mdash;", "&rsquo;" and so on. One more decode gives the text people wrote. Strict, so
  * only complete entities ending in ";" change: "R&D" or "&copy" without one are left alone.
  */
-export const bggText = (s: string) => decodeHTMLStrict(s);
+const bggText = (s: string) => decodeHTMLStrict(s);
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let lastRequestAt = 0;

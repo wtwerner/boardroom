@@ -104,7 +104,7 @@ All optional, as environment variables like the rest (`src/config.ts` reads them
 | `CASUAL_NIGHT` | off | A second, casual night (see [Core and casual nights](docs/how-it-works.md#core-and-casual-nights)). `DISCORD_CASUAL_CHANNEL_ID` turns it on too |
 | `CORE_NIGHT_NAME` / `CASUAL_NIGHT_NAME` | Game night / Casual night | What each kind of night is called everywhere on the site |
 | `CORE_NIGHT_TITLE` / `CASUAL_NIGHT_TITLE` | `{date} ` and the night's name | What a new night is called unless someone names it. `{date}` is its date ("10/29"), `{game}` the game locked in for it or TBD: `{date} Game Night — {game}` makes "10/29 Game Night — TBD", then "10/29 Game Night — Root" once Root is locked in. Its thread has the same name |
-| `HEAVY_GAME_WEIGHT` | 2.75 | BGG weight where the two rankings, Heavy games and Light games, split. Pick it where your own nights' games and the lighter ones part |
+| `HEAVY_GAME_WEIGHT` | 2.75 | BGG weight where the two rankings, Heavy games and Light games, split. Set it to the weight your group's heavier games start at |
 | `CLAUDE` | off | `on` turns on Claude's picks and reading hand-written play posts the parser can't. Needs `ANTHROPIC_API_KEY`. Off, the site never calls Claude or mentions it |
 | `CLAUDE_IDEAS_PER_DAY` | 5 | Claude's picks each person can ask for in a day |
 | `NIGHT_REMINDER_HOURS` | 3 | How many hours before a night starts its post gets a reply pinging whoever's going or a maybe. `0` turns it off. Needs [the tick](#reminders-and-the-morning-after) |
@@ -125,7 +125,7 @@ After that, a nightly cron (`vercel.json`, 09:00 UTC) syncs Discord, BGG collect
 
 ### Reminders and the morning after
 
-With nights posted in Discord ([Part 4](docs/discord-setup.md#part-4-nights-in-discord-optional)), Boardroom replies to a night's post a few hours before it starts, pinging whoever's going or a maybe and reminding anyone bringing a game which ones they said they'd bring, and the morning after it DMs whoever made the night if nothing's been logged for it. The same tick closes polls whose dates have all gone by. Vercel's Hobby crons only run once a day, so something else calls `/api/cron/tick` through the day. The repo has a GitHub Actions workflow for it (`.github/workflows/tick.yml`): add two repository secrets and it runs every 15 minutes.
+With nights posted in Discord ([Part 4](docs/discord-setup.md#part-4-nights-in-discord-optional)), Boardroom replies to a night's post a few hours before it starts, pinging whoever's going or a maybe and telling anyone bringing a game which ones they said they'd bring. The morning after, it DMs whoever made the night if nothing's been logged for it. The same tick closes polls whose dates have all gone by. Vercel's Hobby crons only run once a day, so something else calls `/api/cron/tick` through the day. The repo has a GitHub Actions workflow for it (`.github/workflows/tick.yml`): add two repository secrets and it runs every 15 minutes.
 
 ```sh
 gh secret set SITE_URL      # https://<your-domain>
@@ -142,6 +142,8 @@ Pull this repo's changes into your copy and Vercel redeploys it, applying any ne
 git remote add upstream https://github.com/wtwerner/boardroom.git   # once
 git pull upstream main && git push
 ```
+
+Posts already up in Discord take on a new look the next time their night changes. To update them all at once, run `node scripts/with-env.mjs .env.production pnpm refresh:posts`.
 
 ### Deploying from GitHub Actions instead
 

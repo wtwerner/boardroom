@@ -151,7 +151,7 @@ async function component(i: Interaction) {
   if (!isMember(i)) return reply(MEMBERS_ONLY());
   if (action.kind === "edit") return editForm(n);
 
-  // Confirmed from /night cancel
+  // Confirmed from /event cancel
   await cancelNight(n.id);
   after(async () => {
     try {
@@ -269,7 +269,7 @@ async function accountFor(i: Interaction) {
 const signInFirst = () => reply(`Sign in to ${SITE_NAME} once first${SITE_URL ? ` (${SITE_URL})` : ""}, so the events you make are yours.`);
 
 /**
- * /night new opens the form, as the kind of night whose channel it was used in, with the
+ * /event new opens the form, as the kind of night whose channel it was used in, with the
  * last night of that kind's time and place filled in
  */
 async function newNightForm(i: Interaction) {
@@ -289,7 +289,7 @@ async function newNightForm(i: Interaction) {
   return modal(actionId({ kind: "new" }), "New event", fields);
 }
 
-/** The /night new form sent back: make the night, then post it */
+/** The /event new form sent back: make the night, then post it */
 async function newNight(i: Interaction, form: Record<string, string>) {
   const userId = await accountFor(i);
   if (!userId) return signInFirst();
