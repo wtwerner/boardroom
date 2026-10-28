@@ -4,6 +4,7 @@
  */
 
 import type { Night } from "@/db/enums";
+import { titleCase } from "@/lib/text";
 
 const env = (name: string) => process.env[name]?.trim() || undefined;
 const num = (name: string, fallback: number) => {
@@ -22,11 +23,20 @@ export const SITE_NAME = env("SITE_NAME") ?? "Boardroom";
 
 /**
  * What each kind of night is called, everywhere the site names one: tags, switches, charts,
- * page text, Claude's prompts, and the titles of nights it makes ("10/18 Game Night").
+ * page text, Claude's prompts, and and the titles of nights it makes (see NIGHT_TITLES).
  */
 export const NIGHT_NAMES: Record<Night, string> = {
   core: env("CORE_NIGHT_NAME") ?? "Game night",
   casual: env("CASUAL_NIGHT_NAME") ?? "Casual night",
+};
+
+/**
+ * What a new night is called unless someone names it: {date} is its date ("10/29"), and {game}
+ * the game locked in for it, or TBD. A title made this way follows the game as it's locked in.
+ */
+export const NIGHT_TITLES: Record<Night, string> = {
+  core: env("CORE_NIGHT_TITLE") ?? `{date} ${titleCase(NIGHT_NAMES.core)}`,
+  casual: env("CASUAL_NIGHT_TITLE") ?? `{date} ${titleCase(NIGHT_NAMES.casual)}`,
 };
 
 /** The group's time zone, for turning Discord timestamps and event times into calendar dates */

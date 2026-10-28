@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { componentText } from "./discord-message";
-import { type NightCard, buildNightMessage, changeNote, nightPing, threadName } from "./night-message";
+import { type NightCard, buildNightMessage, buildNightThreadCopy, changeNote, nightPing, threadName } from "./night-message";
 import { parseActionId } from "./interactions";
 
 const base: NightCard = {
@@ -161,16 +161,35 @@ describe("buildNightMessage", () => {
   });
 });
 
-describe("threadName", () => {
-  it("is the day, then the title", () => {
-    expect(threadName("Thursday heavy", base.startsAt, "America/Chicago")).toBe("Thu Oct 29 · Thursday heavy");
+describe("buildNightThreadCopy", () => {
+  it("is a line of counts and the post's buttons, without the card", () => {
+    const copy = buildNightThreadCopy({ ...base, capacity: 6, declined: [{ name: "Casey" }] });
+    expect(componentText(copy.components)).toBe("-# ✅ 3/6 going · ❔ 1 maybe · ❌ 1 can't");
+    expect(copy.components.some((c) => c.type === 17)).toBe(false);
+    expect(rows(copy)).toEqual(rows(buildNightMessage(base)));
   });
 
-  it("doesn't repeat a date the title starts with", () => {
-    expect(threadName("10/29 Game Night", base.startsAt, "America/Chicago")).toBe("Thu Oct 29 · Game Night");
-    expect(threadName("10/30 Game Night", base.startsAt, "America/Chicago")).toBe("Thu Oct 29 · 10/30 Game Night");
-    expect(threadName("10/29/26 Game Night", base.startsAt, "America/Chicago")).toBe("Thu Oct 29 · Game Night");
-    expect(threadName("10/29/25 Game Night", base.startsAt, "America/Chicago")).toBe("Thu Oct 29 · 10/29/25 Game Night");
+  it("leaves off answers nobody's given", () => {
+    expect(componentText(buildNightThreadCopy({ ...base, going: [], maybe: [] }).components)).toBe("-# ✅ 0 going");
+  });
+
+  it("says a cancelled night is, with nothing to press", () => {
+    const copy = buildNightThreadCopy({ ...base, cancelled: true });
+    expect(componentText(copy.components)).toBe("-# 🚫 Cancelled");
+    expect(rows(copy)).toEqual([]);
+  });
+});
+
+describe("threadName", () => {
+  it("is the title, when it starts with its date", () => {
+    expect(threadName("10/29 Game Night — TBD", base.startsAt, "America/Chicago")).toBe("10/29 Game Night — TBD");
+    expect(threadName("10/29/26 Game Night", base.startsAt, "America/Chicago")).toBe("10/29/26 Game Night");
+  });
+
+  it("puts the date in front of a title without it", () => {
+    expect(threadName("Thursday heavy", base.startsAt, "America/Chicago")).toBe("10/29 Thursday heavy");
+    expect(threadName("10/30 Game Night", base.startsAt, "America/Chicago")).toBe("10/29 10/30 Game Night");
+    expect(threadName("10/29/25 Game Night", base.startsAt, "America/Chicago")).toBe("10/29 10/29/25 Game Night");
   });
 
   it("fits Discord's 100 characters", () => {

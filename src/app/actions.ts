@@ -22,7 +22,7 @@ import { nightsVersion } from "@/lib/events";
 import { replaceTier } from "@/lib/tier";
 import { requireUser } from "@/lib/session";
 import { zonedToUtc } from "@/lib/nights";
-import { answerBringAsk as saveBringAnswer, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp } from "@/lib/night-store";
+import { answerBringAsk as saveBringAnswer, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
 import { welcomeToGroup as welcome } from "@/lib/welcome";
 import { addPollDate, cancelPoll, createPoll, ownPoll, pickPollDate as savePickedDate, reopenPoll as saveReopened, setPollVote as savePollVote } from "@/lib/poll-store";
@@ -972,7 +972,7 @@ export async function choosePlan(planId: number, chosen: boolean) {
     if (chosen) await tx.update(schema.gamePlan).set({ chosen: false }).where(eq(schema.gamePlan.gameNightId, plan.gameNightId!));
     await tx.update(schema.gamePlan).set({ chosen }).where(eq(schema.gamePlan.id, plan.id));
   });
-  syncNightPostLater(plan.gameNightId);
+  syncNightPostLater(plan.gameNightId, { renamed: await titleForGame(plan.gameNightId) });
   refresh();
 }
 
@@ -1019,9 +1019,10 @@ export async function setPrepped(planId: number, ready: boolean) {
 /** Take a game off a night: a proposal withdrawn, or no longer bringing it */
 export async function dropPlan(id: number) {
   await requireUser();
-  const plan = await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, id), columns: { gameNightId: true } });
+  const plan = await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, id), columns: { gameNightId: true, chosen: true } });
   await dropPlanRows([id]);
-  if (plan?.gameNightId) syncNightPostLater(plan.gameNightId);
+  // Dropping the locked-in game unlocks it, which a title with the game in it follows
+  if (plan?.gameNightId) syncNightPostLater(plan.gameNightId, { renamed: plan.chosen && (await titleForGame(plan.gameNightId)) });
   refresh();
 }
 

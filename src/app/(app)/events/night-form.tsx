@@ -7,22 +7,31 @@ import type { Night } from "@/db/enums";
 import { addNight, updateNight } from "@/app/actions";
 import { DateInput } from "@/components/date-input";
 import { buttonClass } from "@/components/ui";
-import { titleCase } from "@/lib/text";
+import { fillTitle, titleGame } from "@/lib/night-title";
 
 type Values = { night: Night; title: string; date: string; time: string; location: string };
 
-/** From the server's config: which nights the group has, what each is called, and whether the ones added here are posted to Discord */
-export type NightSetup = { nights: readonly Night[]; names: Record<Night, string>; discord: boolean };
+/**
+ * From the server's config: which nights the group has, what each is called, the template a
+ * night's name is made from, and whether the ones added here are posted to Discord
+ */
+export type NightSetup = { nights: readonly Night[]; names: Record<Night, string>; titles: Record<Night, string>; discord: boolean };
 
 const field = "w-full rounded-md border border-line bg-table px-2.5 py-1.5 text-sm";
 
 /**
  * A night: it's posted to Discord when the group has that set up. Adding one opens its page;
- * editing saves in place.
+ * editing saves in place. Its name fills in from the group's template as the date is picked,
+ * and keeps following the date and kind until someone types in it.
  */
 export function NightForm({ id, initial, onDone, setup }: { id?: number; initial?: Values; onDone?: () => void; setup: NightSetup }) {
   const [open, setOpen] = useState(Boolean(id));
   const [night, setNight] = useState<Night>(initial?.night ?? "core");
+  const [date, setDate] = useState(initial?.date ?? "");
+  // The game in a name the template made (TBD before one's locked in), or null for one typed in
+  const game = initial ? titleGame(initial.title, setup.titles[initial.night], initial.date) : "";
+  const [typed, setTyped] = useState<string | null>(initial && game === null ? initial.title : null);
+  const title = typed ?? (date ? fillTitle(setup.titles[night], date, game || null) : "");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -76,20 +85,28 @@ export function NightForm({ id, initial, onDone, setup }: { id?: number; initial
           ))}
         </fieldset>
       )}
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium">Name</span>
-        <input name="title" required maxLength={100} defaultValue={initial?.title ?? ""} placeholder={titleCase(setup.names[night])} className={field} />
-      </label>
       <div className="grid grid-cols-2 gap-3">
         <label className="block text-sm">
           <span className="mb-1 block font-medium">Date</span>
-          <DateInput name="date" required defaultValue={initial?.date ?? ""} className={field} />
+          <DateInput name="date" required value={date} onChange={(e) => setDate(e.target.value)} className={field} />
         </label>
         <label className="block text-sm">
           <span className="mb-1 block font-medium">Starts</span>
           <input name="time" type="time" required defaultValue={initial?.time ?? "19:00"} className={field} />
         </label>
       </div>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Name</span>
+        <input
+          name="title"
+          required
+          maxLength={100}
+          value={title}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder="Fills in once there's a date"
+          className={field}
+        />
+      </label>
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Where</span>
         <input name="location" maxLength={200} defaultValue={initial?.location ?? ""} placeholder="Sam's place" className={field} />

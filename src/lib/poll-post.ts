@@ -6,7 +6,7 @@ import { db, schema } from "@/db";
 import { addToThread, editMessage, eventsChannel, fetchAppEmoji, messageUrl, nightPingSetting, postMessage, postWithThread, postsNights, renameThread, replyToMessage } from "./discord";
 import { isClaim, joinThread, postChannel, removePost, syncNightPost, syncThreadCopy } from "./night-post";
 import { nightPing, threadName } from "./night-message";
-import { type PollCard, buildPollMessage, pickedMessage, pollThreadName } from "./poll-message";
+import { type PollCard, buildPollMessage, buildPollThreadCopy, pickedMessage, pollThreadName } from "./poll-message";
 import { type PollDetail, loadPoll } from "./poll-store";
 
 /**
@@ -31,11 +31,12 @@ export async function syncPollPost(pollId: number): Promise<"posted" | "edited" 
   if (!row || row.status === "picked" || !postsNights(row.night)) return null;
   const poll = await loadPoll(pollId);
   if (!poll) return null;
-  const body = buildPollMessage(await card(poll));
+  const c = await card(poll);
+  const body = buildPollMessage(c);
 
   if (row.messageId && !isClaim(row.messageId)) {
     if (await editMessage(await postChannel(row), row.messageId, body)) {
-      await syncThreadCopy(row, body, savePollCopy(row.id));
+      await syncThreadCopy(row, buildPollThreadCopy(c), savePollCopy(row.id));
       return "edited";
     }
     await db.update(p).set({ messageId: null, threadId: null, threadCardId: null, url: null }).where(eq(p.id, row.id));
@@ -53,7 +54,7 @@ export async function syncPollPost(pollId: number): Promise<"posted" | "edited" 
   try {
     // The first post pings whoever the group set for this kind of night, as a night's does
     const ping = nightPing(nightPingSetting(row.night));
-    const first = ping ? buildPollMessage(await card(poll), ping) : body;
+    const first = ping ? buildPollMessage(c, ping) : body;
     const posted = await postWithThread(channelId, pollThreadName(pollTitle(poll)), first, ping?.allowedMentions);
     await db
       .update(p)
@@ -65,9 +66,9 @@ export async function syncPollPost(pollId: number): Promise<"posted" | "edited" 
       await removePost({ channelId, messageId: posted.messageId, threadId: posted.threadId });
       return null;
     }
-    const latest = now && buildPollMessage(await card(now));
-    if (latest && JSON.stringify(latest) !== JSON.stringify(first)) await editMessage(posted.messageChannelId, posted.messageId, latest);
-    await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, latest ?? body, savePollCopy(row.id));
+    const latest = now ? await card(now) : c;
+    if (now && JSON.stringify(buildPollMessage(latest)) !== JSON.stringify(first)) await editMessage(posted.messageChannelId, posted.messageId, buildPollMessage(latest));
+    await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, buildPollThreadCopy(latest), savePollCopy(row.id));
   } catch (err) {
     await db.update(p).set({ messageId: null }).where(and(eq(p.id, row.id), eq(p.messageId, claim)));
     throw err;

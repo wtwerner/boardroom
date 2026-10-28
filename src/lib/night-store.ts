@@ -1,8 +1,9 @@
 import "server-only";
 import { and, eq, inArray, isNull } from "drizzle-orm";
-import { TIME_ZONE } from "@/config";
+import { NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import type { Night, RsvpStatus } from "@/db/enums";
+import { retitle } from "./night-title";
 import { matchByName } from "./players";
 import { getKnownPlayers } from "./events";
 import { nextAnswer } from "./rsvp";
@@ -64,6 +65,25 @@ export async function editNight(id: number, fields: Partial<NightFields>) {
     if (fields.night && fields.night !== n.night) await tx.update(schema.gamePlan).set({ night: fields.night }).where(eq(schema.gamePlan.gameNightId, n.id));
   });
   return n;
+}
+
+/**
+ * A night named by the group's template follows the game locked in for it ("10/29 Game Night —
+ * TBD" becomes "10/29 Game Night — Root", and back to TBD when it's unlocked). A title named
+ * by hand stays. Returns whether it changed.
+ */
+export async function titleForGame(nightId: number) {
+  const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { title: true, startsAt: true, night: true } });
+  if (!n) return false;
+  const [chosen] = await db
+    .select({ name: schema.game.name })
+    .from(schema.gamePlan)
+    .innerJoin(schema.game, eq(schema.game.id, schema.gamePlan.gameId))
+    .where(and(eq(schema.gamePlan.gameNightId, nightId), eq(schema.gamePlan.chosen, true)));
+  const title = retitle(n.title, NIGHT_TITLES[n.night], dateOf(n.startsAt), chosen?.name ?? null);
+  if (title === n.title) return false;
+  await db.update(schema.gameNight).set({ title }).where(eq(schema.gameNight.id, nightId));
+  return true;
 }
 
 /** Called off: it stays (so its post can say so) but leaves the list of nights */

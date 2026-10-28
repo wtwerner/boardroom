@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { GROUP_NIGHTS, NIGHT_NAMES, TIME_ZONE } from "@/config";
+import { GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { Empty, PageHeader, Section, Skeleton, buttonClass } from "@/components/ui";
 import { NightRow } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
@@ -78,7 +78,7 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
           ))}
         </ul>
       )}
-      <PollForm setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, discord: GROUP_NIGHTS.some(postsNights) }} />
+      <PollForm setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: GROUP_NIGHTS.some(postsNights) }} />
     </Section>
   );
 
@@ -103,7 +103,7 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
           </Empty>
         )}
         <div className="mt-4">
-          <NightForm setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, discord: GROUP_NIGHTS.some(postsNights) }} />
+          <NightForm setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: GROUP_NIGHTS.some(postsNights) }} />
         </div>
       </Section>
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
-import { GROUP_NIGHTS, NIGHT_NAMES, TIME_ZONE } from "@/config";
+import { GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { LogPlayForm } from "../../plays/log-play-form";
 import { db, schema } from "@/db";
 import { DateBadge, NightTag } from "@/components/night-row";
@@ -247,7 +247,7 @@ function NightHeader({ n }: { n: NightDetail }) {
             initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "" }}
             canDelete={n.plays.length === 0}
             posted={n.posted}
-            setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, discord: postsNights(n.night) }}
+            setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: postsNights(n.night) }}
           />
         )}
       </div>

@@ -17,7 +17,8 @@
     "seed:dev": "tsx --conditions=react-server --env-file=.env.local scripts/seed-dev.ts",
     "sync": "tsx --conditions=react-server scripts/sync.ts",
     "sync:discord": "node scripts/with-env.mjs .env.discord tsx --conditions=react-server scripts/sync.ts",
-    "discord:commands": "tsx --conditions=react-server scripts/discord-commands.ts"
+    "discord:commands": "tsx --conditions=react-server scripts/discord-commands.ts",
+    "refresh:posts": "tsx --conditions=react-server scripts/refresh-posts.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

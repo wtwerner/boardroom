@@ -1,7 +1,7 @@
-import { NIGHT_NAMES, TIME_ZONE } from "@/config";
+import { NIGHT_TITLES, TIME_ZONE } from "@/config";
 import type { Night } from "@/db/enums";
 import type { Attendee } from "./rsvp";
-import { titleCase } from "./text";
+import { fillTitle } from "./night-title";
 
 /**
  * The moment a wall-clock date and time happen in a time zone, for nights added by hand
@@ -54,15 +54,9 @@ export function nightWhen(iso: string, timeZone: string) {
   };
 }
 
-/** What a night made from logged plays is called, its date with the year: "10/18/26 Game Night" */
-export function nightTitle(night: Night, date: string) {
-  return `${shortDate(date)} ${titleCase(NIGHT_NAMES[night])}`;
-}
-
-/** "2026-10-18" as "10/18/26" */
-function shortDate(date: string) {
-  const [y, m, d] = date.split("-").map(Number);
-  return `${m}/${d}/${String(y % 100).padStart(2, "0")}`;
+/** What a night on `date` is called unless someone names it, from the group's template: "10/18 Game Night" */
+export function nightTitle(night: Night, date: string, game: string | null = null) {
+  return fillTitle(NIGHT_TITLES[night], date, game);
 }
 
 /** A timestamp as the group's calendar date (YYYY-MM-DD), ready for formatDate */

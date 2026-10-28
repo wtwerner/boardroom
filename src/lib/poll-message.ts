@@ -52,18 +52,7 @@ export function buildPollMessage(p: PollCard, ping?: NightPing | null): { flags:
     ...p.dates.map((d) => dateRow(d, open, e)),
   ];
 
-  const row: Component[] = open
-    ? [
-        button({ kind: "pollAdd", pollId: p.id }, "Suggest a date", buttonEmoji(e, "edit")),
-        button({ kind: "pollPick", pollId: p.id }, "Pick the date", buttonEmoji(e, "date")),
-        button({ kind: "pollOff", pollId: p.id }, "Call it off", buttonEmoji(e, "cancelled")),
-        ...(p.pollUrl ? [{ type: BUTTON, style: LINK_BUTTON_STYLE, label: `Open in ${p.siteName}`.slice(0, 80), url: p.pollUrl }] : []),
-      ]
-    : // Called off by mistake, or plans changed back: it can open again while a date's still coming up
-      p.status === "cancelled" && p.dates.some((d) => !d.past)
-      ? [button({ kind: "pollReopen", pollId: p.id }, "Reopen", buttonEmoji(e, "vote"))]
-      : [];
-
+  const row = pollRow(p, e);
   return {
     flags: COMPONENTS_V2,
     components: [
@@ -73,6 +62,41 @@ export function buildPollMessage(p: PollCard, ping?: NightPing | null): { flags:
       ...(row.length ? [{ type: ACTION_ROW, components: row }] : []),
     ],
   };
+}
+
+/**
+ * The copy of the post in its thread, where its buttons work (night-post.ts): Discord already
+ * shows the post at the top of the thread, so the copy is only each date still to come with how
+ * many it works for, and the buttons, and doesn't read as the post twice
+ */
+export function buildPollThreadCopy(p: PollCard): { flags: number; components: Component[] } {
+  const e = p.emoji ?? {};
+  const row = pollRow(p, e);
+  const dates =
+    p.status === "open"
+      ? p.dates
+          .filter((d) => !d.past)
+          .map((d) => ({
+            type: SECTION,
+            components: [{ type: TEXT, content: `${icon(e, "date")} <t:${unix(d.startsAt)}:F> · ${d.voters.length}` }],
+            accessory: button({ kind: "pollVote", optionId: d.id }, "Works for me", buttonEmoji(e, "going")),
+          }))
+      : [{ type: TEXT, content: p.status === "cancelled" ? `-# ${icon(e, "cancelled")} Called off` : "-# Every date has gone by" }];
+  return { flags: COMPONENTS_V2, components: [...dates, ...(row.length ? [{ type: ACTION_ROW, components: row }] : [])] };
+}
+
+/** The buttons under the dates: suggest, pick or call off while it's open; reopen once it's called off */
+function pollRow(p: PollCard, e: AppEmoji): Component[] {
+  if (p.status === "open") {
+    return [
+      button({ kind: "pollAdd", pollId: p.id }, "Suggest a date", buttonEmoji(e, "edit")),
+      button({ kind: "pollPick", pollId: p.id }, "Pick the date", buttonEmoji(e, "date")),
+      button({ kind: "pollOff", pollId: p.id }, "Call it off", buttonEmoji(e, "cancelled")),
+      ...(p.pollUrl ? [{ type: BUTTON, style: LINK_BUTTON_STYLE, label: `Open in ${p.siteName}`.slice(0, 80), url: p.pollUrl }] : []),
+    ];
+  }
+  // Called off by mistake, or plans changed back: it can open again while a date's still coming up
+  return p.status === "cancelled" && p.dates.some((d) => !d.past) ? [button({ kind: "pollReopen", pollId: p.id }, "Reopen", buttonEmoji(e, "vote"))] : [];
 }
 
 /** One date: when, how many it works for and who, with the button beside it while it can still be picked */

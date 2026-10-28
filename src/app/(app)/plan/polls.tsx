@@ -255,7 +255,9 @@ function PickForm({
 }) {
   const ranked = rankDates(poll.dates);
   const [picked, setPicked] = useState(ranked[0]?.id ?? null);
-  const placeholder = ranked.find((d) => d.id === picked)?.defaultTitle ?? "";
+  // Filled in for the date picked, and following it until someone types in it
+  const [typed, setTyped] = useState<string | null>(hasTitle ? poll.title : null);
+  const title = typed ?? ranked.find((d) => d.id === picked)?.defaultTitle ?? "";
 
   return (
     <form
@@ -281,7 +283,7 @@ function PickForm({
       </fieldset>
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Name</span>
-        <input name="title" maxLength={100} defaultValue={hasTitle ? poll.title : ""} placeholder={placeholder} className={field} />
+        <input name="title" maxLength={100} value={title} onChange={(e) => setTyped(e.target.value)} className={field} />
       </label>
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Where</span>

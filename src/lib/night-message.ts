@@ -62,7 +62,7 @@ export function buildNightMessage(n: NightCard, ping?: NightPing | null): { flag
   const title = n.cancelled ? `## ~~${escape(n.title)}~~\n${icon(e, "cancelled")} **Cancelled**` : `## ${escape(n.title)}`;
   const header = [title, n.kindName && `-# ${escape(n.kindName)}`].filter(Boolean).join("\n");
   const lockedIn = n.plan.kind === "vote" ? n.plan.lockedIn : null;
-  const count = n.going.reduce((sum, p) => sum + 1 + (p.guests ?? 0), 0) + n.others;
+  const count = headcount(n);
 
   const card: Component[] = [
     lockedIn?.imageUrl ? withBox(header, lockedIn.name, lockedIn.imageUrl) : { type: TEXT, content: header },
@@ -77,32 +77,60 @@ export function buildNightMessage(n: NightCard, ping?: NightPing | null): { flag
     ...planComponents(n.plan, e),
   ];
 
-  // A row holds five buttons: answers on the first, the rest on the second. The answers are
-  // only the symbols the card heads their lists with, so the row fits a phone without wrapping
-  const rows: Component[][] = n.cancelled
-    ? []
-    : [
-        [
-          button({ kind: "rsvp", nightId: n.id, status: "going" }, null, buttonEmoji(e, "going")),
-          button({ kind: "rsvp", nightId: n.id, status: "maybe" }, null, buttonEmoji(e, "maybe")),
-          button({ kind: "rsvp", nightId: n.id, status: "declined" }, null, buttonEmoji(e, "declined")),
-          button({ kind: "for", nightId: n.id }, "Someone else…", buttonEmoji(e, "someone")),
-        ],
-        [
-          button({ kind: "edit", nightId: n.id }, "Edit", buttonEmoji(e, "edit")),
-          ...(n.planUrl ? [{ type: BUTTON, style: LINK_BUTTON_STYLE, label: `Plan it in ${n.siteName}`.slice(0, 80), url: n.planUrl }] : []),
-        ],
-      ];
-
   return {
     flags: COMPONENTS_V2,
     components: [
       // Above the card, on the first post only: edits drop it, and never ping
       ...(ping ? [{ type: TEXT, content: ping.text }] : []),
       { type: CONTAINER, accent_color: n.cancelled ? CANCELLED_ACCENT : NIGHT_ACCENT[n.kind], components: card },
-      ...rows.map((components) => ({ type: ACTION_ROW, components })),
+      ...nightRows(n, e).map((components) => ({ type: ACTION_ROW, components })),
     ],
   };
+}
+
+/** Everyone going, with their guests and the others counted on the site */
+const headcount = (n: NightCard) => n.going.reduce((sum, p) => sum + 1 + (p.guests ?? 0), 0) + n.others;
+
+/**
+ * The copy of the post in its thread, where its buttons work (night-post.ts): Discord already
+ * shows the post at the top of the thread, so the copy is only a count of answers and the
+ * buttons, and doesn't read as the post twice
+ */
+export function buildNightThreadCopy(n: NightCard): { flags: number; components: Component[] } {
+  const e = n.emoji ?? {};
+  const tally = n.cancelled
+    ? `${icon(e, "cancelled")} Cancelled`
+    : [
+        `${icon(e, "going")} ${headcount(n)}${n.capacity ? `/${n.capacity}` : ""} going`,
+        n.maybe.length && `${icon(e, "maybe")} ${n.maybe.length} maybe`,
+        n.declined.length && `${icon(e, "declined")} ${n.declined.length} can't`,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+  return {
+    flags: COMPONENTS_V2,
+    components: [{ type: TEXT, content: `-# ${tally}` }, ...nightRows(n, e).map((components) => ({ type: ACTION_ROW, components }))],
+  };
+}
+
+/**
+ * A row holds five buttons: answers on the first, the rest on the second. The answers are only
+ * the symbols the card heads their lists with, so the row fits a phone without wrapping
+ */
+function nightRows(n: NightCard, e: AppEmoji): Component[][] {
+  if (n.cancelled) return [];
+  return [
+    [
+      button({ kind: "rsvp", nightId: n.id, status: "going" }, null, buttonEmoji(e, "going")),
+      button({ kind: "rsvp", nightId: n.id, status: "maybe" }, null, buttonEmoji(e, "maybe")),
+      button({ kind: "rsvp", nightId: n.id, status: "declined" }, null, buttonEmoji(e, "declined")),
+      button({ kind: "for", nightId: n.id }, "Someone else…", buttonEmoji(e, "someone")),
+    ],
+    [
+      button({ kind: "edit", nightId: n.id }, "Edit", buttonEmoji(e, "edit")),
+      ...(n.planUrl ? [{ type: BUTTON, style: LINK_BUTTON_STYLE, label: `Plan it in ${n.siteName}`.slice(0, 80), url: n.planUrl }] : []),
+    ],
+  ];
 }
 
 function goingBlock(heading: string, people: CardPerson[], others: number) {
@@ -122,16 +150,14 @@ export function goneMessage() {
 }
 
 /**
- * What the night's thread is called: the day first, so threads list in date order by eye
- * ("Thu Oct 29 · Thursday heavy"). A title that starts with the same date ("10/29 Game
- * Night", "10/29/26 Game Night") doesn't say it twice. 100 characters at most.
+ * What the night's thread is called: the night's title, with its date ("10/29 Game Night").
+ * A title that doesn't start with its date gets it in front, so threads list in date order by
+ * eye ("10/29 Thursday heavy"). 100 characters at most.
  */
 export function threadName(title: string, startsAt: string, timeZone: string) {
-  const at = new Date(startsAt);
-  const day = at.toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" }).replace(",", "");
-  const [m, d, y] = at.toLocaleDateString("en-US", { timeZone, month: "numeric", day: "numeric", year: "numeric" }).split("/");
-  const sameDate = new RegExp(`^${m}/${d}(/(${y}|${y.slice(2)}))? `);
-  return `${day} · ${title.replace(sameDate, "")}`.slice(0, 100);
+  const [m, d, y] = new Date(startsAt).toLocaleDateString("en-US", { timeZone, month: "numeric", day: "numeric", year: "numeric" }).split("/");
+  const dated = new RegExp(`^0?${m}/0?${d}(/(${y}|${y.slice(2)}))?(\\s|$)`).test(title);
+  return (dated ? title : `${m}/${d} ${title}`).slice(0, 100);
 }
 
 /**

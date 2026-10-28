@@ -5,7 +5,7 @@ import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/con
 import { db, schema } from "@/db";
 import { type MessageBody, addToThread, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
 import { type NightDetail, loadNight } from "./events";
-import { type CardPerson, type NightCard, buildNightMessage, changeNote, goneMessage, nightPing, threadName } from "./night-message";
+import { type CardPerson, type NightCard, buildNightMessage, buildNightThreadCopy, changeNote, goneMessage, nightPing, threadName } from "./night-message";
 
 /**
  * Each night Boardroom runs has a post in its events channel and a thread for talking it over.
@@ -37,11 +37,12 @@ export async function syncNightPost(nightId: number): Promise<"posted" | "edited
 
   const n = await loadNight(nightId);
   if (!n) return null;
-  const body = buildNightMessage(await card(n));
+  const c = await card(n);
+  const body = buildNightMessage(c);
 
   if (row.messageId && !isClaim(row.messageId)) {
     if (await editMessage(await postChannel(row), row.messageId, body)) {
-      await syncThreadCopy(row, body, saveNightCopy(row.id));
+      await syncThreadCopy(row, buildNightThreadCopy(c), saveNightCopy(row.id));
       return "edited";
     }
     // Someone deleted the post: post it again below
@@ -66,7 +67,7 @@ export async function syncNightPost(nightId: number): Promise<"posted" | "edited
   try {
     // The first post pings whoever the group set for this kind of night; edits never ping
     const ping = nightPing(nightPingSetting(row.night));
-    const first = ping ? buildNightMessage(await card(n), ping) : body;
+    const first = ping ? buildNightMessage(c, ping) : body;
     const posted = await postWithThread(channelId, threadName(n.title, n.startsAt, TIME_ZONE), first, ping?.allowedMentions);
     const where = posted.messageChannelId;
     await db
@@ -75,9 +76,9 @@ export async function syncNightPost(nightId: number): Promise<"posted" | "edited
       .where(eq(schema.gameNight.id, row.id));
     // Anyone who answered while it was being posted was left off it; catch them up
     const now = await loadNight(nightId);
-    const latest = now && buildNightMessage(await card(now));
-    if (latest && JSON.stringify(latest) !== JSON.stringify(first)) await editMessage(where, posted.messageId, latest);
-    await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, latest ?? body, saveNightCopy(row.id));
+    const latest = now ? await card(now) : c;
+    if (now && JSON.stringify(buildNightMessage(latest)) !== JSON.stringify(first)) await editMessage(where, posted.messageId, buildNightMessage(latest));
+    await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, buildNightThreadCopy(latest), saveNightCopy(row.id));
   } catch (err) {
     await db.update(schema.gameNight).set({ messageId: null }).where(and(eq(schema.gameNight.id, row.id), eq(schema.gameNight.messageId, claim)));
     throw err;
@@ -86,9 +87,9 @@ export async function syncNightPost(nightId: number): Promise<"posted" | "edited
 }
 
 /**
- * A copy of a post's card as the first message in its thread. Discord shows the post at the top
- * of its thread, but its buttons only work in the channel, so the copy's are the ones to press
- * there. Kept in step with the post, and made on the next change for posts from before there
+ * A copy of a post's buttons (with a line on where things stand) as the first message in its
+ * thread. Discord shows the post at the top of its thread, but its buttons only work in the
+ * channel, so the copy's are the ones to press there. Kept in step with the post, and made on the next change for posts from before there
  * were copies. A forum post is in its own thread already and needs none. `save` swaps the stored
  * id from `was` to the new copy's, false when another request got there first. Never throws:
  * the post itself is what matters.
@@ -149,15 +150,18 @@ export async function joinThread(nightId: number, playerIds?: number[], alsoPlay
 /**
  * Run syncNightPost once the response has gone, so answering on the site stays instant.
  * `join` is someone who just answered, to add to the thread, and `creator` whoever made the
- * night, added once it's posted; `note` tells the thread what moved. A Discord hiccup is logged; the next change to the night posts it again.
+ * night, added once it's posted; `note` tells the thread what moved, and `renamed` renames the
+ * thread for a title that changed without saying so (it follows the locked-in game). A Discord
+ * hiccup is logged; the next change to the night posts it again.
  */
-export function syncNightPostLater(nightId: number, opts: { join?: number; creator?: number; note?: { before: NoteFields; by: CardPerson } } = {}) {
+export function syncNightPostLater(nightId: number, opts: { join?: number; creator?: number; note?: { before: NoteFields; by: CardPerson }; renamed?: boolean } = {}) {
   after(async () => {
     try {
       const result = await syncNightPost(nightId);
       if (result === "posted") await joinThread(nightId, undefined, opts.creator ? [opts.creator] : []);
       else if (result && opts.join) await joinThread(nightId, [opts.join]);
       if (opts.note) await noteChange(nightId, opts.note.before, opts.note.by);
+      if (opts.renamed && result === "edited") await renameNightThread(nightId);
     } catch (err) {
       console.error(`Couldn't update night ${nightId}'s post in Discord`, err);
     }
@@ -174,10 +178,15 @@ async function noteChange(nightId: number, before: NoteFields, by: CardPerson) {
   const note = changeNote({ ...before, startsAt: iso(before.startsAt) }, { startsAt: iso(row.startsAt), location: row.location, title: row.title }, by, await fetchAppEmoji());
   if (!note) return;
   await postMessage(row.threadId, { content: note });
-  if (before.title !== row.title || before.startsAt.getTime() !== row.startsAt.getTime()) {
-    // The thread's name has the date in it. A forum post's name is the post's title, which works the same way.
-    await renameThread(row.threadId, threadName(row.title, iso(row.startsAt), TIME_ZONE)).catch((err) => console.error("Couldn't rename the night's thread", err));
-  }
+  // The thread's name has the date in it
+  if (before.title !== row.title || before.startsAt.getTime() !== row.startsAt.getTime()) await renameNightThread(nightId);
+}
+
+/** Name the night's thread for its title. A forum post's name is the post's title, which works the same way. */
+export async function renameNightThread(nightId: number) {
+  const row = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { title: true, startsAt: true, threadId: true, messageId: true } });
+  if (!row?.threadId || isClaim(row.messageId)) return;
+  await renameThread(row.threadId, threadName(row.title, row.startsAt.toISOString(), TIME_ZONE)).catch((err) => console.error("Couldn't rename the night's thread", err));
 }
 
 /** Say something in a night's thread, if it has one */

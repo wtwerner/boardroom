@@ -99,7 +99,8 @@ All optional, as environment variables like the rest (`src/config.ts` reads them
 | --- | --- | --- |
 | `SITE_NAME` | Boardroom | Page titles, the header, and the button on posts in Discord |
 | `CASUAL_NIGHT` | off | A second, casual night (see [Core and casual nights](docs/how-it-works.md#core-and-casual-nights)). `DISCORD_CASUAL_CHANNEL_ID` turns it on too |
-| `CORE_NIGHT_NAME` / `CASUAL_NIGHT_NAME` | Game night / Casual night | What each kind of night is called everywhere on the site, and in the titles of nights it makes ("10/18 Game Night") |
+| `CORE_NIGHT_NAME` / `CASUAL_NIGHT_NAME` | Game night / Casual night | What each kind of night is called everywhere on the site |
+| `CORE_NIGHT_TITLE` / `CASUAL_NIGHT_TITLE` | `{date} ` and the night's name | What a new night is called unless someone names it. `{date}` is its date ("10/29"), `{game}` the game locked in for it or TBD: `{date} Game Night — {game}` makes "10/29 Game Night — TBD", then "10/29 Game Night — Root" once Root is locked in. Its thread has the same name |
 | `HEAVY_GAME_WEIGHT` | 2.75 | BGG weight where the two rankings, Heavy games and Light games, split. Pick it where your own nights' games and the lighter ones part |
 | `CLAUDE` | off | `on` turns on Claude's picks and reading hand-written play posts the parser can't. Needs `ANTHROPIC_API_KEY`. Off, the site never calls Claude or mentions it |
 | `CLAUDE_IDEAS_PER_DAY` | 5 | Claude's picks each person can ask for in a day |

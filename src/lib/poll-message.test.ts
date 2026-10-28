@@ -3,7 +3,7 @@ import { componentText } from "./discord-message";
 import { NIGHT_ACCENT } from "./discord-components";
 import { parseActionId } from "./interactions";
 import { nightPing } from "./night-message";
-import { type PollCard, buildPollMessage, dateChoiceLabel, pickedMessage, pollThreadName, rankDates } from "./poll-message";
+import { type PollCard, buildPollMessage, buildPollThreadCopy, dateChoiceLabel, pickedMessage, pollThreadName, rankDates } from "./poll-message";
 
 const sam = { name: "Sam", discordId: "10000000000000001" };
 const alex = { name: "Alex", discordId: "10000000000000002" };
@@ -141,6 +141,21 @@ describe("pickedMessage", () => {
     const { body, allowedMentions } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", voters: [] }, null);
     expect(body.content).toBe("**November heavy** is set for <t:1793926800:F> (<t:1793926800:R>).\nSay if you're coming on the post.");
     expect(allowedMentions).toEqual({ parse: [], users: [] });
+  });
+});
+
+describe("buildPollThreadCopy", () => {
+  it("is each date to come with how many it works for, and the post's buttons, without the card", () => {
+    const copy = buildPollThreadCopy({ ...base, dates: [{ id: 20, startsAt: "2026-11-01T01:00:00.000Z", past: true, voters: [] }, ...base.dates] });
+    expect(componentText(copy.components)).toBe("📅 <t:1793926800:F> · 2\n📅 <t:1794081600:F> · 0");
+    expect(copy.components.some((c) => c.type === 17)).toBe(false);
+    expect(allButtons(copy)).toEqual(allButtons(buildPollMessage(base)));
+  });
+
+  it("says when it's called off, with Reopen while a date's still to come", () => {
+    const copy = buildPollThreadCopy({ ...base, status: "cancelled" });
+    expect(componentText(copy.components)).toBe("-# 🚫 Called off");
+    expect(allButtons(copy).map((b) => b.label)).toEqual(["Reopen"]);
   });
 });
 
