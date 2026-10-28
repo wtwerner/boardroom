@@ -241,7 +241,7 @@ export async function seedGroup(now = new Date()) {
   }
 
   const ids = Object.fromEntries(GAMES.map((g) => [g[1], g[0]]));
-  // The last column is "want to play": "play again soon" or, for a game they haven't played, "want to learn"
+  // The last column is "want to play", played it or not
   const opinions: [string, string, "love" | "like" | "meh" | "nope" | null, boolean][] = [
     ["u-sam", "Cascadia", "love", true],
     ["u-sam", "Heat: Pedal to the Metal", "love", true],

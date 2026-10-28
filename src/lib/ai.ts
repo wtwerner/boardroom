@@ -102,7 +102,7 @@ const WRITING_RULES =
 const GROUP_SYSTEM =
   "You're the resident game-picker for a small group of friends who play board games together. " +
   "You get their shared collection, play history, per-person opinions (love/like/meh/nope), favorite " +
-  "rankings, and who wants to replay or learn what. Base every pick on that evidence and name the people " +
+  "rankings, and who wants to play what. Base every pick on that evidence and name the people " +
   "it's for. " +
   WRITING_RULES;
 

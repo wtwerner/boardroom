@@ -61,7 +61,7 @@ export default function AboutPage() {
                   <>
                     You&apos;d like it on the table soon, whether you&apos;ve played it or not. It&apos;s the &ldquo;N want to play&rdquo; on the
                     dashboard and shelf, and it clears once you play the game, so the counts are about what people want next. Tick it again if you
-                    still want to. The planner says who&apos;d need it taught, from who&apos;s played it.
+                    still want to.
                   </>,
                 ],
                 [

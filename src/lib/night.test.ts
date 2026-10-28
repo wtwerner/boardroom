@@ -146,7 +146,7 @@ describe("scoreNight", () => {
     expect(result[1].reasons.map((r) => r.text)).toContain("Alex would rather not");
   });
 
-  it("says who wants to play a game again and who wants to learn it, and counts them alike", () => {
+  it("says who wants to play a game, whether they've played it with the group or not", () => {
     const result = scoreNight({
       ...base,
       games: [game({ id: 1, name: "Sam's played it", playedBy: ["a"] })],
@@ -155,7 +155,7 @@ describe("scoreNight", () => {
         { userId: "b", gameId: 1, sentiment: null, wantToPlay: true, mustPlay: false },
       ],
     });
-    expect(result[0].reasons.map((r) => r.text)).toEqual(expect.arrayContaining(["Sam wants to replay", "Alex wants to learn it"]));
+    expect(result[0].reasons.map((r) => r.text)).toContain("Sam & Alex want to play it");
   });
 
   it("lets one person's must-play vote outweigh a single keen vote", () => {

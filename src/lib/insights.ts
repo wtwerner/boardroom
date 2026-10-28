@@ -74,7 +74,7 @@ export async function buildGroupContext({ forPurchases = false, currentPicks = [
       `  meh: ${by((o) => o.sentiment === "meh")}`,
       `  would rather not: ${by((o) => o.sentiment === "nope")}`,
       `  MUST PLAY (one of only ${MUST_PLAY_LIMIT} scarce votes; a strong personal priority, not a group consensus): ${by((o) => o.mustPlay)}`,
-      `  wants to play soon (again, or to learn it; cleared once they play it): ${by((o) => o.wantToPlay)}`,
+      `  wants to play soon (played before or not; cleared once they play it): ${by((o) => o.wantToPlay)}`,
     );
   }
 

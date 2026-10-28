@@ -16,7 +16,7 @@ export type NightGame = {
   lastPlayedOn: string | null;
   /** Times played on the night being planned */
   playCount: number;
-  /** Members who've played it with the group: wanting to play it means "again" for them, "learn it" for the rest */
+  /** Members who've played it with the group */
   playedBy: string[];
 };
 
@@ -114,8 +114,7 @@ export function scoreNight(input: NightInput): ScoredGame[] {
     const lovers = ops.filter((o) => o.sentiment === "love").map((o) => input.names[o.userId]);
     const naysayers = ops.filter((o) => o.sentiment === "nope").map((o) => input.names[o.userId]);
     const desperate = ops.filter((o) => o.mustPlay).map((o) => input.names[o.userId]);
-    const keen = ops.filter((o) => o.wantToPlay && game.playedBy.includes(o.userId)).map((o) => input.names[o.userId]);
-    const learners = ops.filter((o) => o.wantToPlay && !game.playedBy.includes(o.userId)).map((o) => input.names[o.userId]);
+    const keen = ops.filter((o) => o.wantToPlay).map((o) => input.names[o.userId]);
 
     for (const o of ops) {
       if (o.sentiment) score += SENTIMENT_POINTS[o.sentiment];
@@ -125,8 +124,7 @@ export function scoreNight(input: NightInput): ScoredGame[] {
     }
     if (desperate.length) reasons.push({ text: `🔥 ${list(desperate)} really want${desperate.length > 1 ? "" : "s"} to play it`, tone: "good" });
     if (lovers.length) reasons.push({ text: `${list(lovers)} ${lovers.length > 1 ? "love" : "loves"} it`, tone: "good" });
-    if (keen.length) reasons.push({ text: `${list(keen)} want${keen.length > 1 ? "" : "s"} to replay`, tone: "good" });
-    if (learners.length) reasons.push({ text: `${list(learners)} want${learners.length > 1 ? "" : "s"} to learn it`, tone: "good" });
+    if (keen.length) reasons.push({ text: `${list(keen)} want${keen.length > 1 ? "" : "s"} to play it`, tone: "good" });
     if (naysayers.length) reasons.push({ text: `${list(naysayers)} would rather not`, tone: "bad" });
 
     // What the people who haven't said would likely think, so an unplayed game can compete
