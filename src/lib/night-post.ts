@@ -26,8 +26,9 @@ const CLAIM_MS = 60_000;
  * edit it, or move it when the night changed kind. A post someone deleted is posted again.
  * Its announcement in the chat channel, when the group has one, follows it. Does nothing for
  * nights that have been and gone without a post, or when the group hasn't set up posting.
+ * `quiet` posts without the ping, for a night people were told about already.
  */
-export async function syncNightPost(nightId: number): Promise<"posted" | "edited" | null> {
+export async function syncNightPost(nightId: number, { quiet = false } = {}): Promise<"posted" | "edited" | null> {
   const row = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId) });
   if (!row || !postsNights(row.night)) return null;
   const channelId = eventsChannel(row.night)!;
@@ -91,7 +92,7 @@ export async function syncNightPost(nightId: number): Promise<"posted" | "edited
   try {
     // The first post pings whoever the group set for this kind of night, or its announcement
     // does when there is one, being where people read; edits never ping
-    const ping = nightPing(nightPingSetting(row.night));
+    const ping = quiet ? null : nightPing(nightPingSetting(row.night));
     const pingPost = announceTo ? null : ping;
     const first = pingPost ? buildNightMessage(c, pingPost) : body;
     const posted = await postWithThread(channelId, threadName(n.title, n.startsAt, TIME_ZONE), first, pingPost?.allowedMentions);

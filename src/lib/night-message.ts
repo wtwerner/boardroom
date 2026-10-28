@@ -152,6 +152,12 @@ export function goneMessage() {
   return { flags: COMPONENTS_V2, components: [{ type: CONTAINER, accent_color: CANCELLED_ACCENT, components: [{ type: TEXT, content: "This event was deleted or moved." }] }] };
 }
 
+/** What's left of a post whose night moved to another channel, pointing to where it is now */
+export function movedMessage(url: string | null) {
+  const text = url ? `This event moved: [answer and talk it over in its new post](${url}).` : "This event moved to another channel.";
+  return { flags: COMPONENTS_V2, components: [{ type: CONTAINER, accent_color: CANCELLED_ACCENT, components: [{ type: TEXT, content: text }] }] };
+}
+
 /**
  * What the night's thread is called: the night's title, with its date ("10/29 Game Night").
  * A title that doesn't start with its date gets it in front, so threads list in date order by

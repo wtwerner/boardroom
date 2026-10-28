@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { componentText } from "./discord-message";
-import { type NightCard, buildNightMessage, buildNightThreadCopy, changeNote, nightPing, threadName } from "./night-message";
+import { type NightCard, buildNightMessage, buildNightThreadCopy, changeNote, movedMessage, nightPing, threadName } from "./night-message";
 import { parseActionId } from "./interactions";
 
 const base: NightCard = {
@@ -177,6 +177,15 @@ describe("buildNightThreadCopy", () => {
     const copy = buildNightThreadCopy({ ...base, cancelled: true });
     expect(componentText(copy.components)).toBe("-# 🚫 Cancelled");
     expect(rows(copy)).toEqual([]);
+  });
+});
+
+describe("movedMessage", () => {
+  it("points to the night's new post, with nothing to press", () => {
+    const url = "https://discord.com/channels/10000000000000009/10000000000000008/10000000000000008";
+    const m = movedMessage(url);
+    expect(componentText(m.components)).toBe(`This event moved: [answer and talk it over in its new post](${url}).`);
+    expect(m.components.some((c) => c.type === 1)).toBe(false);
   });
 });
 
