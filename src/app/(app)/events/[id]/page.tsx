@@ -11,7 +11,7 @@ import { discordAppUrl } from "@/lib/discord-components";
 import { Empty, Panel, Section, Skeleton, TextLink } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { getAllGamesForPicker, getMembers, getPlayedBy, getPlayers, getShelf, getTieredRankingLists } from "@/lib/queries";
-import { hasAnthropicKey } from "@/lib/ai";
+import { claudeReady } from "@/lib/ai";
 import { canPostToDiscord, postsNights } from "@/lib/discord";
 import { isLegacy } from "@/lib/night";
 import { getTasteChances } from "@/lib/recommend";
@@ -205,7 +205,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
             rankings={[rankings.heavy, rankings.light]}
             chances={chances}
             today={new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE })}
-            aiEnabled={hasAnthropicKey()}
+            aiEnabled={claudeReady()}
           />
         )}
       </Section>

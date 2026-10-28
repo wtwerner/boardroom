@@ -3,7 +3,7 @@ import { and, eq, inArray, isNotNull, isNull, like, lt, lte, ne, or, sql } from 
 import { TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import type { Night } from "@/db/enums";
-import { hasAnthropicKey, parsePlayWithClaude } from "./ai";
+import { claudeReady, parsePlayWithClaude } from "./ai";
 import {
   type BggCollectionEntry,
   type BggGameDetails,
@@ -132,7 +132,7 @@ async function parseMessage(msg: DiscordMessage): Promise<ParsedPlay[] | null> {
     timeZone: TIME_ZONE,
   });
   if (parsed) return parsed;
-  if (!hasAnthropicKey()) return null;
+  if (!claudeReady()) return null;
   return parsePlayWithClaude(content, toLocalDate(msg.timestamp, TIME_ZONE));
 }
 

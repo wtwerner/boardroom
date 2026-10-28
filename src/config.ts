@@ -51,5 +51,12 @@ export const HEAVY_WEIGHT = num("HEAVY_GAME_WEIGHT", 2.75);
  */
 export const REMINDER_HOURS = env("NIGHT_REMINDER_HOURS") === "0" ? 0 : num("NIGHT_REMINDER_HOURS", 3);
 
+/**
+ * Whether the site uses Claude: picks on Discover and a night's page, and reading hand-written
+ * play posts the parser can't. On with CLAUDE=on, and it needs ANTHROPIC_API_KEY too. Off, the
+ * site never calls Claude or mentions it.
+ */
+export const CLAUDE = env("CLAUDE") === "on";
+
 /** Claude's picks each person can ask for in a day, which keeps the Anthropic bill predictable */
 export const CLAUDE_IDEAS_PER_DAY = num("CLAUDE_IDEAS_PER_DAY", 5);

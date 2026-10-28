@@ -2,7 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { NIGHT_NAMES } from "@/config";
+import { CLAUDE, NIGHT_NAMES } from "@/config";
 import type { Night } from "@/db/enums";
 import type { ParsedPlay } from "./play-parser";
 import { inSentence } from "./text";
@@ -14,6 +14,8 @@ const CASUAL = inSentence(NIGHT_NAMES.casual);
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5";
 
 export const hasAnthropicKey = () => Boolean(process.env.ANTHROPIC_API_KEY);
+/** Claude is turned on and has a key to call it with */
+export const claudeReady = () => CLAUDE && hasAnthropicKey();
 
 let client: Anthropic | undefined;
 const anthropic = () => (client ??= new Anthropic());

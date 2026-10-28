@@ -41,7 +41,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind 4 · Drizzle + SQLite (Turso) �
 | **[Vercel](https://vercel.com)** | Hosting and the nightly sync. The Hobby plan is enough | Free |
 | **[Turso](https://turso.tech)** | The database | Free tier |
 | **BoardGameGeek API token** | Optional: syncs collections automatically. Approval takes a week or more, so [ask for one](#1-ask-boardgamegeek-for-an-api-token) first. Until then, collections can be uploaded as a CSV export | Free, non-commercial use |
-| **Anthropic API key** | Optional: Claude's picks and reading hand-written play posts that don't follow the template | Pay as you go |
+| **Anthropic API key** | Optional, with `CLAUDE=on`: Claude's picks and reading hand-written play posts that don't follow the template | Pay as you go |
 
 ## Set it up
 
@@ -80,7 +80,7 @@ The button copies this repo into your GitHub account and asks for the variables 
 | `APP_TIMEZONE` | The group's time zone, like `America/Chicago`. Play dates and night times use it |
 | `DISCORD_MEMBER_ROLE_ID` | Optional: only people with this role can sign in (see [Who can sign in](docs/how-it-works.md#who-can-sign-in)) |
 | `BGG_API_TOKEN` | Optional: from step 1 |
-| `ANTHROPIC_API_KEY` | Optional: create it in a workspace of its own with a monthly spend limit, and mark it Sensitive in Vercel |
+| `ANTHROPIC_API_KEY` | Optional: used only with `CLAUDE=on` (below). Create it in a workspace of its own with a monthly spend limit, and mark it Sensitive in Vercel |
 | `DISCORD_CASUAL_CHANNEL_ID` | Optional: the casual night's plays channel |
 | `DISCORD_WELCOME_CHANNEL_ID` | Optional: where someone invited to the core group's nights is greeted, instead of the core group's events channel (see [Inviting people](docs/discord-setup.md#part-5-inviting-people-to-the-core-groups-nights-optional)) |
 | `DISCORD_CORE_EVENTS_CHANNEL_ID`, `DISCORD_CASUAL_EVENTS_CHANNEL_ID` | Optional: where each kind of night is posted, with its thread |
@@ -101,6 +101,7 @@ All optional, as environment variables like the rest (`src/config.ts` reads them
 | `CASUAL_NIGHT` | off | A second, casual night (see [Core and casual nights](docs/how-it-works.md#core-and-casual-nights)). `DISCORD_CASUAL_CHANNEL_ID` turns it on too |
 | `CORE_NIGHT_NAME` / `CASUAL_NIGHT_NAME` | Game night / Casual night | What each kind of night is called everywhere on the site, and in the titles of nights it makes ("10/18 Game Night") |
 | `HEAVY_GAME_WEIGHT` | 2.75 | BGG weight where the two rankings, Heavy games and Light games, split. Pick it where your own nights' games and the lighter ones part |
+| `CLAUDE` | off | `on` turns on Claude's picks and reading hand-written play posts the parser can't. Needs `ANTHROPIC_API_KEY`. Off, the site never calls Claude or mentions it |
 | `CLAUDE_IDEAS_PER_DAY` | 5 | Claude's picks each person can ask for in a day |
 | `NIGHT_REMINDER_HOURS` | 3 | How many hours before a night starts its post gets a reply pinging whoever's going or a maybe. `0` turns it off. Needs [the tick](#reminders-and-the-morning-after) |
 

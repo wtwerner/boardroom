@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import clsx from "clsx";
-import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
+import { CASUAL_NIGHT, CLAUDE, NIGHT_NAMES } from "@/config";
 import type { MeepleColor, Night } from "@/db/enums";
 import { nightParam } from "@/components/night-switch";
 import { Empty, GameCover, Meeple, PageHeader, Section, Skeleton, TextLink, playerRange, playtime } from "@/components/ui";
@@ -59,21 +59,23 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
         : `a ${n.tableSize}-player table, weight ${HEAVY_WEIGHT} and up`;
     return (
       <>
-        <ClaudeSection
-          title={`Claude's picks for ${forWhom}`}
-          intro={
-            night === "casual"
-              ? `Quick to teach and good with guests, for ${table}. Checked against each member's profile from ${evidenceCount} ratings and rankings.`
-              : `${TIER_LABEL.heavy} for ${table}, tailored to everyone's taste from ${evidenceCount} ratings and rankings.`
-          }
-          picks={n.claude}
-          updatedAt={n.claudeUpdatedAt}
-          scope="group"
-          night={night}
-          canAsk={canFind}
-          {...cardProps}
-          mode="group"
-        />
+        {CLAUDE && (
+          <ClaudeSection
+            title={`Claude's picks for ${forWhom}`}
+            intro={
+              night === "casual"
+                ? `Quick to teach and good with guests, for ${table}. Checked against each member's profile from ${evidenceCount} ratings and rankings.`
+                : `${TIER_LABEL.heavy} for ${table}, tailored to everyone's taste from ${evidenceCount} ratings and rankings.`
+            }
+            picks={n.claude}
+            updatedAt={n.claudeUpdatedAt}
+            scope="group"
+            night={night}
+            canAsk={canFind}
+            {...cardProps}
+            mode="group"
+          />
+        )}
 
         {rec.group.buyList.length > 0 && (
           <Section title="Buy list" action={<span className="text-xs text-slate">most wanted first</span>}>
@@ -129,16 +131,18 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
           </Empty>
         ) : (
           <>
-            <ClaudeSection
-              title="Claude's picks for you"
-              intro="Tailored to your own rankings and ratings: games you might love that the group doesn't own."
-              picks={rec.me.claude}
-              updatedAt={rec.me.claudeUpdatedAt}
-              scope="me"
-              canAsk={canFind}
-              {...cardProps}
-              mode="me"
-            />
+            {CLAUDE && (
+              <ClaudeSection
+                title="Claude's picks for you"
+                intro="Tailored to your own rankings and ratings: games you might love that the group doesn't own."
+                picks={rec.me.claude}
+                updatedAt={rec.me.claudeUpdatedAt}
+                scope="me"
+                canAsk={canFind}
+                {...cardProps}
+                mode="me"
+              />
+            )}
             <Section title="More that fit you">
               <PickGrid picks={rec.me.more} {...cardProps} mode="me" />
             </Section>

@@ -8,7 +8,7 @@ import { z } from "zod";
 import { CLAUDE_IDEAS_PER_DAY, GROUP_NIGHTS, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
-import { hasAnthropicKey, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
+import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
 import { canPostToDiscord, deletePlaysMessage, discordCode, editPlaysMessage, fetchAppEmoji, hasInteractions, postPlaysMessage, sendDirectMessage } from "@/lib/discord";
 import { type FormattablePlay, type ParsedPlayer, formatPlayMessage } from "@/lib/play-parser";
@@ -1037,7 +1037,7 @@ export async function askClaudeForNight(input: {
   candidateIds: number[];
 }): Promise<{ ok: true; picks: NightPicks } | { ok: false; error: string }> {
   await requireUser();
-  if (!hasAnthropicKey()) return { ok: false, error: "Add ANTHROPIC_API_KEY to turn on Claude's picks." };
+  if (!claudeReady()) return { ok: false, error: "Set CLAUDE=on and ANTHROPIC_API_KEY to turn on Claude's picks." };
   const night: Night = input.night === "casual" ? "casual" : "core";
   try {
     const context = await buildNightContext({ ...input, night, others: Math.max(0, Math.min(20, Math.trunc(input.others) || 0)) });
@@ -1121,7 +1121,7 @@ export async function takeOffBuyList(suggestionId: number): Promise<ActionResult
  */
 export async function askClaudeForPicks(scope: "group" | "me", nightInput: Night = "core"): Promise<ActionResult> {
   const me = await requireUser();
-  if (!hasAnthropicKey()) return { ok: false, error: "Add ANTHROPIC_API_KEY to turn on suggestions." };
+  if (!claudeReady()) return { ok: false, error: "Set CLAUDE=on and ANTHROPIC_API_KEY to turn on Claude's picks." };
   if (!hasBggToken()) return { ok: false, error: "Picks need the BGG API token, so each one can be checked and scored." };
   try {
     // A cap per person per day: each run is a large request to Claude

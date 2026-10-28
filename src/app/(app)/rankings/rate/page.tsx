@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
+import { CLAUDE } from "@/config";
 import { MUST_PLAY_LIMIT } from "@/db/enums";
 import { Empty, GameCover, PageHeader, Panel, Section, Skeleton, TextLink, formatDate } from "@/components/ui";
 import { requireUser } from "@/lib/session";
@@ -35,7 +36,7 @@ async function Rate() {
   return (
     <div className="max-w-3xl space-y-10">
       <p className="text-sm text-slate">
-        Tap a face for how you feel about each game. These feed the dashboard, planning and Claude&apos;s suggestions.{" "}
+        Tap a face for how you feel about each game. These feed the dashboard, planning{CLAUDE ? <> and Claude&apos;s suggestions</> : " and Discover"}.{" "}
         <strong className="font-semibold text-ink">🔥 Must play</strong> is for the few games you really want on the table: you get{" "}
         {MUST_PLAY_LIMIT}, and one comes back each time you play its game. You have {mustPlayLeft} left.
       </p>

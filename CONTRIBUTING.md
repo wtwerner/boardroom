@@ -12,7 +12,7 @@ pnpm seed:dev     # a fake group (Sam, Alex, Jordan, Casey) with about 40 plays
 pnpm dev
 ```
 
-Without Discord credentials, the sign-in page has **Sign in as…** buttons for the seeded members. That shortcut only exists under `pnpm dev` with a local `file:` database; production builds strip it out. Add `CASUAL_NIGHT=on` to `.env.local` to see the casual night's side of the site, and run `pnpm seed:dev` again to give it plays and an event.
+Without Discord credentials, the sign-in page has **Sign in as…** buttons for the seeded members. That shortcut only exists under `pnpm dev` with a local `file:` database; production builds strip it out. Add `CASUAL_NIGHT=on` to `.env.local` to see the casual night's side of the site, and run `pnpm seed:dev` again to give it plays and an event. Claude's picks need `CLAUDE=on` and an `ANTHROPIC_API_KEY`.
 
 Read [docs/how-it-works.md](docs/how-it-works.md) before changing scoring, sync or votes. It's how the product works, where the data comes from, and where the code lives.
 
@@ -41,6 +41,7 @@ Nights' buttons and `/event` need Discord to reach your machine: give the test a
 - Pure logic goes in `src/lib` with a test next to it (`*.test.ts`, Vitest).
 - Anything a group would set differently (names, the time zone, the weight the rankings split at, limits) comes from `src/config.ts`, never a literal. Name a night with `NIGHT_NAMES` and a ranking list with `TIER_LABEL`, never "core", "casual", "heavy" or "light" in text people read; `inSentence` from `src/lib/text.ts` lowercases a name mid-sentence. Add a new setting there, to `.env.example`, and to the settings table in the README.
 - Casual-night UI and copy only show when `CASUAL_NIGHT` is on, so the site reads right for a group with one kind of night.
+- The same goes for Claude and `CLAUDE`: off, the site never calls Claude or mentions it. Check `claudeReady()` from `src/lib/ai.ts` before calling it.
 - `src/config.ts` is server only. Client components get its values as props.
 - When a number, score or vote rule changes, update the site's How it works page (`src/app/(app)/about/page.tsx`) and [docs/how-it-works.md](docs/how-it-works.md).
 - Tests and docs use the Sam/Alex/Jordan/Casey fixtures and made-up ids like `10000000000000000N`, never real people's names or Discord ids.

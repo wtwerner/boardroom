@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { CASUAL_NIGHT, CLAUDE_IDEAS_PER_DAY, NIGHT_NAMES } from "@/config";
+import { CASUAL_NIGHT, CLAUDE, CLAUDE_IDEAS_PER_DAY, NIGHT_NAMES } from "@/config";
 import { MUST_PLAY_LIMIT, SENTIMENTS } from "@/db/enums";
 import { PageHeader, Panel, TextLink } from "@/components/ui";
 import { MIN_EVIDENCE } from "@/lib/recommend";
@@ -99,7 +99,7 @@ export default function AboutPage() {
               nobody else&apos;s, comes out at 75%.
             </p>
             <p>
-              Everything that uses rankings (the group lists, the planner, Discover&apos;s percentages, Claude) uses a game&apos;s place in its
+              Everything that uses rankings (the group lists, the planner, Discover&apos;s percentages{CLAUDE && ", Claude"}) uses a game&apos;s place in its
               own list. Love it / Like it ratings are a single scale across both.
             </p>
           </Part>
@@ -138,12 +138,14 @@ export default function AboutPage() {
                 ["Want it / Not for me", "Want it is a vote for the buy list. Not for me stops the game being suggested to you."],
               ]}
             />
-            <p>
-              <strong>Claude&apos;s picks</strong> are Claude&apos;s suggestions from a summary of everyone&apos;s taste. Each one is checked on BGG
-              and given a percentage the same way, and only the most likely hits are kept: up to 8 for the group and 6 for you, each at 60% or
-              better. Asking again replaces the list using everyone&apos;s latest ratings and rankings, so a good pick can come back; one
-              someone wants stays on the buy list. Each person can ask {CLAUDE_IDEAS_PER_DAY} times a day.
-            </p>
+            {CLAUDE && (
+              <p>
+                <strong>Claude&apos;s picks</strong> are Claude&apos;s suggestions from a summary of everyone&apos;s taste. Each one is checked on BGG
+                and given a percentage the same way, and only the most likely hits are kept: up to 8 for the group and 6 for you, each at 60% or
+                better. Asking again replaces the list using everyone&apos;s latest ratings and rankings, so a good pick can come back; one
+                someone wants stays on the buy list. Each person can ask {CLAUDE_IDEAS_PER_DAY} times a day.
+              </p>
+            )}
           </Part>
 
           <Part id="plan" title="The planner">
@@ -206,11 +208,11 @@ export default function AboutPage() {
               </p>
               <Facts
                 rows={[
-                  ["Counts both kinds", `What you've played (so it's yours to rate and rank), clearing your votes when you play a game, the shelf's play counts, and what Claude sees (plays at ${casual} are marked).`],
+                  ["Counts both kinds", `What you've played (so it's yours to rate and rank), clearing your votes when you play a game, the shelf's play counts${CLAUDE ? `, and what Claude sees (plays at ${casual} are marked)` : ""}.`],
                   ["Home", `Its numbers and charts count both kinds, split by color: green for ${core}, gold for ${casual}. Last event is the last ${core}.`],
                   [
                     "Switches between them",
-                    `Plays, Plan, and Discover's group picks. Each Discover tab shows the games for its kind of event, at its usual table size: ${heavy} (weight ${HEAVY_WEIGHT} and up) for ${core}, ${light} for ${casual}, no heavier than 4 in 5 of the games it has played. Each has its own list of Claude's picks.`,
+                    `Plays, Plan, and Discover's group picks. Each Discover tab shows the games for its kind of event, at its usual table size: ${heavy} (weight ${HEAVY_WEIGHT} and up) for ${core}, ${light} for ${casual}, no heavier than 4 in 5 of the games it has played.${CLAUDE ? " Each has its own list of Claude's picks." : ""}`,
                   ],
                 ]}
               />
@@ -244,10 +246,14 @@ export default function AboutPage() {
                 ["Shelf", "Everyone's BGG collection: from the BGG username in Settings, refreshed nightly, or a CSV export uploaded there."],
                 ["Game details", "Player counts, best player counts, weight, mechanics and ratings come from BGG."],
                 ["Board Game Arena", "Which games are on BGA, matched to BGG by id, from BGA's public game list every night. BGG details for BGA's 400 most played games are fetched a batch a night so they can be recommended. BGA has no way to read anyone's plays without signing in."],
-                [
-                  "What Claude sees",
-                  "Names, recent plays and who played them, everyone's ratings, votes and rankings, the shared shelf, BGG wishlists and the taste summary. Nothing from Discord accounts. It's only asked when someone taps a Claude button.",
-                ],
+                ...(CLAUDE
+                  ? [
+                      [
+                        "What Claude sees",
+                        "Names, recent plays and who played them, everyone's ratings, votes and rankings, the shared shelf, BGG wishlists and the taste summary. Nothing from Discord accounts. It's only asked when someone taps a Claude button.",
+                      ] as [string, string],
+                    ]
+                  : []),
               ]}
             />
           </Part>
