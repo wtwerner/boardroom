@@ -8,8 +8,8 @@ import type { ParsedPlay } from "./play-parser";
 import { inSentence } from "./text";
 
 // The nights as the group names them, so Claude's reasons use the same words as the site
-const CORE = inSentence(NIGHT_NAMES.core);
-const CASUAL = inSentence(NIGHT_NAMES.casual);
+const core = () => inSentence(NIGHT_NAMES.core);
+const casual = () => inSentence(NIGHT_NAMES.casual);
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-opus-5-5";
 
@@ -120,14 +120,14 @@ export type NightPicks = z.infer<typeof NightSchema>;
 
 const NIGHT_BRIEF: Record<Night, string> = {
   core:
-    `This is the group planning its next ${CORE} in advance. They prep beforehand ` +
+    `This is the group planning its next ${core()} in advance. They prep beforehand ` +
     "(rules, teach videos), so a heavier or brand-new game is a feature, not a risk. " +
     "Pick up to 4 games from the candidate list only, best first. Weigh 🔥 must-play votes heavily (they're scarce), " +
     "balance what people love against variety (avoid what was played very recently unless it's clearly wanted), " +
     "and say in each reason what makes it worth committing an evening to.",
   casual:
-    `This is the ${CASUAL}, the group's casual night: some of the members above, plus more casual players and guests who don't use this site ` +
-    `and haven't read any rules. It's usually at a bar, several games in an evening. Plays marked (${CASUAL}) show what ` +
+    `This is the ${casual()}, the group's casual night: some of the members above, plus more casual players and guests who don't use this site ` +
+    `and haven't read any rules. It's usually at a bar, several games in an evening. Plays marked (${casual()}) show what ` +
     "it has played before. What matters is a quick teach, rules that click in a few minutes, and a game newcomers enjoy " +
     "from the first round; members' opinions still count, but nobody should feel lost. Pick up to 4 games from the " +
     "candidate list only, best first, and say in each reason why it works for a mixed table. The note can suggest an order " +
@@ -167,11 +167,11 @@ export async function recommendPurchases(
   const who = opts.forMember
     ? `${opts.forMember} specifically, from their own taste profile (they play with this group, so it must work at the usual table size). They read these themselves: address them as "you", not by name`
     : opts.night === "casual"
-      ? `the ${CASUAL}, the group's casual night: some of the members above plus casual players and guests who don't use this site and haven't read ` +
-        `any rules, usually at a bar with several games in an evening. Plays marked (${CASUAL}) show what it has played. ` +
-        `Every pick needs a quick teach and has to land with newcomers from the first round, at the ${CASUAL}'s usual table ` +
+      ? `the ${casual()}, the group's casual night: some of the members above plus casual players and guests who don't use this site and haven't read ` +
+        `any rules, usually at a bar with several games in an evening. Plays marked (${casual()}) show what it has played. ` +
+        `Every pick needs a quick teach and has to land with newcomers from the first round, at the ${casual()}'s usual table ` +
         "size and within the weight given for the night; members' taste still counts, but nobody should feel lost"
-      : `the group's ${CORE}, planned game nights at their usual table size. They prep beforehand (rules, teach videos), so ` +
+      : `the group's ${core()}, planned game nights at their usual table size. They prep beforehand (rules, teach videos), so ` +
         "these are heavier games, meaty and worth committing an evening to, within the weight given for the night; it " +
         "should land with everyone, not just one or two people";
   return ask({

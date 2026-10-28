@@ -36,6 +36,13 @@
       "when": 1793199338784,
       "tag": "0004_cooing_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1793215358970,
+      "tag": "0005_optimal_abomination",
+      "breakpoints": true
     }
   ]
 }

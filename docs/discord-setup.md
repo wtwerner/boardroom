@@ -40,24 +40,20 @@ The bot can't do anything beyond those permissions. It only acts in the channels
 
 ## Part 3: connect it (you)
 
-1. In Discord, turn on **User Settings → Advanced → Developer Mode**.
-2. Right-click the server icon and choose **Copy Server ID**. Right-click the plays channel and choose **Copy Channel ID**.
-   Use the **core group's** channel for `DISCORD_PLAYS_CHANNEL_ID`. To log the casual night too, copy its channel's ID into `DISCORD_CASUAL_CHANNEL_ID`.
-3. If you made a role (Part 2, step 5), right-click it on someone's profile and choose **Copy Role ID** for `DISCORD_MEMBER_ROLE_ID`. Without it, anyone in the server can sign in, and Settings says so.
-4. Add the values to `.env.local`, and later to Vercel:
+1. In Discord, turn on **User Settings → Advanced → Developer Mode**, then right-click the server icon and choose **Copy Server ID**.
+2. Add the values to `.env.local`, and later to Vercel:
 
    ```sh
    DISCORD_CLIENT_ID=
    DISCORD_CLIENT_SECRET=
    DISCORD_BOT_TOKEN=
    DISCORD_GUILD_ID=
-   DISCORD_PLAYS_CHANNEL_ID=
-   DISCORD_CASUAL_CHANNEL_ID=
-   DISCORD_MEMBER_ROLE_ID=
-   DISCORD_WELCOME_CHANNEL_ID=
    ```
 
-5. Restart `pnpm dev`, choose **Sign in with Discord**, then open **Plays → Sync from Discord**.
+3. Restart `pnpm dev`, choose **Sign in with Discord**, and open **Settings → Group settings**. Make yourself an admin at the bottom, then pick the channels and role from the server's:
+   - **Plays channel**: the **core group's**. To log the casual night too, turn on **A casual night too** and pick its channel as well.
+   - **Member role**: the role from Part 2, step 5, if you made one. Without it, anyone in the server can sign in, and Settings says so.
+4. Open **Plays → Sync from Discord**.
 
    The seeded test data lives in the same local database. To import real plays into a clean one, run `rm local.db && pnpm db:migrate` first.
 
@@ -65,9 +61,9 @@ The bot can't do anything beyond those permissions. It only acts in the channels
 
 Boardroom can post each night to an events channel: a card with when and where, who's coming and the plan so far, buttons to answer Going, Maybe or Can't make it (the symbols the card heads each list with), to answer for **Someone else…** and to **Edit** it, and a thread for talking it over. In a text channel, the thread starts with a short copy of the post's buttons, since Discord won't let anyone press the buttons on the card shown at the top of a thread; the copy's buttons work, and it stays in step with the post. In a forum, each night is a forum post whose buttons work as they are, and it can be announced in a chat channel too. Members also get `/event new`, `/event poll`, `/event edit` and `/event cancel` (`DISCORD_COMMAND_NAME` picks another word than `event`). `/event poll` posts a few dates to the events channel for people to vote on (with a casual night, the form asks which kind of night it's for, starting on the one whose channel it was run in); picking one turns that post into the night's, and a poll that was called off can be reopened from its post. Everything goes through the same night on the site, so answering or changing it in either place updates the other.
 
-1. Make a channel for each kind of night, or reuse ones the group already has (a text channel or a forum). Copy their IDs into `DISCORD_CORE_EVENTS_CHANNEL_ID` and, for a casual night, `DISCORD_CASUAL_EVENTS_CHANNEL_ID`.
+1. Make a channel for each kind of night, or reuse ones the group already has (a text channel or a forum). Pick them as the **Events channel** on Group settings, one for each kind of night.
    - A **text channel** keeps each night's card in the chat, where people can answer without opening anything, with a thread hanging off it.
-   - A **forum** gives each night a post of its own, named after it, with the talk underneath and nothing doubled up. People don't watch a forum the way they watch chat, so set `DISCORD_CORE_ANNOUNCE_CHANNEL_ID` (and `DISCORD_CASUAL_ANNOUNCE_CHANNEL_ID`) to the chat channel to announce nights in: the announcement shows when and where, how many are coming and the game, links to the post, and is kept up to date. It takes the night's ping (step 5).
+   - A **forum** gives each night a post of its own, named after it, with the talk underneath and nothing doubled up. People don't watch a forum the way they watch chat, so pick a chat channel as the **Announcements channel** to announce nights in: the announcement shows when and where, how many are coming and the game, links to the post, and is kept up to date. It takes the night's ping (step 5).
    - Moving a kind of night's events to a different channel later leaves the nights already posted where they are, threads and all; nights made from then on go to the new one. To move the coming ones too, run `pnpm move:posts --move` (without `--move` it lists what would move): each is posted in the new channel without a ping, and the old post and its thread get a note linking to it.
 2. In the developer portal, **General Information** tab: copy the **Public Key** into `DISCORD_PUBLIC_KEY`. Deploy, so the site has it.
 3. On the same tab, set **Interactions Endpoint URL** to `https://<your-domain>/api/discord/interactions` and save. Discord checks the address answers before it saves it.
@@ -77,14 +73,14 @@ Boardroom can post each night to an events channel: a card with when and where, 
    node scripts/with-env.mjs .env.production pnpm discord:commands
    ```
 
-5. Optional: to ping people when a night (or a poll to find its date) is posted, set `DISCORD_CORE_NIGHT_PING` and `DISCORD_CASUAL_NIGHT_PING` to `here`, `everyone` or a role's id (right-click the role → **Copy Role ID**). Only the first post pings (or its announcement, when nights are announced); edits never do. `here`, `everyone` and a role that isn't **Allow anyone to @mention this role** need the bot's role to have **Mention @everyone, @here, and All Roles**, which the invite link leaves out; the owner can give it under **Server Settings → Roles**.
+5. Optional: to ping people when a night (or a poll to find its date) is posted, pick @here, @everyone or a role under **Ping when an event is posted** on Group settings. Only the first post pings (or its announcement, when nights are announced); edits never do. `here`, `everyone` and a role that isn't **Allow anyone to @mention this role** need the bot's role to have **Mention @everyone, @here, and All Roles**, which the invite link leaves out; the owner can give it under **Server Settings → Roles**.
 6. Optional: for the reminder before each night and the morning-after DM asking for its plays, set up [the tick](../README.md#reminders-and-the-morning-after).
 
 ## Part 5: inviting people to the core group's nights (optional)
 
 Everyone in the server can come to the casual night. When one of them wants in on the core group's nights too, any member can invite them: from **People → Invite someone to …** on the site, or by right-clicking them in Discord and picking **Apps → Invite to …** (named for the core group's night, like *Invite to Game night events*, or for the site when there's no casual night). Boardroom then:
 
-- gives them `DISCORD_MEMBER_ROLE_ID`'s role, so they can sign in and see the core group's channels (skipped when the group has no role);
+- gives them the member role from Group settings, so they can sign in and see the core group's channels (skipped when the group has no role);
 - says hi in the core group's channel, pinging only them, with a **Get set up** button;
 - DMs them the setup steps and a link to the site's setup page (`/welcome`);
 - lists them on People as invited until they sign in, when their plays from the logs come with them.
@@ -97,8 +93,8 @@ To turn it on:
    https://discord.com/oauth2/authorize?client_id=<CLIENT_ID>&scope=bot&permissions=309506149376
    ```
 
-2. Optional: set `DISCORD_WELCOME_CHANNEL_ID` to the channel to say hi in. Without it, the hello goes in the core group's events channel, or its plays channel if there's no events channel. It's never posted in one of the casual night's channels.
-3. Register the commands again, so **Invite to …** shows up on the right-click menu (Part 4, step 4), and again whenever `CORE_NIGHT_NAME` changes. The site's form works without this; the right-click command also needs `DISCORD_PUBLIC_KEY` and the Interactions Endpoint URL from Part 4.
+2. Optional: pick the channel to say hi in as the **Welcome channel** on Group settings. Without it, the hello goes in the core group's events channel, or its plays channel if there's no events channel. It's never posted in one of the casual night's channels.
+3. Register the commands again, so **Invite to …** shows up on the right-click menu (Part 4, step 4). After that, saving a new site or night name on Group settings renames it. The site's form works without this; the right-click command also needs `DISCORD_PUBLIC_KEY` and the Interactions Endpoint URL from Part 4.
 4. At first only people with **Manage Roles** see it, so it isn't on everyone's menu. To let every member use it, the owner opens **Server Settings → Integrations → Boardroom → Invite to …** and adds the member role. Any member can invite people from the site's People page either way.
 
 The messages keep it light: getting the role is an extra (the heavier nights and a few more channels), not joining a group, since everyone's already at the casual night.
@@ -120,7 +116,8 @@ Set the test application's endpoint to `https://<tunnel>/api/discord/interaction
 | Symptom | Likely cause |
 | --- | --- |
 | "That Discord account isn't in the group's server" on sign-in | The bot isn't in the server yet, or `DISCORD_GUILD_ID` is wrong |
-| "Couldn't sign you in with that Discord account" | The account lacks `DISCORD_MEMBER_ROLE_ID`'s role |
+| "Couldn't sign you in with that Discord account" | The account lacks the member role on Group settings |
+| Group settings asks for channel ids instead of listing them | The bot isn't in the server yet, or can't see its channels (Part 2) |
 | Sync says `403` / Missing Access | The bot's role can't see one of the plays channels (Part 2, step 4) |
 | Sync runs but imports nothing | Message Content Intent is off (Part 1, step 3) |
 | Discord shows "Invalid OAuth2 redirect_uri" | The callback URL isn't listed under OAuth2 → Redirects exactly |

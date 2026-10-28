@@ -10,6 +10,7 @@ import { MEEPLE_COLORS } from "@/db/enums";
 import { groupMemberRefusal } from "./discord";
 import { discordAccountEmail } from "./discord-email";
 import { matchByName } from "./players";
+import { loadSettings } from "./settings-store";
 import type { SignInRefusal } from "./sign-in-refusal";
 
 const REFUSAL_MESSAGE: Record<SignInRefusal, string> = {
@@ -18,6 +19,8 @@ const REFUSAL_MESSAGE: Record<SignInRefusal, string> = {
 };
 
 async function assertGroupMember(discordId: string | null | undefined) {
+  // The member role is set on Group settings
+  await loadSettings({ fresh: true });
   const refusal = discordId ? await groupMemberRefusal(discordId) : "not_in_server";
   if (refusal) {
     // With a code, Better Auth redirects the OAuth callback to /sign-in?error=<code>; without one it answers with raw JSON
@@ -74,6 +77,7 @@ export const auth = betterAuth({
     additionalFields: {
       discordId: { type: "string", required: false, input: false },
       bggUsername: { type: "string", required: false, input: false },
+      isAdmin: { type: "boolean", required: false, input: false },
     },
   },
   session: {

@@ -12,7 +12,7 @@ pnpm seed:dev     # a fake group (Sam, Alex, Jordan, Casey) with about 40 plays
 pnpm dev
 ```
 
-Without Discord credentials, the sign-in page has **Sign in as…** buttons for the seeded members. That shortcut only exists under `pnpm dev` with a local `file:` database; production builds strip it out, except on a demo (`DEMO=on`, see [The demo](docs/how-it-works.md#the-demo)), where it signs in as the seeded members and no one else. Add `CASUAL_NIGHT=on` to `.env.local` to see the casual night's side of the site, and run `pnpm seed:dev` again to give it plays and an event. Claude's picks need `CLAUDE=on` and an `ANTHROPIC_API_KEY`.
+Without Discord credentials, the sign-in page has **Sign in as…** buttons for the seeded members. That shortcut only exists under `pnpm dev` with a local `file:` database; production builds strip it out, except on a demo (`DEMO=on`, see [The demo](docs/how-it-works.md#the-demo)), where it signs in as the seeded members and no one else. Sam is the seeded group's admin, for **Settings → Group settings**. Add `CASUAL_NIGHT=on` to `.env.local` and run `pnpm seed:dev` again to see the casual night's side of the site with plays and an event (seeding clears Group settings back to `.env.local`). Claude's picks need an `ANTHROPIC_API_KEY`, then **Use Claude** on Group settings (or `CLAUDE=on`).
 
 Read [docs/how-it-works.md](docs/how-it-works.md) before changing scoring, sync or votes. It's how the product works, where the data comes from, and where the code lives.
 
@@ -39,7 +39,9 @@ Nights' buttons and `/event` need Discord to reach your machine: give the test a
 
 - Mutations go in `src/app/actions.ts` and start with `requireUser()`.
 - Pure logic goes in `src/lib` with a test next to it (`*.test.ts`, Vitest).
-- Anything a group would set differently (names, the time zone, the weight the rankings split at, limits) comes from `src/config.ts`, never a literal. Name a night with `NIGHT_NAMES` and a ranking list with `TIER_LABEL`, never "core", "casual", "heavy" or "light" in text people read; `inSentence` from `src/lib/text.ts` lowercases a name mid-sentence. Add a new setting there, to `.env.example`, and to the settings table in the README.
+- Anything a group would set differently (names, the time zone, the weight the rankings split at, limits) comes from `src/config.ts`, never a literal. Name a night with `NIGHT_NAMES` and a ranking list with `TIER_LABEL`, never "core", "casual", "heavy" or "light" in text people read; `inSentence` from `src/lib/text.ts` lowercases a name mid-sentence. A new setting goes in `src/lib/settings.ts`, `applySettings` in `src/config.ts`, the Group settings form, and the settings table in the README. Secrets and things set once with the site (the Discord application, the database) stay environment variables, in `.env.example`.
+- Config values are live bindings that `loadSettings()` fills in: read them where they're used, never into a constant at the top of a module. A new page, route or script awaits `loadSettings()` (or `requireUser()`, which does it) before reading one.
+- Mutations that change the group's settings start with `requireAdmin()` instead.
 - Casual-night UI and copy only show when `CASUAL_NIGHT` is on, so the site reads right for a group with one kind of night.
 - The same goes for Claude and `CLAUDE`: off, the site never calls Claude or mentions it. Check `claudeReady()` from `src/lib/ai.ts` before calling it.
 - `src/config.ts` is server only. Client components get its values as props.

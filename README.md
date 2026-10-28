@@ -43,7 +43,7 @@ Next.js 16 · React 19 · TypeScript · Tailwind 4 · Drizzle + SQLite (Turso) �
 | **[Vercel](https://vercel.com)** | Hosting and the nightly sync. The Hobby plan is enough | Free |
 | **[Turso](https://turso.tech)** | The database | Free tier |
 | **BoardGameGeek API token** | Optional: syncs collections automatically. Approval takes a week or more, so [ask for one](#1-ask-boardgamegeek-for-an-api-token) first. Until then, collections can be uploaded as a CSV export | Free, non-commercial use |
-| **Anthropic API key** | Optional, with `CLAUDE=on`: Claude's picks and reading hand-written play posts that don't follow the template | Pay as you go |
+| **Anthropic API key** | Optional, for Claude's picks and reading hand-written play posts that don't follow the template | Pay as you go |
 
 ## Set it up
 
@@ -67,7 +67,7 @@ The tables are created on the first deploy: every production build applies any n
 
 ### 4. Deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fwtwerner%2Fboardroom&project-name=boardroom&repository-name=boardroom&env=BETTER_AUTH_SECRET,CRON_SECRET,DATABASE_URL,DATABASE_AUTH_TOKEN,DISCORD_CLIENT_ID,DISCORD_CLIENT_SECRET,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID,DISCORD_PLAYS_CHANNEL_ID,APP_TIMEZONE&envDescription=Secrets%2C%20the%20database%20and%20the%20group%27s%20Discord%20server%20and%20channel&envLink=https%3A%2F%2Fgithub.com%2Fwtwerner%2Fboardroom%23environment-variables)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fwtwerner%2Fboardroom&project-name=boardroom&repository-name=boardroom&env=BETTER_AUTH_SECRET,CRON_SECRET,DATABASE_URL,DATABASE_AUTH_TOKEN,DISCORD_CLIENT_ID,DISCORD_CLIENT_SECRET,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID&envDescription=Secrets%2C%20the%20database%20and%20the%20group%27s%20Discord%20server&envLink=https%3A%2F%2Fgithub.com%2Fwtwerner%2Fboardroom%23environment-variables)
 
 The button copies this repo into your GitHub account and asks for the variables below. Or fork the repo and import it at <https://vercel.com/new>, which makes pulling in updates a click (see [Updating](#updating)).
 
@@ -78,43 +78,45 @@ The button copies this repo into your GitHub account and asks for the variables 
 | `BETTER_AUTH_SECRET`, `CRON_SECRET` | Random secrets: `openssl rand -base64 32` for each |
 | `DATABASE_URL`, `DATABASE_AUTH_TOKEN` | From step 3 |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN` | From step 2 |
-| `DISCORD_GUILD_ID`, `DISCORD_PLAYS_CHANNEL_ID` | The group's server, and the channel plays are posted in |
-| `APP_TIMEZONE` | The group's time zone, like `America/Chicago`. Play dates and night times use it |
-| `DISCORD_MEMBER_ROLE_ID` | Optional: only people with this role can sign in (see [Who can sign in](docs/how-it-works.md#who-can-sign-in)) |
+| `DISCORD_GUILD_ID` | The group's server |
 | `BGG_API_TOKEN` | Optional: from step 1 |
-| `ANTHROPIC_API_KEY` | Optional: used only with `CLAUDE=on` (below). Create it in a workspace of its own with a monthly spend limit, and mark it Sensitive in Vercel |
-| `DISCORD_CASUAL_CHANNEL_ID` | Optional: the casual night's plays channel |
-| `DISCORD_WELCOME_CHANNEL_ID` | Optional: where someone invited to the core group's nights is greeted, instead of the core group's events channel (see [Inviting people](docs/discord-setup.md#part-5-inviting-people-to-the-core-groups-nights-optional)) |
-| `DISCORD_CORE_EVENTS_CHANNEL_ID`, `DISCORD_CASUAL_EVENTS_CHANNEL_ID` | Optional: where each kind of night is posted, with its thread: a text channel or a forum |
-| `DISCORD_CORE_ANNOUNCE_CHANNEL_ID`, `DISCORD_CASUAL_ANNOUNCE_CHANNEL_ID` | Optional: a chat channel each kind of night is announced in, with its details and a link to its post, for events channels people don't read as they chat (a forum, say). The announcement takes the night's ping |
+| `ANTHROPIC_API_KEY` | Optional: lets an admin turn Claude on in Group settings. Create it in a workspace of its own with a monthly spend limit, and mark it Sensitive in Vercel |
 | `DISCORD_PUBLIC_KEY` | Optional: turns on the buttons on nights' posts and the `/event` command (see [Nights in Discord](docs/discord-setup.md#part-4-nights-in-discord-optional)) |
 | `DISCORD_COMMAND_NAME` | Optional: the slash command's name instead of `event` (`/event new`, `poll`, `edit`, `cancel`). Run `pnpm discord:commands` again after changing it |
-| `DISCORD_CORE_NIGHT_PING`, `DISCORD_CASUAL_NIGHT_PING` | Optional: who a night's post (or its announcement, when there is one) pings when it first goes up: `here`, `everyone` or a role id. Unset pings nobody |
 | `BETTER_AUTH_URL` | The site's address. On Vercel it defaults to the project's production domain, so set it only for a custom domain or another host |
+| `DEMO` | Optional: `on` makes the site a public demo on a made-up group (see [The demo](docs/how-it-works.md#the-demo)). Its nightly cron wipes the database, so give it one of its own. Ignored with `DISCORD_BOT_TOKEN` or `DISCORD_GUILD_ID` set |
 
 [`.env.example`](.env.example) lists them all with notes. Once it's deployed, add `https://<your-domain>/api/auth/callback/discord` to the Discord application's OAuth2 redirects.
 
-#### Your group's settings
+### 5. Sign in and set up the group
 
-All optional, as environment variables like the rest (`src/config.ts` reads them):
+Sign in with Discord and open **Settings → Group settings**. Until someone's an admin, every member can change these, so start by making yourself one at the bottom of the page. Then choose:
 
-| Variable | Default | |
+| Setting | Default | |
 | --- | --- | --- |
-| `SITE_NAME` | Boardroom | Page titles, the header, and the button on posts in Discord |
-| `CASUAL_NIGHT` | off | A second, casual night (see [Core and casual nights](docs/how-it-works.md#core-and-casual-nights)). `DISCORD_CASUAL_CHANNEL_ID` turns it on too |
-| `CORE_NIGHT_NAME` / `CASUAL_NIGHT_NAME` | Game night / Casual night | What each kind of night is called everywhere on the site |
-| `CORE_NIGHT_TITLE` / `CASUAL_NIGHT_TITLE` | `{date} ` and the night's name | What a new night is called unless someone names it. `{date}` is its date ("10/29"), `{game}` the game locked in for it or TBD: `{date} Game Night — {game}` makes "10/29 Game Night — TBD", then "10/29 Game Night — Root" once Root is locked in. Its thread has the same name |
-| `HEAVY_GAME_WEIGHT` | 2.75 | BGG weight where the two rankings, Heavy games and Light games, split. Set it to the weight your group's heavier games start at |
-| `CLAUDE` | off | `on` turns on Claude's picks and reading hand-written play posts the parser can't. Needs `ANTHROPIC_API_KEY`. Off, the site never calls Claude or mentions it |
-| `CLAUDE_IDEAS_PER_DAY` | 5 | Claude's picks each person can ask for in a day |
-| `NIGHT_REMINDER_HOURS` | 3 | How many hours before a night starts its post gets a reply pinging whoever's going or a maybe. `0` turns it off. Needs [the tick](#reminders-and-the-morning-after) |
-| `DEMO` | off | `on` makes the site a public demo on a made-up group (see [The demo](docs/how-it-works.md#the-demo)). Its nightly cron wipes the database, so give it one of its own. Ignored with `DISCORD_BOT_TOKEN` or `DISCORD_GUILD_ID` set |
+| Site name | Boardroom | Page titles, the header, and the button on posts in Discord |
+| Time zone | UTC | Play dates and night times use it |
+| What your events are called | Game night | What the group's own nights are called everywhere on the site |
+| New events' title | `{date} ` and the night's name | What a new night is called unless someone names it. `{date}` is its date ("10/29"), `{game}` the game locked in for it or TBD: `{date} Game Night — {game}` makes "10/29 Game Night — TBD", then "10/29 Game Night — Root" once Root is locked in. Its thread has the same name |
+| Reminder | 3 | How many hours before a night starts its post gets a reply pinging whoever's going or a maybe. `0` turns it off. Needs [the tick](#reminders-and-the-morning-after) |
+| A casual night too | off | A second, casual night with its own name, title and channels (see [Core and casual nights](docs/how-it-works.md#core-and-casual-nights)) |
+| Heavy from BGG weight | 2.75 | Where the two rankings, Heavy games and Light games, split. Set it to the weight your group's heavier games start at |
+| Use Claude | off | Claude's picks and reading hand-written play posts the parser can't. Shown once `ANTHROPIC_API_KEY` is set. Off, the site never calls Claude or mentions it |
+| Picks a day | 5 | Claude's picks each person can ask for in a day |
+| Member role | none | Only people with this Discord role can sign in (see [Who can sign in](docs/how-it-works.md#who-can-sign-in)) |
+| Plays channel | none | Where plays logged on the site are posted, and where hand-written ones are read from. One for each kind of night |
+| Events channel | none | Where each kind of night is posted, with its thread: a text channel or a forum. Needs `DISCORD_PUBLIC_KEY` |
+| Announcements channel | none | A chat channel each kind of night is announced in, with its details and a link to its post, for events channels people don't read as they chat (a forum, say). The announcement takes the night's ping |
+| Ping when an event is posted | nobody | Who a night's post (or its announcement, when there is one) pings when it first goes up: @here, @everyone or a role |
+| Welcome channel | the usual place | Where someone invited to the core group's nights is greeted, instead of its announcements, events or plays channel (see [Inviting people](docs/discord-setup.md#part-5-inviting-people-to-the-core-groups-nights-optional)) |
 
-Changing one needs a redeploy.
+The Discord settings pick from the server's channels and roles, so they only show once the bot is in the server. Admins can make other members admins on the same page. A change shows across the site straight away, with no redeploy.
 
-### 5. Sign in and import
+Sites set up before Group settings existed kept these as environment variables (`SITE_NAME`, `APP_TIMEZONE`, `DISCORD_PLAYS_CHANNEL_ID` and so on). They're still read, and the page starts from them, until an admin first saves it. After that they can be deleted.
 
-Sign in with Discord, then tap **Sync from Discord** on the Plays page to import the channel's history. For a long history, run the same sync from your machine instead, where there's no serverless time limit. It picks up where it left off:
+### 6. Import the history
+
+Tap **Sync from Discord** on the Plays page to import the channel's history. For a long history, run the same sync from your machine instead, where there's no serverless time limit. It picks up where it left off:
 
 ```sh
 pnpm install
@@ -168,7 +170,7 @@ pnpm seed:dev     # a fake group (Sam, Alex, Jordan, Casey) with about 40 plays
 pnpm dev
 ```
 
-Without Discord credentials, the sign-in page has **Sign in as…** buttons for the seeded members. Add `CASUAL_NIGHT=on` to `.env.local` to see the casual night's side of the site, and run `pnpm seed:dev` again to give it plays and an event. Before opening a pull request, run `pnpm typecheck && pnpm test && pnpm lint`, the same checks CI runs. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest: testing against a Discord server of your own, where code goes, and migrations.
+Without Discord credentials, the sign-in page has **Sign in as…** buttons for the seeded members. Sam is the seeded group's admin, for Group settings. Turn on **A casual night too** there (or add `CASUAL_NIGHT=on` to `.env.local` before seeding) to see the casual night's side of the site, and run `pnpm seed:dev` again to give it plays and an event. Before opening a pull request, run `pnpm typecheck && pnpm test && pnpm lint`, the same checks CI runs. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest: testing against a Discord server of your own, where code goes, and migrations.
 
 ## License
 

@@ -1,6 +1,7 @@
 import { sendLogNudges, sendReminders } from "@/lib/nudge-post";
 import { closeFinishedPolls } from "@/lib/poll-store";
 import { updateClosedPollPosts } from "@/lib/poll-post";
+import { loadSettings } from "@/lib/settings-store";
 
 /**
  * Every 15 minutes or so, from outside Vercel (Hobby's crons run once a day): the reminder
@@ -14,6 +15,7 @@ export async function GET(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
+  await loadSettings({ fresh: true });
   const results: Record<string, unknown> = {};
   try {
     results.reminded = await sendReminders();

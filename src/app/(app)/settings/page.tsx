@@ -5,7 +5,7 @@ import { count, eq } from "drizzle-orm";
 import { DEMO } from "@/config";
 import { db, schema } from "@/db";
 import { PageHeader, Panel, Section, Skeleton } from "@/components/ui";
-import { requireUser } from "@/lib/session";
+import { canManageGroup, requireUser } from "@/lib/session";
 import { getPlayers } from "@/lib/queries";
 import { hasBggToken } from "@/lib/bgg";
 import { anyServerMemberCanSignIn, listGuildMembers } from "@/lib/discord";
@@ -26,7 +26,7 @@ export default function SettingsPage() {
 
 async function Settings() {
   const me = await requireUser();
-  const [players, [owned], seatCounts, discordMembers, [bga]] = await Promise.all([
+  const [players, [owned], seatCounts, discordMembers, [bga], canManage, admins] = await Promise.all([
     getPlayers(),
     db
       .select({ n: count() })
@@ -41,6 +41,8 @@ async function Settings() {
       .select({ username: schema.user.bgaUsername, premium: schema.user.bgaPremium })
       .from(schema.user)
       .where(eq(schema.user.id, me.id)),
+    canManageGroup(),
+    db.select({ name: schema.user.name }).from(schema.user).where(eq(schema.user.isAdmin, true)),
   ]);
   const plays = new Map(seatCounts.map((s) => [s.playerId, s.n]));
   const takenColors = players.filter((p) => p.id !== me.playerId && p.color).map((p) => p.color!);
@@ -50,8 +52,22 @@ async function Settings() {
       {anyServerMemberCanSignIn() && (
         <p role="note" className="rounded-xl border border-meeple-yellow/60 bg-meeple-yellow/10 px-4 py-3 text-sm">
           <strong>Anyone in the Discord server can sign in here</strong>, and everyone who signs in can edit and delete plays. That&apos;s fine
-          if the server is just your group. If it isn&apos;t, give the group a role and set <code className="text-xs">DISCORD_MEMBER_ROLE_ID</code> to
-          it.
+          if the server is just your group. If it isn&apos;t, give the group a role and {canManage ? "choose it" : "ask an admin to choose it"} as
+          the member role on <Link href="/settings/group" className="text-accent underline-offset-4 hover:underline">Group settings</Link>.
+        </p>
+      )}
+      {canManage ? (
+        <Link href="/settings/group" className="flex items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/40">
+          <span>
+            <span className="block font-medium">Group settings</span>
+            <span className="block text-sm text-slate">The site&apos;s name, time zone, kinds of events, Discord channels, and who the admins are.</span>
+          </span>
+          <span aria-hidden className="text-slate">→</span>
+        </Link>
+      ) : (
+        <p className="text-sm text-slate">
+          The site&apos;s name, time zone and Discord channels are on Group settings, which {admins.map((a) => a.name).join(", ")}{" "}
+          {admins.length === 1 ? "looks after" : "look after"} as {admins.length === 1 ? "admin" : "admins"}.
         </p>
       )}
       <p className="text-sm text-slate">

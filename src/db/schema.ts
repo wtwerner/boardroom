@@ -38,6 +38,8 @@ export const user = sqliteTable("user", {
   bgaPremium: integer("bga_premium", { mode: "boolean" }).notNull().default(false),
   /** When they saved the name the group sees, the first step of getting set up. Until then it's their Discord name */
   nameChosenAt: integer("name_chosen_at", { mode: "timestamp_ms" }),
+  /** Can change the group's settings and make other members admins. While nobody is one, everyone can */
+  isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
   ...timestamps,
 });
 
@@ -508,6 +510,13 @@ export const bgaGame = sqliteTable(
 // ---------------------------------------------------------------------------
 // Bookkeeping
 // ---------------------------------------------------------------------------
+
+/** The group's settings, set by its admins on the site (src/lib/settings.ts). A JSON value per key */
+export const setting = sqliteTable("setting", {
+  key: text("key").primaryKey(),
+  value: text("value", { mode: "json" }).notNull(),
+  ...timestamps,
+});
 
 export const syncState = sqliteTable("sync_state", {
   key: text("key").primaryKey(),

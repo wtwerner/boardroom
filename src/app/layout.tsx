@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Archivo } from "next/font/google";
 import { SITE_NAME } from "@/config";
+import { loadSettings } from "@/lib/settings-store";
 import "./globals.css";
 
 const archivo = Archivo({
@@ -9,10 +10,13 @@ const archivo = Archivo({
   variable: "--font-archivo",
 });
 
-export const metadata: Metadata = {
-  title: { default: SITE_NAME, template: `%s · ${SITE_NAME}` },
-  description: "What our game group plays, loves, and should play next.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  await loadSettings();
+  return {
+    title: { default: SITE_NAME, template: `%s · ${SITE_NAME}` },
+    description: "What our game group plays, loves, and should play next.",
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: [

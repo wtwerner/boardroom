@@ -19,12 +19,14 @@ import { WhichRow } from "./which-row";
 import { SyncDiscordButton } from "./sync-button";
 import { DeletePlayButton } from "./delete-play-button";
 import { EditPlayButton, PlayEditorProvider } from "./play-editor";
+import { loadSettings } from "@/lib/settings-store";
 
 export const metadata: Metadata = { title: "Plays" };
 
 const PAGE_SIZE = 60;
 
-export default function PlaysPage(props: PageProps<"/plays">) {
+export default async function PlaysPage(props: PageProps<"/plays">) {
+  await loadSettings();
   return (
     <>
       <PageHeader title="Plays">

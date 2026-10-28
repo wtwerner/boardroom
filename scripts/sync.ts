@@ -7,6 +7,8 @@
  */
 async function main() {
   process.loadEnvFile(process.argv[2] ?? ".env.local");
+  // The channels, names and time zone are on Group settings
+  await (await import("@/lib/settings-store")).loadSettings({ fresh: true });
   // Imported after the env file is loaded — the db client reads it on import
   const { hasBggToken } = await import("@/lib/bgg");
   const { syncBgaGames, syncBggCollections, syncDiscordPlays } = await import("@/lib/sync");

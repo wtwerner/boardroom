@@ -6,6 +6,7 @@ import type { RsvpStatus } from "@/db/enums";
 import { DEMO_PEOPLE, demoCalendar, demoRefusal } from "./demo";
 import { nightTitle, zonedToUtc } from "./nights";
 import { parsePlayMessage } from "./play-parser";
+import { loadSettings } from "./settings-store";
 import { savePlay } from "./sync";
 
 // [bggId, name, year, min, max, best, minTime, maxTime, weight, rating, owners]
@@ -176,19 +177,20 @@ const BOX_ART: Record<number, [string, string]> = {
  * Wipes the group's data and sign-ins and fills the database with the made-up group from
  * demo.ts, dated from today: members, their shelves and opinions, ~40 plays (through the real
  * Discord-message parser and save path), the nights coming up and a poll. Needs no network:
- * the games' BGG details are below. Whoever calls it checks it's pointed at a database that's
- * fine to wipe.
+ * the games' BGG details are below. Sam is its admin, and Group settings go back to the
+ * environment variables. Whoever calls it checks it's pointed at a database that's fine to wipe.
  */
 export async function seedGroup(now = new Date()) {
   const cal = demoCalendar(now);
-  const casual = CASUAL_NIGHT ? cal.casual : [];
   // Start clean, everyone signed out. BGA's game list and the Discover catalog stay: they aren't the group's.
   for (const t of [
     schema.datePollVote, schema.datePollOption, schema.datePoll, schema.planReady, schema.planVote, schema.gamePlan, schema.nightRsvp, schema.gameNight, schema.suggestionVote, schema.suggestion, schema.ranking, schema.opinion, schema.playPlayer, schema.play,
-    schema.player, schema.collectionItem, schema.game, schema.session, schema.account, schema.verification, schema.user, schema.syncState,
+    schema.player, schema.collectionItem, schema.game, schema.session, schema.account, schema.verification, schema.user, schema.syncState, schema.setting,
   ]) {
     await db.delete(t);
   }
+  await loadSettings({ fresh: true });
+  const casual = CASUAL_NIGHT ? cal.casual : [];
 
   for (const [i, p] of DEMO_PEOPLE.entries()) {
     await db.insert(schema.user).values({
@@ -200,6 +202,7 @@ export async function seedGroup(now = new Date()) {
       createdAt: new Date(`${cal.core[0].date}T12:00:00Z`),
       discordId: `9000000000000000${i}`,
       bggUsername: `${p.name.toLowerCase()}_plays`,
+      isAdmin: i === 0,
     });
     await db.insert(schema.player).values({ name: p.name, userId: p.id, color: p.color, discordId: `9000000000000000${i}` });
   }

@@ -15,6 +15,8 @@ import { and, eq, gte, isNotNull } from "drizzle-orm";
 async function main() {
   // Variables already set (production's, from op run) win over the file
   if (!process.env.DATABASE_URL) process.loadEnvFile(".env.local");
+  // The channels, names and time zone are on Group settings
+  await (await import("@/lib/settings-store")).loadSettings({ fresh: true });
   const move = process.argv.includes("--move");
   // Imported after the env file is loaded — the db client reads it on import
   const { db, schema } = await import("@/db");

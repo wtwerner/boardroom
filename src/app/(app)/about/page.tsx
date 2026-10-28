@@ -6,13 +6,12 @@ import { PageHeader, Panel, TextLink } from "@/components/ui";
 import { MIN_EVIDENCE } from "@/lib/recommend";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { inSentence } from "@/lib/text";
+import { loadSettings } from "@/lib/settings-store";
 import { HEAVY_WEIGHT, TIER_LABEL } from "@/lib/tier";
 
 export const metadata: Metadata = { title: "How it works" };
 
-// The nights and the two lists by the names this group gives them, for use mid-sentence
-const core = inSentence(NIGHT_NAMES.core);
-const casual = inSentence(NIGHT_NAMES.casual);
+// The two lists by their names, for use mid-sentence
 const heavy = inSentence(TIER_LABEL.heavy);
 const light = inSentence(TIER_LABEL.light);
 
@@ -27,7 +26,11 @@ const SECTIONS = [
 ] as const;
 
 /** What every number on the site means and where it comes from, in one place. */
-export default function AboutPage() {
+export default async function AboutPage() {
+  await loadSettings();
+  // The nights by the names this group gives them, for use mid-sentence
+  const core = inSentence(NIGHT_NAMES.core);
+  const casual = inSentence(NIGHT_NAMES.casual);
   return (
     <>
       <PageHeader title="How it works" />

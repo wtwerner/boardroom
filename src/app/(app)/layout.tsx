@@ -5,8 +5,10 @@ import { MoreMenu, type NavBadges, SideNav, TabBar } from "@/components/nav";
 import { Avatar, Meeple } from "@/components/ui";
 import { getNewToRank } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
+import { loadSettings } from "@/lib/settings-store";
 
-export default function AppLayout({ children }: LayoutProps<"/">) {
+export default async function AppLayout({ children }: LayoutProps<"/">) {
+  await loadSettings();
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
       <aside className="sticky top-0 hidden h-dvh flex-col bg-felt p-4 text-felt-ink md:flex">

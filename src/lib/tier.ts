@@ -2,7 +2,7 @@ import { HEAVY_WEIGHT } from "@/config";
 import type { Night, Tier } from "@/db/enums";
 
 /**
- * BGG weight from which a game is ranked with the heavy games (2.75 unless HEAVY_GAME_WEIGHT
+ * BGG weight from which a game is ranked with the heavy games (2.75 unless Group settings
  * says otherwise). Pick it where the group's own nights and its lighter games split apart.
  */
 export { HEAVY_WEIGHT };

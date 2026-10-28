@@ -1,5 +1,7 @@
 import "server-only";
+import { CASUAL_NIGHT, SETTINGS } from "@/config";
 import type { Night } from "@/db/enums";
+import { botCommands } from "./discord-commands";
 import { type AppEmoji, appEmoji } from "./icons";
 import type { SignInRefusal } from "./sign-in-refusal";
 
@@ -59,9 +61,12 @@ async function discordFetch<T>(path: string, init?: { method: "POST" | "PATCH" |
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** The role someone needs to sign in, from Group settings, or null when anyone in the server can */
+const memberRole = () => SETTINGS.memberRole;
+
 /**
  * Why this Discord user may not sign in, or null if they may: they must be in the
- * group's server, and hold DISCORD_MEMBER_ROLE_ID when that's configured.
+ * group's server, and hold the member role when Group settings names one.
  */
 export async function groupMemberRefusal(discordUserId: string): Promise<SignInRefusal | null> {
   const guildId = process.env.DISCORD_GUILD_ID;
@@ -70,47 +75,45 @@ export async function groupMemberRefusal(discordUserId: string): Promise<SignInR
   const member = await discordFetch<GuildMember>(`/guilds/${guildId}/members/${discordUserId}`);
   if (!member) return "not_in_server";
 
-  const roleId = process.env.DISCORD_MEMBER_ROLE_ID;
+  const roleId = memberRole();
   return roleId && !member.roles.includes(roleId) ? "missing_role" : null;
 }
 
-/**
- * Each night logs plays in its own channel: the core group's (DISCORD_PLAYS_CHANNEL_ID) and,
- * when DISCORD_CASUAL_CHANNEL_ID is set, the casual night's.
- */
+/** The casual night's channels are only used while the group has one */
+const forNight = (night: Night, core: string | null, casual: string | null) => (night === "casual" ? (CASUAL_NIGHT ? casual : null) : core);
+
+/** Each night logs plays in its own channel, set on Group settings: the core group's and, with a casual night, the casual night's */
 export function playsChannel(night: Night) {
-  return (night === "casual" ? process.env.DISCORD_CASUAL_CHANNEL_ID : process.env.DISCORD_PLAYS_CHANNEL_ID) || null;
+  return forNight(night, SETTINGS.playsChannel, SETTINGS.casualChannel);
 }
 
 function requireChannel(night: Night) {
   const id = playsChannel(night);
-  if (!id) throw new Error(night === "casual" ? "DISCORD_CASUAL_CHANNEL_ID is not set" : "DISCORD_PLAYS_CHANNEL_ID is not set");
+  if (!id) throw new Error(`Group settings has no plays channel for ${night === "casual" ? "the casual night" : "the group"}`);
   return id;
 }
 
 /**
- * Each kind of night's events channel: DISCORD_CORE_EVENTS_CHANNEL_ID and
- * DISCORD_CASUAL_EVENTS_CHANNEL_ID. Boardroom posts its nights there, with a thread for each.
- * Either can be a text channel or a forum.
+ * Each kind of night's events channel, set on Group settings. Boardroom posts its nights there,
+ * with a thread for each. Either can be a text channel or a forum.
  */
 export function eventsChannel(night: Night) {
-  return (night === "casual" ? process.env.DISCORD_CASUAL_EVENTS_CHANNEL_ID : process.env.DISCORD_CORE_EVENTS_CHANNEL_ID) || null;
+  return forNight(night, SETTINGS.coreEventsChannel, SETTINGS.casualEventsChannel);
 }
 
 /**
  * Where each kind of night is announced, when its events channel is somewhere people don't
- * read as they chat (a forum, say): DISCORD_CORE_ANNOUNCE_CHANNEL_ID and
- * DISCORD_CASUAL_ANNOUNCE_CHANNEL_ID. The announcement shows the details and links to the post,
- * which has the buttons, and takes the night's ping. Unset, or the events channel itself, there's
- * no announcement.
+ * read as they chat (a forum, say), set on Group settings. The announcement shows the details
+ * and links to the post, which has the buttons, and takes the night's ping. Unset, or the events
+ * channel itself, there's no announcement.
  */
 export function announceChannel(night: Night) {
-  const id = (night === "casual" ? process.env.DISCORD_CASUAL_ANNOUNCE_CHANNEL_ID : process.env.DISCORD_CORE_ANNOUNCE_CHANNEL_ID)?.trim() || null;
+  const id = forNight(night, SETTINGS.coreAnnounceChannel, SETTINGS.casualAnnounceChannel);
   return id && id !== eventsChannel(night) ? id : null;
 }
 
 /** Whether signing in needs a particular role in the server, rather than just being in it */
-export const hasMemberRole = () => Boolean(process.env.DISCORD_MEMBER_ROLE_ID);
+export const hasMemberRole = () => Boolean(memberRole());
 
 /** Someone in the group's server, with the name the server shows and whether they hold the member role. Null if they aren't in it. */
 export async function getServerMember(discordUserId: string) {
@@ -118,14 +121,22 @@ export async function getServerMember(discordUserId: string) {
   if (!guildId) throw new Error("DISCORD_GUILD_ID is not set");
   const m = await discordFetch<GuildMember>(`/guilds/${guildId}/members/${discordUserId}`);
   if (!m) return null;
-  const roleId = process.env.DISCORD_MEMBER_ROLE_ID;
+  const roleId = memberRole();
   return { id: m.user.id, name: m.nick || displayName(m.user), bot: Boolean(m.user.bot), hasRole: roleId ? m.roles.includes(roleId) : null };
+}
+
+/** Whether someone in the group's server holds this role. False when they aren't in it. */
+export async function holdsRole(discordUserId: string, roleId: string) {
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!guildId) throw new Error("DISCORD_GUILD_ID is not set");
+  const m = await discordFetch<GuildMember>(`/guilds/${guildId}/members/${discordUserId}`);
+  return Boolean(m?.roles.includes(roleId));
 }
 
 /** The member role's name in the server ("Core group"), for messages that say what someone was given */
 export async function memberRoleName() {
   const guildId = process.env.DISCORD_GUILD_ID;
-  const roleId = process.env.DISCORD_MEMBER_ROLE_ID;
+  const roleId = memberRole();
   if (!guildId || !roleId) return null;
   const roles = (await discordFetch<{ id: string; name: string }[]>(`/guilds/${guildId}/roles`)) ?? [];
   return roles.find((r) => r.id === roleId)?.name ?? null;
@@ -137,8 +148,8 @@ export async function memberRoleName() {
  */
 export async function giveMemberRole(discordUserId: string, reason: string) {
   const guildId = process.env.DISCORD_GUILD_ID;
-  const roleId = process.env.DISCORD_MEMBER_ROLE_ID;
-  if (!guildId || !roleId) throw new Error("DISCORD_MEMBER_ROLE_ID is not set");
+  const roleId = memberRole();
+  if (!guildId || !roleId) throw new Error("Group settings has no member role");
   await discordFetch(`/guilds/${guildId}/members/${discordUserId}/roles/${roleId}`, { method: "PUT", reason });
 }
 
@@ -156,7 +167,7 @@ export async function sendDirectMessage(discordUserId: string, body: MessageBody
 }
 
 /**
- * Where someone invited to the core group's nights is greeted: DISCORD_WELCOME_CHANNEL_ID, or
+ * Where someone invited to the core group's nights is greeted: the welcome channel on Group settings, or
  * else the channel the core group's nights are announced in, its events channel (unless that's
  * a forum, which only takes posts), or its plays channel. Never one of the casual night's
  * channels.
@@ -165,7 +176,7 @@ export async function welcomeChannel() {
   const casual = new Set([eventsChannel("casual"), announceChannel("casual"), playsChannel("casual")].filter(Boolean));
   const events = eventsChannel("core");
   const eventsTakesMessages = events ? !(await isForumChannel(events).catch(() => true)) : false;
-  return [process.env.DISCORD_WELCOME_CHANNEL_ID, announceChannel("core"), eventsTakesMessages && events, playsChannel("core")].find((id) => id && !casual.has(id)) || null;
+  return [SETTINGS.welcomeChannel, announceChannel("core"), eventsTakesMessages && events, playsChannel("core")].find((id) => id && !casual.has(id)) || null;
 }
 
 /**
@@ -191,11 +202,11 @@ export function commandName() {
 }
 
 /**
- * Who's pinged when a night of this kind is first posted: DISCORD_CORE_NIGHT_PING and
- * DISCORD_CASUAL_NIGHT_PING, each "here", "everyone" or a role id. Unset pings nobody.
+ * Who's pinged when a night of this kind is first posted, set on Group settings: "here",
+ * "everyone" or a role id. Unset pings nobody.
  */
 export function nightPingSetting(night: Night) {
-  return (night === "casual" ? process.env.DISCORD_CASUAL_NIGHT_PING : process.env.DISCORD_CORE_NIGHT_PING)?.trim() || undefined;
+  return (night === "casual" ? SETTINGS.casualNightPing : SETTINGS.coreNightPing) ?? undefined;
 }
 
 /**
@@ -214,7 +225,7 @@ export const canPostToDiscord = (night: Night = "core") => Boolean(process.env.D
 export async function listGuildMembers(): Promise<{ id: string; name: string; username: string; hasRole: boolean | null }[]> {
   const guildId = process.env.DISCORD_GUILD_ID;
   if (!guildId || !process.env.DISCORD_BOT_TOKEN) return [];
-  const roleId = process.env.DISCORD_MEMBER_ROLE_ID;
+  const roleId = memberRole();
   try {
     const members = (await discordFetch<GuildMember[]>(`/guilds/${guildId}/members?limit=1000`)) ?? [];
     return members
@@ -347,6 +358,52 @@ export async function fetchAppEmoji(): Promise<AppEmoji> {
   } catch (err) {
     console.error("Couldn't list the bot's emoji", err);
     return {};
+  }
+}
+
+/**
+ * Register the bot's slash command and its Invite to … user command in the group's server, as
+ * `welcome` names it. Guild commands show up at once, where global ones can take an hour.
+ */
+export async function registerCommands(welcome: string) {
+  const appId = process.env.DISCORD_CLIENT_ID;
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!appId || !guildId) throw new Error("Set DISCORD_CLIENT_ID and DISCORD_GUILD_ID");
+  return (await discordFetch<{ name: string }[]>(`/applications/${appId}/guilds/${guildId}/commands`, { method: "PUT", body: botCommands(commandName(), welcome) })) ?? [];
+}
+
+// Text (0), announcement (5) and forum (15) channels: the ones Boardroom can read or post in
+const POSTABLE_CHANNELS = new Set([0, 5, 15]);
+
+/** The server's channels Boardroom can use, in the order Discord lists them, for the pickers on Group settings. [] without the bot. */
+export async function listGuildChannels(): Promise<{ id: string; name: string; forum: boolean }[]> {
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!guildId || !process.env.DISCORD_BOT_TOKEN) return [];
+  try {
+    const channels = (await discordFetch<{ id: string; name: string; type: number; position: number }[]>(`/guilds/${guildId}/channels`)) ?? [];
+    return channels
+      .filter((c) => POSTABLE_CHANNELS.has(c.type))
+      .sort((a, b) => a.position - b.position)
+      .map((c) => ({ id: c.id, name: c.name, forum: c.type === 15 }));
+  } catch (err) {
+    console.error("Couldn't list Discord channels", err);
+    return [];
+  }
+}
+
+/** The server's roles people can be given (not @everyone, not a bot's own), highest first. [] without the bot. */
+export async function listGuildRoles(): Promise<{ id: string; name: string }[]> {
+  const guildId = process.env.DISCORD_GUILD_ID;
+  if (!guildId || !process.env.DISCORD_BOT_TOKEN) return [];
+  try {
+    const roles = (await discordFetch<{ id: string; name: string; position: number; managed: boolean }[]>(`/guilds/${guildId}/roles`)) ?? [];
+    return roles
+      .filter((r) => r.id !== guildId && !r.managed)
+      .sort((a, b) => b.position - a.position)
+      .map((r) => ({ id: r.id, name: r.name }));
+  } catch (err) {
+    console.error("Couldn't list Discord roles", err);
+    return [];
   }
 }
 

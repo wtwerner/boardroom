@@ -1,16 +1,16 @@
 "use server";
 
 import { and, eq, inArray, isNull, like, lte, sql } from "drizzle-orm";
-import { refresh } from "next/cache";
+import { refresh, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
-import { CLAUDE_IDEAS_PER_DAY, GROUP_NIGHTS, SITE_URL, TIME_ZONE } from "@/config";
+import { CLAUDE_IDEAS_PER_DAY, GROUP_NIGHTS, SETTINGS, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
-import { canPostToDiscord, deletePlaysMessage, discordCode, editPlaysMessage, fetchAppEmoji, hasInteractions, postPlaysMessage, sendDirectMessage } from "@/lib/discord";
+import { canPostToDiscord, deletePlaysMessage, discordCode, editPlaysMessage, fetchAppEmoji, hasInteractions, holdsRole, postPlaysMessage, registerCommands, sendDirectMessage } from "@/lib/discord";
 import { type FormattablePlay, type ParsedPlayer, formatPlayMessage } from "@/lib/play-parser";
 import { buildPlayMessage } from "@/lib/discord-message";
 import { buildGroupContext, buildNightContext } from "@/lib/insights";
@@ -20,11 +20,13 @@ import { refreshCatalog } from "@/lib/catalog";
 import { type SeatNight, getGameTiers, getPlayerNights } from "@/lib/queries";
 import { nightsVersion } from "@/lib/events";
 import { replaceTier } from "@/lib/tier";
-import { requireUser } from "@/lib/session";
+import { requireAdmin, requireUser } from "@/lib/session";
+import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
+import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
 import { answerBringAsk as saveBringAnswer, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
-import { welcomeToGroup as welcome } from "@/lib/welcome";
+import { canWelcome, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
 import { addPollDate, cancelPoll, createPoll, ownPoll, pickPollDate as savePickedDate, reopenPoll as saveReopened, setPollVote as savePollVote } from "@/lib/poll-store";
 import { announcePickedLater, syncPollPostLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
@@ -455,6 +457,65 @@ export async function loadBgaGames(): Promise<ActionResult> {
     const { games } = await syncBgaGames();
     refresh();
     return { ok: true, message: `Loaded ${games} games from Board Game Arena.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Group settings and admins
+// ---------------------------------------------------------------------------
+
+export type GroupSettingsResult = ActionResult | { ok: false; error: string; fields: Partial<Record<SettingKey, string>> };
+
+/** Save Group settings. Fields the form didn't show (the casual night's, with it off) keep what they were. */
+export async function saveGroupSettings(_prev: GroupSettingsResult | null, form: FormData): Promise<GroupSettingsResult> {
+  try {
+    const me = await requireAdmin();
+    const input = Object.fromEntries(SETTING_KEYS.filter((key) => form.has(key)).map((key) => [key, form.get(key)]));
+    const checked = checkSettings(input, SETTINGS);
+    if (!checked.ok) return { ok: false, error: "Some of those need fixing first.", fields: checked.errors };
+
+    // Signing in needs the member role, so an admin without it would lock themselves out
+    const role = checked.settings.memberRole;
+    if (role && role !== SETTINGS.memberRole) {
+      const row = await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } });
+      if (row?.discordId && !(await holdsRole(row.discordId, role))) {
+        return { ok: false, error: "Some of those need fixing first.", fields: { memberRole: "You don't have this role, so you couldn't sign in again. Take it in Discord first." } };
+      }
+    }
+
+    const welcomeBefore = welcomeName();
+    await saveSettings(checked.settings);
+    updateTag(SETTINGS_TAG);
+
+    // The Invite to … command on Discord's right-click menu is named for the site or the core night
+    if (welcomeName() !== welcomeBefore && canWelcome() && hasInteractions()) {
+      try {
+        await registerCommands(welcomeName());
+      } catch (err) {
+        console.error("Couldn't rename the Invite command", err);
+        return { ok: true, message: "Saved. Discord's right-click Invite command kept its old name: run pnpm discord:commands to rename it." };
+      }
+    }
+    return { ok: true, message: "Saved." };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Make a member an admin, or stop them being one. The last admin stays one, so the settings never fall open by accident. */
+export async function setAdmin(userId: string, admin: boolean): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    if (!admin) {
+      const admins = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.isAdmin, true));
+      if (admins.length === 1 && admins[0].id === userId) return { ok: false, error: "Make someone else an admin first." };
+    }
+    const [row] = await db.update(schema.user).set({ isAdmin: admin }).where(eq(schema.user.id, userId)).returning({ name: schema.user.name });
+    if (!row) return { ok: false, error: "They aren't a member." };
+    refresh();
+    return { ok: true, message: admin ? `${row.name} is an admin.` : `${row.name} isn't an admin anymore.` };
   } catch (err) {
     return fail(err);
   }
@@ -1038,7 +1099,7 @@ export async function askClaudeForNight(input: {
   candidateIds: number[];
 }): Promise<{ ok: true; picks: NightPicks } | { ok: false; error: string }> {
   await requireUser();
-  if (!claudeReady()) return { ok: false, error: "Set CLAUDE=on and ANTHROPIC_API_KEY to turn on Claude's picks." };
+  if (!claudeReady()) return { ok: false, error: "Claude's picks are off. An admin can turn them on in Group settings, once the site has an ANTHROPIC_API_KEY." };
   const night: Night = input.night === "casual" ? "casual" : "core";
   try {
     const context = await buildNightContext({ ...input, night, others: Math.max(0, Math.min(20, Math.trunc(input.others) || 0)) });
@@ -1122,7 +1183,7 @@ export async function takeOffBuyList(suggestionId: number): Promise<ActionResult
  */
 export async function askClaudeForPicks(scope: "group" | "me", nightInput: Night = "core"): Promise<ActionResult> {
   const me = await requireUser();
-  if (!claudeReady()) return { ok: false, error: "Set CLAUDE=on and ANTHROPIC_API_KEY to turn on Claude's picks." };
+  if (!claudeReady()) return { ok: false, error: "Claude's picks are off. An admin can turn them on in Group settings, once the site has an ANTHROPIC_API_KEY." };
   if (!hasBggToken()) return { ok: false, error: "Picks need the BGG API token, so each one can be checked and scored." };
   try {
     // A cap per person per day: each run is a large request to Claude

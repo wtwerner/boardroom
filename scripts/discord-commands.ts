@@ -4,29 +4,24 @@ import { readFileSync } from "node:fs";
  * Registers the bot's slash command (/event, or DISCORD_COMMAND_NAME) and its Invite to … user
  * command in the group's server, and uploads the symbols its posts use (assets/discord-emoji)
  * as the bot's own emoji. Run it once when setting up, and again after the commands or symbols
- * change or DISCORD_COMMAND_NAME does:
+ * change or DISCORD_COMMAND_NAME does. (Saving a new site or night name on Group settings
+ * registers the renamed Invite to … command itself.)
  *
  *   pnpm discord:commands                  # uses .env.local
  *   pnpm discord:commands .env.discord
  */
 async function main() {
   process.loadEnvFile(process.argv[2] ?? ".env.local");
-  const { botCommands } = await import("@/lib/discord-commands");
-  const { commandName } = await import("@/lib/discord");
+  // The channels, names and time zone are on Group settings
+  await (await import("@/lib/settings-store")).loadSettings({ fresh: true });
+  const { registerCommands } = await import("@/lib/discord");
   const { welcomeName } = await import("@/lib/welcome");
   const { ICON_NAMES } = await import("@/lib/icons");
 
   const { DISCORD_CLIENT_ID: appId, DISCORD_GUILD_ID: guildId, DISCORD_BOT_TOKEN: token } = process.env;
   if (!appId || !guildId || !token) throw new Error("Set DISCORD_CLIENT_ID, DISCORD_GUILD_ID and DISCORD_BOT_TOKEN");
 
-  // Guild commands show up at once, where global ones can take an hour
-  const res = await fetch(`https://discord.com/api/v10/applications/${appId}/guilds/${guildId}/commands`, {
-    method: "PUT",
-    headers: { Authorization: `Bot ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify(botCommands(commandName(), welcomeName())),
-  });
-  if (!res.ok) throw new Error(`Discord refused the commands: ${res.status} ${await res.text()}`);
-  const saved = (await res.json()) as { name: string }[];
+  const saved = await registerCommands(welcomeName());
   console.log(`Registered ${saved.map((c) => `/${c.name}`).join(", ")} in the server.`);
 
   // The app's own emoji work in any server it's in. One already uploaded is left as it is:

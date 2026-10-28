@@ -52,7 +52,7 @@ async function syncChannel(night: Night, result: SyncResult) {
   const recent = snowflakeAt(Date.now() - EDIT_WINDOW_DAYS * 86_400_000);
   const from = cursor === null || reread ? "0" : compareSnowflakes({ id: cursor }, { id: recent }) < 0 ? cursor : recent;
   const channelId = playsChannel(night);
-  if (!channelId) throw new Error("DISCORD_PLAYS_CHANNEL_ID is not set");
+  if (!channelId) throw new Error("Group settings has no plays channel");
   const messages = await fetchChannelMessagesAfter(channelId, from);
 
   for (const msg of messages) {

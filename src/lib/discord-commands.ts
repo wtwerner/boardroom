@@ -1,6 +1,6 @@
 /**
  * The bot's slash commands, as Discord registers them. Pure, so what's registered is tested;
- * scripts/discord-commands.ts sends them to the group's server.
+ * registerCommands() in discord.ts sends them to the group's server.
  */
 
 import type { Night } from "@/db/enums";

@@ -1,5 +1,6 @@
 import { handleInteraction } from "@/lib/discord-handlers";
 import { type Interaction, PING, isFromDiscord, pong } from "@/lib/interactions";
+import { loadSettings } from "@/lib/settings-store";
 
 /** Posting a night and finishing the reply run after the response; this is how long they get */
 export const maxDuration = 60;
@@ -19,5 +20,6 @@ export async function POST(request: Request) {
 
   const interaction = JSON.parse(body) as Interaction;
   if (interaction.type === PING) return Response.json(pong());
+  await loadSettings({ fresh: true });
   return Response.json(await handleInteraction(interaction));
 }

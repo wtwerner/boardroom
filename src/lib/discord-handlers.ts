@@ -1,7 +1,7 @@
 import "server-only";
 import { after } from "next/server";
 import { and, desc, eq, isNotNull } from "drizzle-orm";
-import { CASUAL_NIGHT, GROUP_NIGHTS, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
+import { CASUAL_NIGHT, GROUP_NIGHTS, NIGHT_NAMES, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { NIGHTS, type Night, POLL_MAX_DATES, type RsvpStatus } from "@/db/enums";
 import { commandName, editInteractionReply, eventsChannel, playsChannel, postsNights } from "./discord";
@@ -71,9 +71,13 @@ export async function handleInteraction(i: Interaction): Promise<object> {
   }
 }
 
-/** Members of the group: anyone in the server, or holders of DISCORD_MEMBER_ROLE_ID when it's set */
+/** Why a night or poll made here wasn't posted: no events channel for its kind on Group settings, or no bot token */
+const notPostedReason = (night: Night) =>
+  eventsChannel(night) ? "DISCORD_BOT_TOKEN isn't set" : `Group settings has no events channel${CASUAL_NIGHT ? ` for ${inSentence(NIGHT_NAMES[night])}` : ""}`;
+
+/** Members of the group: anyone in the server, or holders of the member role when Group settings names one */
 function isMember(i: Interaction) {
-  const role = process.env.DISCORD_MEMBER_ROLE_ID;
+  const role = SETTINGS.memberRole;
   return !role || Boolean(i.member?.roles.includes(role));
 }
 
@@ -84,7 +88,7 @@ const mayAnswer = (i: Interaction, night: Night) => night === "casual" || isMemb
  * Said to someone without the member role who tries something that needs it. Only reached when
  * there is a role, so it can name it (a mention, which shows the role's name without pinging).
  */
-const roleNeeded = () => `<@&${process.env.DISCORD_MEMBER_ROLE_ID}>`;
+const roleNeeded = () => `<@&${SETTINGS.memberRole}>`;
 const MEMBERS_ONLY = () => `That needs the ${roleNeeded()} role.`;
 
 /** Everyone's welcome at the casual night; this is a core group's night, and anyone with the role can invite them */
@@ -225,7 +229,7 @@ async function welcomeCommand(i: Interaction) {
   if (!target) return reply("Right-click someone in the server to invite them.");
   const member = await welcomeCandidate(target);
   if (member.already) return reply(escape(alreadyIn(member.name)));
-  const role = process.env.DISCORD_MEMBER_ROLE_ID;
+  const role = SETTINGS.memberRole;
   const question = role ? `Give **${escape(member.name)}** the <@&${role}> role?` : `Invite **${escape(member.name)}**?`;
   return ask(`${question} The bot will say hi in the channel and DM them a link to get set up.`, [
     { label: `Invite ${member.name}`.slice(0, 80), customId: actionId({ kind: "welcome", userId: target }) },
@@ -310,8 +314,7 @@ async function newNight(i: Interaction, form: Record<string, string>) {
     try {
       if (!postsNights(night)) {
         // Saved, but there's nowhere to post it: say so, rather than leave people looking for a post
-        const setting = eventsChannel(night) ? "DISCORD_BOT_TOKEN" : night === "casual" ? "DISCORD_CASUAL_EVENTS_CHANNEL_ID" : "DISCORD_CORE_EVENTS_CHANNEL_ID";
-        done += ` It isn't posted in Discord: ${setting} isn't set.`;
+        done += ` It isn't posted in Discord: ${notPostedReason(night)}.`;
       } else {
         // Not marked going, but added to the thread to follow it
         if ((await syncNightPost(row.id)) === "posted") await joinThread(row.id, undefined, [player.id]);
@@ -400,8 +403,7 @@ async function newPoll(i: Interaction, form: Record<string, string>) {
     let done = `Offered ${dates.length} ${dates.length === 1 ? "date" : "dates"} for **${escape(title)}**: ${dates.map((d) => `<t:${unix(d.startsAt)}:F>`).join(", ")}.`;
     try {
       if (!postsNights(night)) {
-        const setting = eventsChannel(night) ? "DISCORD_BOT_TOKEN" : night === "casual" ? "DISCORD_CASUAL_EVENTS_CHANNEL_ID" : "DISCORD_CORE_EVENTS_CHANNEL_ID";
-        done += ` It isn't posted in Discord: ${setting} isn't set.${night === "core" ? " People can vote on Plan." : ""}`;
+        done += ` It isn't posted in Discord: ${notPostedReason(night)}.${night === "core" ? " People can vote on Plan." : ""}`;
       } else if ((await syncPollPost(row.id)) === "posted") await joinPollThread(row.id, [player.id]);
       const posted = await db.query.datePoll.findFirst({ where: eq(schema.datePoll.id, row.id), columns: { url: true } });
       done += posted?.url ? ` It's posted: ${posted.url}` : "";

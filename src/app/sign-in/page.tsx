@@ -5,10 +5,12 @@ import { Meeple } from "@/components/ui";
 import { SignInButton } from "./sign-in-button";
 import { SignInOrRetry } from "./sign-in-error";
 import { DemoLogin, DevLogin } from "./dev-login";
+import { loadSettings } from "@/lib/settings-store";
 
 export const metadata: Metadata = { title: "Sign in" };
 
-export default function SignInPage() {
+export default async function SignInPage() {
+  await loadSettings();
   return (
     <main className="grid min-h-dvh place-items-center bg-felt px-4 text-felt-ink">
       <div className="w-full max-w-sm text-center">

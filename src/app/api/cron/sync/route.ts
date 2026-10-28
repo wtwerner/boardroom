@@ -1,7 +1,9 @@
+import { revalidateTag } from "next/cache";
 import { DEMO } from "@/config";
 import { hasBggToken } from "@/lib/bgg";
 import { refreshBgaDetails, refreshCatalog } from "@/lib/catalog";
 import { resetDemo } from "@/lib/demo-seed";
+import { SETTINGS_TAG, loadSettings } from "@/lib/settings-store";
 import { syncBgaGames, syncBggCollections, syncDiscordPlays } from "@/lib/sync";
 
 export const maxDuration = 300;
@@ -16,10 +18,13 @@ export async function GET(request: Request) {
     return new Response("Unauthorized", { status: 401 });
   }
 
+  await loadSettings({ fresh: true });
   const results: Record<string, unknown> = {};
   if (DEMO) {
     try {
       results.demo = await resetDemo();
+      // Group settings went back to the environment variables
+      revalidateTag(SETTINGS_TAG, "max");
     } catch (err) {
       return Response.json({ demo: { error: String(err) } }, { status: 500 });
     }
