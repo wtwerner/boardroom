@@ -1,0 +1,53 @@
+name: deploy
+# Deploys the site to Vercel production once ci passes on main, with the Vercel CLI. For a
+# group whose Vercel project isn't connected to the repo (Settings → Git → Disconnect), so the
+# Vercel GitHub app never acts on it. Needs the repo secrets VERCEL_TOKEN (vercel.com/account/
+# tokens, scoped to the project's team), VERCEL_ORG_ID and VERCEL_PROJECT_ID (in
+# .vercel/project.json after `vercel link`); without them it does nothing. Vercel builds it, so
+# the build log, the site's settings and its address stay in Vercel. A public repo's Actions
+# logs are public too, so this one says only whether it worked, with addresses blanked out.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    # Pushes to main that passed ci (not pull requests), or a run started by hand
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Check it's set up
+        id: setup
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "VERCEL_TOKEN, VERCEL_ORG_ID or VERCEL_PROJECT_ID isn't set, so there's nothing to deploy."
+          fi
+      - uses: actions/checkout@v7
+        if: steps.setup.outputs.ready == 'true'
+        with:
+          # The commit ci passed on, not whatever main is by now
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Deploy to Vercel
+        if: steps.setup.outputs.ready == 'true'
+        run: |
+          if npx --yes vercel@64.5.0 deploy --prod --yes --token "$VERCEL_TOKEN" > "$RUNNER_TEMP/deploy.log" 2>&1; then
+            echo "Deployed."
+          else
+            echo "The deploy failed. What Vercel said, with addresses blanked out (the full log is in Vercel):"
+            sed -E 's#https?://[^[:space:]]+#<address>#g; s#[[:alnum:].-]+\.vercel\.app#<address>#g' "$RUNNER_TEMP/deploy.log"
+            exit 1
+          fi

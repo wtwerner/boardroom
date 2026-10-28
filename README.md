@@ -140,6 +140,19 @@ git remote add upstream https://github.com/wtwerner/boardroom.git   # once
 git pull upstream main && git push
 ```
 
+### Deploying from GitHub Actions instead
+
+Vercel's GitHub app, which deploys a connected repo, also writes to it: a status on each commit, and it can set your site's address as the repo's website. To keep a public repo free of that, disconnect the project from the repo (in Vercel, **Settings → Git → Disconnect**) and let `.github/workflows/deploy.yml` deploy it once `ci` passes on `main`. Vercel still builds it, so the build log and settings stay there, and the workflow's log only says whether it worked.
+
+```sh
+vercel link                                                       # once, to make .vercel/project.json
+gh secret set VERCEL_TOKEN        # a token from vercel.com/account/tokens, scoped to the project's team
+gh secret set VERCEL_ORG_ID       # "orgId" in .vercel/project.json
+gh secret set VERCEL_PROJECT_ID   # "projectId" in .vercel/project.json
+```
+
+Without the three secrets the workflow does nothing, so a project that stays connected deploys the usual way.
+
 ## Developing
 
 ```sh
