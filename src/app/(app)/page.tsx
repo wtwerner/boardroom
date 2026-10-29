@@ -8,7 +8,7 @@ import { NightRow } from "@/components/night-row";
 import { type NightDetail, getNightsByDate, getUpcomingNights } from "@/lib/events";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { Avatar, Empty, GameCover, Meeple, PlayerChip, Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass, formatDate } from "@/components/ui";
-import { localDate } from "@/lib/nights";
+import { dayWord, localDate } from "@/lib/nights";
 import { requireUser } from "@/lib/session";
 import {
   getAttendance,
@@ -75,7 +75,7 @@ async function Home() {
       {lastNight && (
         <section>
           <p className="text-sm text-slate">
-            Last event was {formatDate(lastNight.date, { weekday: "long", month: "long", day: "numeric" })}
+            Last event was {dayWord(lastNight.date, localDate(new Date()))?.toLowerCase() ?? formatDate(lastNight.date, { weekday: "long", month: "long", day: "numeric" })}
             {lastNightId && (
               <>
                 {" · "}

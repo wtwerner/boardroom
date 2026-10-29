@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { CASUAL_NIGHT, NIGHT_NAMES, TIME_ZONE } from "@/config";
 import type { MeepleColor, Night } from "@/db/enums";
 import type { NightDetail } from "@/lib/events";
-import { nightWhen } from "@/lib/nights";
+import { isToday, nightWhen, soonLabel } from "@/lib/nights";
 import { Meeple, formatDate } from "./ui";
 
 /** A calendar-page date, in the night's color */
@@ -23,6 +23,26 @@ export function DateBadge({ iso, night, size = "md" }: { iso: string; night: Nig
       <span className={clsx("font-display", size === "lg" ? "text-3xl" : "text-2xl")}>{when.day}</span>
       <span className="text-[0.65rem] text-slate">{otherYear ? when.year : when.weekday}</span>
     </span>
+  );
+}
+
+/**
+ * When a night starts, said as "Tonight" when it's close: today's in a highlighted pill, the
+ * days either side as a word, and otherwise `date` ("Thu"). `keepDate` shows the date beside the
+ * word too, where there's no date badge to read it from. The full date shows on hover.
+ */
+export function NightWhen({ iso, soon, date, keepDate = false }: { iso: string; soon: string | null; date: string; keepDate?: boolean }) {
+  const when = nightWhen(iso, TIME_ZONE);
+  return (
+    <time dateTime={iso} title={`${when.label}, ${when.time}`}>
+      {isToday(soon) ? (
+        <span className="mr-1.5 rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-card">{soon}</span>
+      ) : (
+        soon && <span className="font-medium text-ink">{keepDate ? `${soon} · ` : `${soon} `}</span>
+      )}
+      {(!soon || keepDate) && `${date} `}
+      {when.time}
+    </time>
   );
 }
 
@@ -67,18 +87,28 @@ function nightStatus(n: NightDetail, names: Record<string, string>) {
 export function NightRow({ n, colors, names }: { n: NightDetail; colors: Record<string, MeepleColor | null>; names: Record<string, string> }) {
   if (n.past) return <PastRow n={n} />;
   const when = nightWhen(n.startsAt, TIME_ZONE);
+  const soon = soonLabel(n.startsAt, TIME_ZONE);
   const status = nightStatus(n, names);
   const members = n.going.filter((a) => a.userId);
   const others = n.going.length - members.length + n.guests;
   return (
-    <Link href={`/events/${n.id}`} className="flex items-start gap-4 rounded-xl border border-line bg-card p-3 hover:border-ink/40 hover:bg-felt-soft/40">
+    <Link
+      href={`/events/${n.id}`}
+      className={clsx(
+        "flex items-start gap-4 rounded-xl border bg-card p-3 hover:border-ink/40 hover:bg-felt-soft/40",
+        isToday(soon) ? "border-accent/70" : "border-line",
+      )}
+    >
       <DateBadge iso={n.startsAt} night={n.night} />
       <span className="min-w-0 flex-1 space-y-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-display text-lg leading-tight">{n.title}</span>
           <NightTag night={n.night} />
         </span>
-        <span className="block text-sm text-slate">{[`${when.weekday} ${when.time}`, n.location].filter(Boolean).join(" · ")}</span>
+        <span className="block text-sm text-slate">
+          <NightWhen iso={n.startsAt} soon={soon} date={when.weekday} />
+          {n.location && ` · ${n.location}`}
+        </span>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
           <span className="inline-flex items-center gap-1" title={n.going.map((a) => a.name).join(", ")}>
             {members.map((a, i) => (

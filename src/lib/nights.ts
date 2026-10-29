@@ -54,6 +54,32 @@ export function nightWhen(iso: string, timeZone: string) {
   };
 }
 
+/** A night starting from this hour is "Tonight", not "Today" */
+const EVENING_FROM_HOUR = 17;
+
+/** A calendar date (YYYY-MM-DD) said as a word when it's next to `today`'s: "Today", "Tomorrow" or "Yesterday" */
+export function dayWord(date: string, today: string) {
+  const days = Math.round((Date.parse(date) - Date.parse(today)) / 86_400_000);
+  return days === 0 ? "Today" : days === 1 ? "Tomorrow" : days === -1 ? "Yesterday" : null;
+}
+
+/**
+ * When a night is, the way people say it when it's close: "Tonight" (or "Today" for one that
+ * starts before the evening), "Tomorrow", and "Last night" for one still on after midnight.
+ * Null further out, where the weekday reads better.
+ */
+export function soonLabel(iso: string, timeZone: string, now = new Date()) {
+  const when = nightWhen(iso, timeZone);
+  const evening = Number(when.clock.slice(0, 2)) >= EVENING_FROM_HOUR;
+  const word = dayWord(when.date, now.toLocaleDateString("en-CA", { timeZone }));
+  if (word === "Today") return evening ? "Tonight" : "Today";
+  if (word === "Yesterday") return evening ? "Last night" : "Yesterday";
+  return word;
+}
+
+/** Whether a night is today's, to highlight it */
+export const isToday = (soon: string | null) => soon === "Tonight" || soon === "Today";
+
 /** What a night on `date` is called unless someone names it, from the group's template: "10/18 Game Night" */
 export function nightTitle(night: Night, date: string, game: string | null = null) {
   return fillTitle(NIGHT_TITLES[night], date, game);

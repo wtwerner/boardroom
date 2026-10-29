@@ -12,7 +12,7 @@ import { getPastNights, getUpcomingNights } from "@/lib/events";
 import { NightForm } from "../events/night-form";
 import { calledOffPolls, openPolls } from "@/lib/poll-store";
 import { pollTitle } from "@/lib/poll-post";
-import { localDate, nightTitle, nightWhen } from "@/lib/nights";
+import { localDate, nightTitle, nightWhen, soonLabel } from "@/lib/nights";
 import { CalledOffPoll, PollCard, PollForm, type PollView } from "./polls";
 
 export const metadata: Metadata = { title: "Plan" };
@@ -55,6 +55,7 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
         startsAt: d.startsAt,
         label: when.label,
         time: when.time,
+        soon: soonLabel(d.startsAt, TIME_ZONE),
         past: d.past,
         voters: d.voters.map((v) => ({ playerId: v.playerId, name: v.name, userId: v.userId })),
         defaultTitle: nightTitle(p.night, localDate(new Date(d.startsAt))),

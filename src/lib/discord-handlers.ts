@@ -28,7 +28,7 @@ import {
 } from "./interactions";
 import { answerBringAsk, cancelNight, createNight, editNight, ownNight, playerForDiscordUser, playerNamed, setRsvp } from "./night-store";
 import { joinThread, postInThread, syncNightPost, syncNightPostLater, upcomingOwnNights } from "./night-post";
-import { localDate, nightTitle, nightWhen } from "./nights";
+import { localDate, nightTitle, nightWhen, soonLabel } from "./nights";
 import { inSentence } from "./text";
 import { formatForForm, parseDateList, parseTime, parseWhen } from "./when";
 import { addPollDate, cancelPoll, createPoll, datesStaying, findNewDate, loadPoll, ownPoll, pickPollDate, pollOfDate, reopenPoll, setPollVote } from "./poll-store";
@@ -123,7 +123,10 @@ async function autocomplete(i: Interaction) {
   const nights = await upcomingOwnNights();
   return choices(
     nights
-      .map((n) => ({ name: `${nightWhen(n.startsAt.toISOString(), TIME_ZONE).label} · ${n.title}`, value: String(n.id) }))
+      .map((n) => {
+        const iso = n.startsAt.toISOString();
+        return { name: `${soonLabel(iso, TIME_ZONE) ?? nightWhen(iso, TIME_ZONE).label} · ${n.title}`, value: String(n.id) };
+      })
       .filter((c) => !typed || c.name.toLowerCase().includes(typed)),
   );
 }

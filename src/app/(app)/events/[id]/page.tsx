@@ -5,7 +5,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { DEMO, GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { LogPlayForm } from "../../plays/log-play-form";
 import { db, schema } from "@/db";
-import { DateBadge, NightTag } from "@/components/night-row";
+import { DateBadge, NightTag, NightWhen } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
 import { discordAppUrl } from "@/lib/discord-components";
 import { Empty, Panel, Section, Skeleton, TextLink } from "@/components/ui";
@@ -18,7 +18,7 @@ import { getTasteChances } from "@/lib/recommend";
 import { type NightDetail, loadNight } from "@/lib/events";
 import { datesStaying, findingDateFor } from "@/lib/poll-store";
 import { dateChoiceLabel } from "@/lib/poll-message";
-import { nightWhen, tableFor } from "@/lib/nights";
+import { nightWhen, soonLabel, tableFor } from "@/lib/nights";
 import { GamePicker, GameSearch } from "../game-picker";
 import { CasualGames } from "./casual-games";
 import { CoreGames } from "./core-games";
@@ -253,7 +253,10 @@ function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }
           <NightTag night={n.night} />
           {n.cancelled && <span className="rounded-full bg-meeple-red/12 px-2 py-0.5 text-xs font-medium">Cancelled</span>}
         </div>
-        <p className="text-slate">{[n.fromPlays ? when.label : `${when.label}, ${when.time}`, n.location].filter(Boolean).join(" · ")}</p>
+        <p className="text-slate">
+          {n.fromPlays ? when.label : <NightWhen iso={n.startsAt} soon={soonLabel(n.startsAt, TIME_ZONE)} date={`${when.label},`} keepDate />}
+          {n.location && ` · ${n.location}`}
+        </p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         {n.posted && n.url && (

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { monthLabel, nightTitle, nightWhen, recentMonths, tableFor, zonedToUtc } from "./nights";
+import { dayWord, monthLabel, nightTitle, nightWhen, recentMonths, soonLabel, tableFor, zonedToUtc } from "./nights";
 
 describe("zonedToUtc", () => {
   it("reads a date and time in the group's time zone", () => {
@@ -59,5 +59,40 @@ describe("monthLabel", () => {
   it("names the month, with the year when asked", () => {
     expect(monthLabel("2025-11")).toBe("Nov");
     expect(monthLabel("2026-01", true)).toBe("Jan '26");
+  });
+});
+
+describe("dayWord", () => {
+  it("names the days next to today, across a month's end", () => {
+    expect(dayWord("2026-10-31", "2026-10-31")).toBe("Today");
+    expect(dayWord("2026-11-01", "2026-10-31")).toBe("Tomorrow");
+    expect(dayWord("2026-10-30", "2026-10-31")).toBe("Yesterday");
+    expect(dayWord("2026-11-02", "2026-10-31")).toBeNull();
+  });
+});
+
+describe("soonLabel", () => {
+  const tz = "America/Chicago";
+  // Thu 10/29, 3pm in Chicago
+  const now = new Date("2026-10-29T20:00:00Z");
+  const at = (date: string, time: string) => zonedToUtc(date, time, tz).toISOString();
+
+  it("says tonight for an evening, today for an afternoon", () => {
+    expect(soonLabel(at("2026-10-29", "19:00"), tz, now)).toBe("Tonight");
+    expect(soonLabel(at("2026-10-29", "14:00"), tz, now)).toBe("Today");
+  });
+
+  it("goes by the group's calendar, not UTC's", () => {
+    // 7pm in Chicago is past midnight in UTC
+    expect(soonLabel(at("2026-10-30", "19:00"), tz, now)).toBe("Tomorrow");
+    expect(soonLabel(at("2026-10-29", "19:00"), tz, new Date("2026-10-30T04:30:00Z"))).toBe("Tonight");
+  });
+
+  it("calls a night still on after midnight last night", () => {
+    expect(soonLabel(at("2026-10-28", "19:00"), tz, now)).toBe("Last night");
+  });
+
+  it("leaves nights further out to their weekday", () => {
+    expect(soonLabel(at("2026-10-31", "19:00"), tz, now)).toBeNull();
   });
 });

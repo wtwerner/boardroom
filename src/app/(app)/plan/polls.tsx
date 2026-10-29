@@ -32,6 +32,8 @@ export type PollView = {
     /** "Thu, Nov 5" and "7:00 PM" */
     label: string;
     time: string;
+    /** "Tonight", "Tomorrow" and so on, when it's close */
+    soon: string | null;
     past: boolean;
     voters: Voter[];
     /** What the night's called if it's picked without a title: "11/5/26 Game Night" */
@@ -171,7 +173,16 @@ function DateRow({
       {/* On a phone the voters get their own line under the date and button, so they don't squeeze into a column */}
       <span className="min-w-36 flex-1 sm:flex-none">
         <span className={clsx("block font-semibold", date.past && "line-through")}>{date.label}</span>
-        <span className="block text-xs text-slate">{date.past ? "Gone by" : date.time}</span>
+        <span className="block text-xs text-slate">
+          {date.past ? (
+            "Gone by"
+          ) : (
+            <>
+              {date.soon && <span className="font-medium text-ink">{date.soon} · </span>}
+              {date.time}
+            </>
+          )}
+        </span>
       </span>
       <span className="order-last flex w-full min-w-0 flex-wrap items-center gap-1 sm:order-none sm:w-auto sm:flex-1" aria-label={`Works for ${voters.length}`}>
         {voters.length ? (
