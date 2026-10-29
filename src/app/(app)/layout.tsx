@@ -25,7 +25,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <Suspense fallback={<div className="h-10" />}>
             <UserBadge />
           </Suspense>
-          <BggCredit className="mt-3 px-2 text-felt-ink/60 hover:text-felt-ink" />
+          <BggCredit className="mt-3 pl-2 text-[0.7rem] text-felt-ink/60 hover:text-felt-ink" />
         </div>
       </aside>
 
@@ -45,7 +45,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-10 md:pb-16 lg:px-10">
         {DEMO && <DemoBanner />}
         {children}
-        <BggCredit className="mt-12 text-slate hover:text-ink md:hidden" />
+        <BggCredit className="mt-12 text-xs text-slate hover:text-ink md:hidden" />
       </main>
 
       <div className="fixed inset-x-0 bottom-0 z-20 md:hidden">
@@ -78,12 +78,12 @@ function BggCredit({ className }: { className?: string }) {
       href="https://boardgamegeek.com"
       target="_blank"
       rel="noreferrer"
-      className={`block text-xs underline-offset-2 hover:underline ${className ?? ""}`}
+      className={`block underline-offset-2 hover:underline ${className ?? ""}`}
     >
-      <span className="mb-2 inline-flex rounded-md bg-white px-2 py-1">
-        <Image src={poweredByBgg} alt="Powered by BGG" className="h-7 w-auto" />
+      <span className="mb-1.5 inline-flex rounded bg-white px-1.5 py-0.5">
+        <Image src={poweredByBgg} alt="Powered by BGG" className="h-5 w-auto" />
       </span>
-      <span className="block">Data and images from BoardGameGeek</span>
+      <span className="block whitespace-nowrap">Data and images from BoardGameGeek</span>
     </a>
   );
 }
