@@ -13,21 +13,23 @@ type Channel = { id: string; name: string; forum: boolean };
 type Role = { id: string; name: string };
 type Discord = { channels: Channel[]; roles: Role[]; interactions: boolean };
 
-export function GroupSettingsForm({ settings, timeZones, claude, discord }: { settings: GroupSettings; timeZones: string[]; claude: boolean; discord: Discord | null }) {
+export function GroupSettingsForm({ settings, timeZones, claude, discord, readOnly }: { settings: GroupSettings; timeZones: string[]; claude: boolean; discord: Discord | null; readOnly: boolean }) {
   const [state, action, pending] = useActionState<GroupSettingsResult | null, FormData>(saveGroupSettings, null);
   const errors = state && !state.ok && "fields" in state ? state.fields : {};
   return (
     <form action={action} className="space-y-10">
       {/* Saved values come back tidied (a blank name is the default again), so the fields start over from them */}
-      <Fields key={JSON.stringify(settings)} settings={settings} timeZones={timeZones} claude={claude} discord={discord} errors={errors} />
-      <div className="sticky bottom-24 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-card px-4 py-3 shadow-token md:bottom-4">
+      <fieldset disabled={readOnly} className="space-y-10">
+        <Fields key={JSON.stringify(settings)} settings={settings} timeZones={timeZones} claude={claude} discord={discord} errors={errors} />
+      </fieldset>
+      {!readOnly && <div className="sticky bottom-24 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-card px-4 py-3 shadow-token md:bottom-4">
         <button className={buttonClass("primary")} disabled={pending}>{pending ? "Saving…" : "Save"}</button>
         {state && (
           <p role="status" className={clsx("text-sm", state.ok ? "text-slate" : "text-meeple-red")}>
             {state.ok ? state.message : state.error}
           </p>
         )}
-      </div>
+      </div>}
     </form>
   );
 }
@@ -219,7 +221,7 @@ function RolePicker({ id, value, roles, none, extra = [] }: { id: string; value:
   );
 }
 
-export function AdminList({ members, meId }: { members: { id: string; name: string; isAdmin: boolean }[]; meId: string }) {
+export function AdminList({ members, meId, readOnly }: { members: { id: string; name: string; isAdmin: boolean }[]; meId: string; readOnly: boolean }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pick, setPick] = useState("");
@@ -241,7 +243,7 @@ export function AdminList({ members, meId }: { members: { id: string; name: stri
                 {a.name}
                 {a.id === meId && <span className="text-xs text-slate"> (you)</span>}
               </span>
-              {admins.length > 1 && (
+              {admins.length > 1 && !readOnly && (
                 <button type="button" disabled={pending} onClick={() => change(a.id, false)} className={buttonClass("ghost", "text-xs")}>
                   {a.id === meId ? "Step down" : "Remove"}
                 </button>
@@ -250,7 +252,7 @@ export function AdminList({ members, meId }: { members: { id: string; name: stri
           ))}
         </ul>
       )}
-      {others.length > 0 && (
+      {others.length > 0 && !readOnly && (
         <div className="flex flex-wrap gap-2">
           <select aria-label="Member to make an admin" value={pick} onChange={(e) => setPick(e.target.value)} className={clsx(input, "w-auto min-w-40 flex-1")}>
             <option value="">{admins.length ? "Choose a member" : "Choose who's first"}</option>

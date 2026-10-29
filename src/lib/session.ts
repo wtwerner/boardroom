@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { count, eq } from "drizzle-orm";
+import { DEMO } from "@/config";
 import { db, schema } from "@/db";
 import type { MeepleColor } from "@/db/enums";
 import { auth } from "./auth";
@@ -58,9 +59,14 @@ export const canManageGroup = cache(async () => {
   return admins.n === 0;
 });
 
-/** The signed-in member, if they can change the group's settings. Call from every action that does. */
+/**
+ * The signed-in member, if they can change the group's settings. Call from every action that does.
+ * Nobody can on a demo: everyone trying it shares one group, so one visitor's site name or time
+ * zone would be everyone's until the nightly reset.
+ */
 export async function requireAdmin(): Promise<CurrentUser> {
   const me = await requireUser();
+  if (DEMO) throw new Error("The demo's group settings stay as they are, so everyone trying it sees the same site.");
   if (!(await canManageGroup())) throw new Error("Only the group's admins can change that.");
   return me;
 }

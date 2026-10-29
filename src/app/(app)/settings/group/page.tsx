@@ -47,6 +47,11 @@ async function GroupSettings() {
 
   return (
     <div className="max-w-2xl space-y-10">
+      {DEMO && (
+        <p role="note" className="rounded-xl border border-meeple-yellow/60 bg-meeple-yellow/10 px-4 py-3 text-sm">
+          <strong>These stay as they are on the demo</strong>, since everyone trying it shares the group. On your own site, admins change them here.
+        </p>
+      )}
       {!admins.length && (
         <p role="note" className="rounded-xl border border-meeple-yellow/60 bg-meeple-yellow/10 px-4 py-3 text-sm">
           <strong>Nobody&apos;s an admin yet</strong>, so every member can change these. Make yourself an admin below and only admins can.
@@ -64,12 +69,13 @@ async function GroupSettings() {
         timeZones={["UTC", ...Intl.supportedValuesOf("timeZone").filter((tz) => tz !== "UTC")]}
         claude={hasAnthropicKey()}
         discord={discord ? { channels, roles, interactions: hasInteractions() } : null}
+        readOnly={DEMO}
       />
 
       <Section id="admins" title="Admins" className="scroll-mt-6">
         <p className="mb-3 text-sm text-slate">Admins can change everything on this page, and make other members admins.</p>
         <Panel className="p-4">
-          <AdminList members={members} meId={me.id} />
+          <AdminList members={members} meId={me.id} readOnly={DEMO} />
         </Panel>
       </Section>
     </div>
