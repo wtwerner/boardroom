@@ -1,8 +1,8 @@
 # Boardroom
 
-A private site for a board game group that plays together regularly. It keeps the group's play history, what everyone thinks of each game, and a shared shelf built from everyone's BoardGameGeek collections. It also plans each game night: who's coming, what to play, and what to read or watch beforehand. Events and plays go to and from the group's Discord, and Claude can suggest what to play or buy next.
+A private site for a board game group that plays together regularly. It keeps the group's play history, what everyone thinks of each game, and a shared shelf built from everyone's BoardGameGeek collections. It also plans each game night: who's coming, what to play, and what to read or watch beforehand. Events and plays go to and from the group's Discord, and if you turn it on, Claude can suggest what to play or buy next. Each group runs its own copy, on free tiers of Vercel and Turso.
 
-**[Try the demo](https://try-boardroom.vercel.app)**, with a made-up group you can sign in as. Change anything you like: it all resets every night.
+**[Try the demo](https://try-boardroom.vercel.app)**, with a made-up group you can sign in as. Play around: it all resets every night.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/home-dark.jpg">
@@ -13,13 +13,13 @@ Next.js 16 · React 19 · TypeScript · Tailwind 4 · Drizzle + SQLite (Turso) �
 
 ## What it does
 
-- **Getting set up.** Your first sign-in lands on one page with every step on it: find yourself in past plays, rate and rank the games you've played, and add your BGG collection and Board Game Arena name. Until rating and ranking are done, Home shows how far along you are.
+- **Getting set up.** Your first sign-in lands on one page with every step on it: check the name the group sees, find yourself in past plays, rate and rank the games you've played, and add your BGG collection and Board Game Arena name. Until you're set up, Home shows how far along you are.
 - **Play log, kept in step with Discord.** Log a night's games from its event page, or on the Plays page, and they're posted to the group's channel. The morning after, whoever made the event gets a DM if nothing's been logged yet. Plays people write in Discord by hand are imported too, back to the channel's first message.
 - **Ratings and rankings.** Rate games with a tap, and rank the ones you've played with quick "this or that?" questions. Heavy and light games are ranked separately, so a party game never has to beat a long strategy game. The group's favorites come from everyone's lists.
 - **Events in Discord.** Make an event on the site or with `/event new`, and it's posted to the events channel with its own thread. People answer Going, Maybe or Can't make it with the post's buttons or on the site, and can answer for someone else, even someone who isn't in Discord yet. Changing the event in either place updates the post and tells the thread. A few hours before it starts, a reply on the post pings whoever's going or a maybe.
-- **Finding a date.** Not sure when the next one is? Offer a few dates on Plan or with `/event poll`, and everyone taps the ones that work for them. Pick one and the poll's post turns into the event's post, keeping its thread, with a ping asking people to say if they're coming. Called one off by mistake? **Reopen** brings it back, votes and all. With a casual night on, a poll can be for either kind of night.
+- **Finding a date.** Offer a few dates on Plan or with `/event poll`, and everyone taps the ones that work for them. Pick one and the poll's post turns into the event's post, keeping its thread, with a ping asking people to say if they're coming. A poll called off by mistake comes back with **Reopen**, votes and all. With a casual night on, a poll can be for either kind of night.
 - **Planning a night.** Start from who's coming and get the shelf scored for that table: what they love, what they want to play, what hasn't been played in a while, and what suits the player count. Propose games, vote, lock one in, and the rules and teach videos are linked for prep.
-- **Discover.** Games nobody owns, scored against everyone's taste with a calibrated "chance you'd like it", plus Claude's picks for the group or just for you.
+- **Discover.** Games nobody owns, scored against everyone's taste with a calibrated "chance you'd like it", plus, with Claude on, its picks for the group or just for you.
 - **A casual night too, if you have one.** A second, lighter night with guests, with its own channels and recommendations. Instead of voting on a game, people say what they're bringing, or ask whoever owns a game to bring it, and the bot DMs them to answer. When a casual regular wants in on the core group's nights, any member can invite them from People or from Discord's right-click menu.
 - **Online.** Which of your games are on Board Game Arena, and who's up for playing them there.
 
@@ -122,8 +122,6 @@ Sign in with Discord and open **Settings → Group settings**. Until someone's a
 
 The Discord settings pick from the server's channels and roles, so they only show once the bot is in the server. Admins can make other members admins on the same page. A change shows across the site straight away, with no redeploy.
 
-Sites set up before Group settings existed kept these as environment variables (`SITE_NAME`, `APP_TIMEZONE`, `DISCORD_PLAYS_CHANNEL_ID` and so on). They're still read, and the page starts from them, until an admin first saves it. After that they can be deleted.
-
 ### 6. Import the history
 
 Tap **Sync from Discord** on the Plays page to import the channel's history. For a long history, run the same sync from your machine instead, where there's no serverless time limit. It picks up where it left off:
@@ -171,6 +169,8 @@ gh secret set VERCEL_PROJECT_ID   # "projectId" in .vercel/project.json
 Without the three secrets the workflow does nothing, so a project that stays connected deploys the usual way.
 
 ## Developing
+
+With Node 24 (what CI runs) and pnpm:
 
 ```sh
 pnpm install
