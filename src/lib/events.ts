@@ -92,6 +92,8 @@ async function loadNights(nights: (typeof schema.gameNight.$inferSelect)[]) {
       declined: answers.declined.map(attendee),
       waitlist: answers.waitlist.map(attendee),
       date: n.date,
+      /** It's begun, so its page can log what's played */
+      started: n.startsAt.getTime() <= Date.now(),
       past: n.startsAt.getTime() < Date.now() - GRACE_MS,
       plays: played.filter((p) => p.night === n.night && p.playedOn === n.date),
       games: plans

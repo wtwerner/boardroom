@@ -244,7 +244,7 @@ export default async function AboutPage() {
               rows={[
                 [
                   "Plays",
-                  `Logged on the event's page once it's over, or on Plays (and posted to that kind's Discord channel), or written by hand in ${CASUAL_NIGHT ? "either channel" : "the channel"}. The sync reads hand-written posts every night and when anyone taps Sync from Discord, and picks up edits to posts for two weeks. A play logged both here and in Discord is only counted once.`,
+                  `Logged on the event's page once it starts, or on Plays (and posted to that kind's Discord channel), or written by hand in ${CASUAL_NIGHT ? "either channel" : "the channel"}. The sync reads hand-written posts every night and when anyone taps Sync from Discord, and picks up edits to posts for two weeks. A play logged both here and in Discord is only counted once.`,
                 ],
                 ["Shelf", "Everyone's BGG collection: from the BGG username in Settings, refreshed nightly, or a CSV export uploaded there."],
                 ["Game details", "Player counts, best player counts, weight, mechanics and ratings come from BGG."],

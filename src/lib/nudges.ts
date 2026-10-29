@@ -10,7 +10,7 @@ import { escape } from "./discord-components";
 import { andList } from "./text";
 
 const HOUR = 3_600_000;
-/** A night's page turns into what was played (with the form to log it) this long after it starts */
+/** A night's page turns into what was played this long after it starts */
 const PAST_AFTER_MS = 12 * HOUR;
 /** The morning-after DM goes between these hours in the group's time zone, so it never wakes anyone */
 const NUDGE_FROM_HOUR = 10;
@@ -32,7 +32,7 @@ export function reminderDue(n: NudgeNight, now: Date, hours: number) {
 
 /**
  * Whether to ask for a night's plays now: the morning after (in the group's time zone) or
- * later, once its page shows the log form, and not long ago. Whether anything's been logged
+ * later, once its page has turned into what was played, and not long ago. Whether anything's been logged
  * is the caller's to check.
  */
 export function logNudgeDue(n: NudgeNight, now: Date, timeZone: string) {

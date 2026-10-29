@@ -23,7 +23,7 @@ import { GamePicker, GameSearch } from "../game-picker";
 import { CasualGames } from "./casual-games";
 import { CoreGames } from "./core-games";
 import { NightActions } from "./night-actions";
-import { PastNight } from "./past-night";
+import { PastNight, PlayedSection } from "./past-night";
 import { People } from "./people";
 
 export const metadata: Metadata = { title: "Event" };
@@ -48,37 +48,19 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   }
 
   if (n.past) {
-    const [members, games, players] = await Promise.all([getMembers(), getAllGamesForPicker(), getPlayers()]);
-    const played = new Set(n.plays.flatMap((p) => (p.gameId ? [p.gameId] : [])));
-    // Who's logged so far, or before anything is, who said they were going
-    const table = n.plays.length ? n.plays.flatMap((p) => p.players.map((s) => s.playerId)) : n.going.map((a) => a.playerId);
-    const logForm = n.date && !n.cancelled && (
-      <LogPlayForm
-        games={games}
-        players={players}
-        canPost={Object.fromEntries(GROUP_NIGHTS.map((k) => [k, canPostToDiscord(k)]))}
-        nightNames={NIGHT_NAMES}
-        fromEvent={{
-          night: n.night,
-          playedOn: n.date,
-          location: n.location,
-          playerIds: [...new Set(table)],
-          games: n.games.filter((g) => !played.has(g.game.id)).map((g) => ({ id: g.game.id, name: g.game.name })),
-        }}
-      />
-    );
+    const [members, logForm] = await Promise.all([getMembers(), nightLogForm(n)]);
     return (
       <div className="space-y-10">
         <div className="space-y-4">
           <BackLink />
           <NightHeader n={n} />
         </div>
-        <PastNight n={n} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} logForm={logForm || null} />
+        <PastNight n={n} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} logForm={logForm} />
       </div>
     );
   }
 
-  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates] = await Promise.all([
+  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates, logForm] = await Promise.all([
     // Recency and "never played" come from this kind of night's plays only
     getShelf({ night: n.night }).then(async (all) => {
       const s = all.filter((g) => !isLegacy(g));
@@ -90,6 +72,8 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     getPlayedBy(),
     db.select({ id: schema.player.id, name: schema.player.name }).from(schema.player).orderBy(schema.player.name),
     datesStaying(n.id),
+    // Once it starts, what's played can be logged as the night goes
+    n.started ? nightLogForm(n) : null,
   ]);
   // What Find a new date keeps: the other dates on the poll it was picked from
   const staying = stayingDates.map((d) => dateChoiceLabel(d.startsAt, d.votes, TIME_ZONE));
@@ -129,6 +113,8 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
           />
         </Panel>
       </div>
+
+      {logForm && <PlayedSection n={n} logForm={logForm} />}
 
       <Section title={n.night === "core" ? "The game" : "What's coming"}>
         {n.night === "core" ? (
@@ -220,6 +206,30 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
         )}
       </Section>
     </div>
+  );
+}
+
+/** The form to log a night's plays from its page, with its date, place and kind filled in */
+async function nightLogForm(n: NightDetail) {
+  if (!n.date || n.cancelled) return null;
+  const [games, players] = await Promise.all([getAllGamesForPicker(), getPlayers()]);
+  const played = new Set(n.plays.flatMap((p) => (p.gameId ? [p.gameId] : [])));
+  // Who's logged so far, or before anything is, who said they were going
+  const table = n.plays.length ? n.plays.flatMap((p) => p.players.map((s) => s.playerId)) : n.going.map((a) => a.playerId);
+  return (
+    <LogPlayForm
+      games={games}
+      players={players}
+      canPost={Object.fromEntries(GROUP_NIGHTS.map((k) => [k, canPostToDiscord(k)]))}
+      nightNames={NIGHT_NAMES}
+      fromEvent={{
+        night: n.night,
+        playedOn: n.date,
+        location: n.location,
+        playerIds: [...new Set(table)],
+        games: n.games.filter((g) => !played.has(g.game.id)).map((g) => ({ id: g.game.id, name: g.game.name })),
+      }}
+    />
   );
 }
 
