@@ -3,7 +3,7 @@ import { componentText } from "./discord-message";
 import { NIGHT_ACCENT } from "./discord-components";
 import { parseActionId } from "./interactions";
 import { nightPing } from "./night-message";
-import { type PollCard, buildPollMessage, buildPollThreadCopy, dateChoiceLabel, pickedMessage, pollThreadName, rankDates } from "./poll-message";
+import { type PollCard, buildPollMessage, buildPollThreadCopy, dateChoiceLabel, pickedMessage, pollThreadName, rankDates, refindMessage } from "./poll-message";
 
 const sam = { name: "Sam", discordId: "10000000000000001" };
 const alex = { name: "Alex", discordId: "10000000000000002" };
@@ -141,6 +141,25 @@ describe("pickedMessage", () => {
     const { body, allowedMentions } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", voters: [] }, null);
     expect(body.content).toBe("**November heavy** is set for <t:1793926800:F> (<t:1793926800:R>).\nSay if you're coming on the post.");
     expect(allowedMentions).toEqual({ parse: [], users: [] });
+  });
+});
+
+describe("refindMessage", () => {
+  it("says which date fell through, pings whoever was going, and says the games come back", () => {
+    const { body, allowedMentions } = refindMessage({ by: "<@10000000000000003>", was: "2026-11-06T01:00:00.000Z", going: [sam, alex, { name: "Riley" }], games: 2 });
+    expect(body.content).toBe(
+      "↩️ <@10000000000000003> moved this back to finding a date: <t:1793926800:F> didn't work out.\n<@10000000000000001>, <@10000000000000002>, you were going. Say which dates work for you on the post.\nThe 2 games proposed for it come back once a date's picked.",
+    );
+    expect(allowedMentions).toEqual({ parse: [], users: ["10000000000000001", "10000000000000002"] });
+  });
+
+  it("says one game comes back", () => {
+    expect(refindMessage({ by: "**Sam**", was: "2026-11-06T01:00:00.000Z", going: [], games: 1 }).body.content).toContain("\nThe game proposed for it comes back once a date's picked.");
+  });
+
+  it("leaves out the ping and the games when there are none", () => {
+    const { body } = refindMessage({ by: "**Sam**", was: "2026-11-06T01:00:00.000Z", going: [], games: 0 });
+    expect(body.content).toBe("↩️ **Sam** moved this back to finding a date: <t:1793926800:F> didn't work out.");
   });
 });
 

@@ -27,8 +27,8 @@ import { zonedToUtc } from "@/lib/nights";
 import { answerBringAsk as saveBringAnswer, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
-import { addPollDate, cancelPoll, createPoll, ownPoll, pickPollDate as savePickedDate, reopenPoll as saveReopened, setPollVote as savePollVote } from "@/lib/poll-store";
-import { announcePickedLater, syncPollPostLater } from "@/lib/poll-post";
+import { addPollDate, cancelPoll, createPoll, findNewDate as saveFindNewDate, ownPoll, pickPollDate as savePickedDate, reopenPoll as saveReopened, setPollVote as savePollVote } from "@/lib/poll-store";
+import { announcePickedLater, announceRefindLater, syncPollPostLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
 import { nightTitle } from "@/lib/nights";
 import { welcomeSummary } from "@/lib/welcome-message";
@@ -820,6 +820,24 @@ export async function suggestPollDate(pollId: number, input: z.infer<typeof Date
   }
   refresh();
   return { ok: true };
+}
+
+const NewDates = z.array(DateTime).max(POLL_MAX_DATES);
+
+/** A night whose date fell through goes back to a poll for a new one, keeping its games for the pick */
+export async function findNewDate(nightId: number, dates: z.infer<typeof NewDates>): Promise<ActionResult> {
+  const me = await requireUser();
+  const parsed = NewDates.safeParse(dates);
+  if (!parsed.success) return { ok: false, error: `Give up to ${POLL_MAX_DATES} dates, each with a time.` };
+  let pollId: number;
+  try {
+    const found = await saveFindNewDate(nightId, parsed.data.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)), me.id);
+    pollId = found.pollId;
+    announceRefindLater(pollId, { by: await mentionMe(me), was: found.was.toISOString(), going: found.going, games: found.games });
+  } catch (err) {
+    return fail(err);
+  }
+  redirect(`/plan#poll-${pollId}`);
 }
 
 /** Pick one of a poll's dates: the night's made (its post is the poll's, once it's posted) and its page opens */

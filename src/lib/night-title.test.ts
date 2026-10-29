@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fillTitle, retitle, titleGame } from "./night-title";
+import { fillTitle, handTitle, retitle, titleGame } from "./night-title";
 
 const core = "{date} Game Night — {game}";
 const casual = "{date} Casual Night";
@@ -46,5 +46,17 @@ describe("retitle", () => {
 
   it("leaves a title named by hand alone", () => {
     expect(retitle("Thursday heavy", core, "2026-10-29", "Root")).toBe("Thursday heavy");
+  });
+});
+
+describe("handTitle", () => {
+  it("keeps a title named by hand, whatever the date", () => {
+    expect(handTitle("Brass all-nighter", core, "2026-11-28")).toBe("Brass all-nighter");
+  });
+
+  it("drops one the template made, game and all, so the next date gets its own", () => {
+    expect(handTitle("11/28 Game Night — TBD", core, "2026-11-28")).toBeNull();
+    expect(handTitle("11/28 Game Night — Root", core, "2026-11-28")).toBeNull();
+    expect(handTitle("11/4 Casual Night", casual, "2026-11-04")).toBeNull();
   });
 });

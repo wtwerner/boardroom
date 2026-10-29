@@ -1,7 +1,7 @@
 "use client";
 
 import { useOptimistic, useState, useTransition } from "react";
-import { CalendarPlus, Check, ExternalLink, Plus, Undo2, X } from "lucide-react";
+import { CalendarPlus, Check, ExternalLink, Undo2 } from "lucide-react";
 import clsx from "clsx";
 import { type MeepleColor, type Night, POLL_MAX_DATES } from "@/db/enums";
 import { callOffPoll, pickPollDate, reopenPoll, setPollVote, startPoll, suggestPollDate } from "@/app/actions";
@@ -11,6 +11,7 @@ import { discordAppUrl } from "@/lib/discord-components";
 import { rankDates } from "@/lib/poll-message";
 import { titleCase } from "@/lib/text";
 import type { NightSetup } from "../events/night-form";
+import { DateRows, readDates } from "./date-rows";
 
 type Voter = { playerId: number; name: string; userId: string | null };
 
@@ -306,8 +307,6 @@ function PickForm({
 export function PollForm({ setup }: { setup: NightSetup }) {
   const [open, setOpen] = useState(false);
   const [night, setNight] = useState<Night>("core");
-  const [rows, setRows] = useState([0, 1]);
-  const [next, setNext] = useState(2);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -325,14 +324,13 @@ export function PollForm({ setup }: { setup: NightSetup }) {
       onSubmit={(e) => {
         e.preventDefault();
         const f = new FormData(e.currentTarget);
-        const dates = rows.map((r) => ({ date: String(f.get(`date-${r}`) ?? ""), time: String(f.get(`time-${r}`) ?? "") })).filter((d) => d.date);
+        const dates = readDates(f);
         start(async () => {
           const res = await startPoll({ night, title: String(f.get("title") ?? ""), location: String(f.get("location") ?? "") || null, dates });
           if (!res.ok) setError(res.error);
           else {
             setError(null);
             setOpen(false);
-            setRows([0, 1]);
           }
         });
       }}
@@ -359,32 +357,7 @@ export function PollForm({ setup }: { setup: NightSetup }) {
           ))}
         </fieldset>
       )}
-      <fieldset className="space-y-2">
-        <legend className="mb-1 text-sm font-medium">Dates</legend>
-        {rows.map((r, i) => (
-          <div key={r} className="flex items-center gap-2">
-            <DateInput name={`date-${r}`} required={i === 0} aria-label={`Date ${i + 1}`} className={field} />
-            <input name={`time-${r}`} type="time" required defaultValue="19:00" aria-label={`Time ${i + 1}`} className={clsx(field, "w-32")} />
-            {rows.length > 1 && (
-              <button type="button" aria-label={`Remove date ${i + 1}`} onClick={() => setRows(rows.filter((x) => x !== r))} className="rounded p-1 text-slate hover:text-meeple-red">
-                <X className="size-4" />
-              </button>
-            )}
-          </div>
-        ))}
-        {rows.length < POLL_MAX_DATES && (
-          <button
-            type="button"
-            onClick={() => {
-              setRows([...rows, next]);
-              setNext(next + 1);
-            }}
-            className={buttonClass("ghost", "px-2 py-1 text-xs")}
-          >
-            <Plus className="size-3.5" /> Another date
-          </button>
-        )}
-      </fieldset>
+      <DateRows />
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Name</span>
         <input name="title" maxLength={100} placeholder={`${titleCase(setup.names[night])} (optional)`} className={field} />

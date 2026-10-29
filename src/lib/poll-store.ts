@@ -1,9 +1,11 @@
 import "server-only";
 import { and, asc, eq, inArray, max } from "drizzle-orm";
+import { NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { type Night, POLL_MAX_DATES, type PollStatus } from "@/db/enums";
-import { createNight } from "./night-store";
+import { createNight, ownNight, reviveNight } from "./night-store";
 import { isClaim } from "./night-post";
+import { handTitle } from "./night-title";
 
 /**
  * Polls to find a night's date, shared by the site's actions and the Discord handlers like
@@ -195,7 +197,10 @@ export async function pickPollDate(pollId: number, optionId: number, fields: { t
   const claimed = await db.update(p).set({ status: "picked" }).where(and(eq(p.id, pollId), eq(p.status, "open"))).returning({ id: p.id });
   if (!claimed.length) throw new Error("Someone just picked a date for that.");
   try {
-    const night = await createNight({ night: row.night, title: fields.title, startsAt: option.startsAt, location: fields.location }, userId);
+    // A night that went back to finding a date comes back, with the games proposed for it
+    const night = row.gameNightId
+      ? await reviveNight(row.gameNightId, { title: fields.title, startsAt: option.startsAt, location: fields.location })
+      : await createNight({ night: row.night, title: fields.title, startsAt: option.startsAt, location: fields.location }, userId);
     const votes = await db.select({ playerId: v.playerId, votedAt: v.votedAt }).from(v).where(eq(v.optionId, optionId));
     if (votes.length) {
       await db
@@ -215,6 +220,68 @@ export async function pickPollDate(pollId: number, optionId: number, fields: { t
     await db.update(p).set({ status: "open" }).where(eq(p.id, pollId));
     throw err;
   }
+}
+
+/**
+ * A night whose date fell through goes back to finding one. A night made from a poll reopens it,
+ * without that date and its votes; any other starts a poll with its title (when named by hand)
+ * and place. `dates` are more to offer. The night stays, hidden like a called-off one, so the
+ * games proposed for it come back with the next pick (pickPollDate); its answers go, being for
+ * the old date. Its post becomes the poll's again, for poll-post.ts to turn back into the poll.
+ */
+export async function findNewDate(nightId: number, dates: Date[], userId: string) {
+  const n = await ownNight(nightId);
+  if (n.cancelled) throw new Error("That was cancelled.");
+  if (n.startsAt.getTime() < Date.now()) throw new Error("That's been and gone.");
+  if (dates.some((d) => d.getTime() < Date.now())) throw new Error("Pick dates that are coming up.");
+  const from = await db.query.datePoll.findFirst({ where: and(eq(p.gameNightId, n.id), eq(p.status, "picked")) });
+  const post = {
+    channelId: n.channelId,
+    messageId: n.messageId,
+    threadId: n.threadId,
+    threadCardId: n.threadCardId,
+    url: n.url,
+    announceChannelId: n.announceChannelId,
+    announceMessageId: n.announceMessageId,
+  };
+  return db.transaction(async (tx) => {
+    let pollId: number;
+    if (from) {
+      const reopened = await tx.update(p).set({ status: "open", ...post }).where(and(eq(p.id, from.id), eq(p.status, "picked"))).returning({ id: p.id });
+      if (!reopened.length) throw new Error("Someone just did that.");
+      // Its votes go with it (they cascade)
+      await tx.delete(o).where(and(eq(o.pollId, from.id), eq(o.startsAt, n.startsAt)));
+      pollId = from.id;
+    } else {
+      const title = handTitle(n.title, NIGHT_TITLES[n.night], n.startsAt.toLocaleDateString("en-CA", { timeZone: TIME_ZONE }));
+      const [row] = await tx.insert(p).values({ night: n.night, title, location: n.location, createdBy: userId, gameNightId: n.id, ...post }).returning({ id: p.id });
+      pollId = row.id;
+    }
+    const have = await tx.select({ startsAt: o.startsAt }).from(o).where(eq(o.pollId, pollId));
+    const taken = new Set([...have.map((d) => d.startsAt.getTime()), n.startsAt.getTime()]);
+    const add = [...new Map(dates.filter((d) => !taken.has(d.getTime())).map((d) => [d.getTime(), d])).values()];
+    if (have.length + add.length > POLL_MAX_DATES) throw new Error(`A poll fits ${POLL_MAX_DATES} dates.`);
+    if (add.length) await tx.insert(o).values(add.map((startsAt) => ({ pollId, startsAt })));
+    if (![...have.map((d) => d.startsAt), ...add].some((d) => d.getTime() >= Date.now())) throw new Error("Give a date or two to pick from.");
+
+    const going = await tx
+      .select({ name: schema.player.name, discordId: schema.player.discordId })
+      .from(schema.nightRsvp)
+      .innerJoin(schema.player, eq(schema.player.id, schema.nightRsvp.playerId))
+      .where(and(eq(schema.nightRsvp.gameNightId, n.id), eq(schema.nightRsvp.status, "going")));
+    const games = await tx.select({ id: schema.gamePlan.id }).from(schema.gamePlan).where(eq(schema.gamePlan.gameNightId, n.id));
+    await tx.delete(schema.nightRsvp).where(eq(schema.nightRsvp.gameNightId, n.id));
+    await tx
+      .update(schema.gameNight)
+      .set({ cancelled: true, channelId: null, messageId: null, threadId: null, threadCardId: null, url: null, announceChannelId: null, announceMessageId: null })
+      .where(eq(schema.gameNight.id, n.id));
+    return { pollId, was: n.startsAt, going, games: games.length };
+  });
+}
+
+/** The poll finding a new date for a night that went back to one, if it's still open */
+export async function findingDateFor(nightId: number) {
+  return db.query.datePoll.findFirst({ where: and(eq(p.gameNightId, nightId), eq(p.status, "open")), columns: { id: true } });
 }
 
 /** Open polls whose every date has gone by, marked closed. Returns them, so their posts can say so. */

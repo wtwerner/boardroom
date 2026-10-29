@@ -135,6 +135,21 @@ export function dateChoiceLabel(startsAt: string, votes: number, timeZone: strin
 }
 
 /**
+ * The note in the thread when a night goes back to finding a date: who did it and which date
+ * fell through, a ping for whoever was going to say which dates work now, and whether the
+ * games proposed for it come back with the next pick.
+ */
+export function refindMessage(n: { by: string; was: string; going: CardPerson[]; games: number }) {
+  const going = n.going.filter((g) => g.discordId);
+  const lines = [
+    `↩️ ${n.by} moved this back to finding a date: <t:${unix(n.was)}:F> didn't work out.`,
+    ...(going.length ? [`${going.map(person).join(", ")}, you were going. Say which dates work for you on the post.`] : []),
+    ...(n.games ? [`${n.games === 1 ? "The game proposed for it comes" : `The ${n.games} games proposed for it come`} back once a date's picked.`] : []),
+  ];
+  return { body: { content: lines.join("\n") }, allowedMentions: { parse: [], users: [...new Set(going.map((g) => g.discordId!))] } };
+}
+
+/**
  * The reply on the post once a date is picked: pings whoever the group set for its nights, and
  * the people that date works for, who are down as going now and can change it on the post.
  * Everyone else is asked to say whether they're coming.

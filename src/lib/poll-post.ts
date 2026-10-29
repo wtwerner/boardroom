@@ -8,7 +8,7 @@ import { buildPollAnnouncement } from "./announce-message";
 import { type Announcement, syncAnnouncement } from "./announce-post";
 import { isClaim, joinThread, postChannel, removePost, syncNightPost, syncThreadCopy } from "./night-post";
 import { type NightPing, nightPing, threadName } from "./night-message";
-import { type PollCard, buildPollMessage, buildPollThreadCopy, pickedMessage, pollThreadName } from "./poll-message";
+import { type PollCard, buildPollMessage, buildPollThreadCopy, pickedMessage, pollThreadName, refindMessage } from "./poll-message";
 import { type PollDetail, loadPoll } from "./poll-store";
 
 /**
@@ -179,6 +179,28 @@ export function announcePickedLater(pollId: number, optionId: number, by: { play
       await joinThread(night.id, undefined, [by.playerId]);
     } catch (err) {
       console.error(`Couldn't turn poll ${pollId}'s post into its night's`, err);
+    }
+  });
+}
+
+/**
+ * Once a night goes back to finding a date: its post (and announcement) is the poll's again, its
+ * thread is renamed for the poll, and a note there says why and pings whoever was going.
+ */
+export function announceRefindLater(pollId: number, note: Parameters<typeof refindMessage>[0]) {
+  after(async () => {
+    try {
+      const result = await syncPollPost(pollId);
+      const poll = await loadPoll(pollId);
+      const row = await db.query.datePoll.findFirst({ where: eq(p.id, pollId), columns: { threadId: true, messageId: true } });
+      if (!poll || !row?.threadId || isClaim(row.messageId)) return;
+      if (result === "edited") {
+        await renameThread(row.threadId, pollThreadName(pollTitle(poll))).catch((err) => console.error("Couldn't rename the night's thread", err));
+      }
+      const { body, allowedMentions } = refindMessage(note);
+      await postMessage(row.threadId, body, allowedMentions);
+    } catch (err) {
+      console.error(`Couldn't turn poll ${pollId}'s night back into the poll in Discord`, err);
     }
   });
 }

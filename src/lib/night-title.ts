@@ -37,3 +37,8 @@ export function titleGame(title: string, template: string, date: string): string
 export function retitle(title: string, template: string, date: string, game: string | null) {
   return titleGame(title, template, date) === null ? title : fillTitle(template, date, game);
 }
+
+/** What a poll for this night should call it: its title when it was named by hand, or null for the template's */
+export function handTitle(title: string, template: string, date: string) {
+  return titleGame(title, template, date) === null ? title : null;
+}

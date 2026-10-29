@@ -86,6 +86,22 @@ export async function titleForGame(nightId: number) {
   return true;
 }
 
+/**
+ * A night that went back to finding a date (poll-store.ts), back on the date picked for it.
+ * Its games, votes and prep were kept for this; its reminder and morning-after nudge start over.
+ */
+export async function reviveNight(id: number, fields: { title: string; startsAt: Date; location: string | null }) {
+  const [row] = await db
+    .update(schema.gameNight)
+    .set({ ...fields, location: fields.location || null, date: dateOf(fields.startsAt), cancelled: false, remindedAt: null, logNudgedAt: null })
+    .where(eq(schema.gameNight.id, id))
+    .returning();
+  if (!row) throw new Error("That's gone: it was deleted.");
+  // Named by the template, its title follows the game locked in for it
+  await titleForGame(row.id);
+  return ownNight(row.id);
+}
+
 /** Called off: it stays (so its post can say so) but leaves the list of nights */
 export async function cancelNight(id: number) {
   const n = await ownNight(id);

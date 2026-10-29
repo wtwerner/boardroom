@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { DEMO, GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
@@ -16,6 +16,7 @@ import { canPostToDiscord, postsNights } from "@/lib/discord";
 import { isLegacy } from "@/lib/night";
 import { getTasteChances } from "@/lib/recommend";
 import { type NightDetail, loadNight } from "@/lib/events";
+import { findingDateFor } from "@/lib/poll-store";
 import { nightWhen, tableFor } from "@/lib/nights";
 import { GamePicker, GameSearch } from "../game-picker";
 import { CasualGames } from "./casual-games";
@@ -39,6 +40,11 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   const id = Number((await params).id);
   const n = Number.isInteger(id) ? await loadNight(id) : null;
   if (!n) notFound();
+  // Back to finding a date: its poll is where it is now
+  if (n.cancelled) {
+    const poll = await findingDateFor(n.id);
+    if (poll) redirect(`/plan#poll-${poll.id}`);
+  }
 
   if (n.past) {
     const [members, games, players] = await Promise.all([getMembers(), getAllGamesForPicker(), getPlayers()]);
@@ -246,6 +252,7 @@ function NightHeader({ n }: { n: NightDetail }) {
             id={n.id}
             initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "" }}
             canDelete={n.plays.length === 0}
+            canFindNewDate={!n.past}
             posted={n.posted}
             setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: postsNights(n.night) }}
           />
