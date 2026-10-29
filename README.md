@@ -174,4 +174,4 @@ Without Discord credentials, the sign-in page has **Sign in as…** buttons for 
 
 ## License
 
-[MIT](LICENSE). The symbols on Discord posts (`assets/discord-emoji`) are [Font Awesome Free](https://fontawesome.com) icons, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Game data comes from [BoardGameGeek](https://boardgamegeek.com) under its [API terms](https://boardgamegeek.com/wiki/page/XML_API_Terms_of_Use), which allow non-commercial use only: run Boardroom for your group, not as a paid service.
+[MIT](LICENSE). The symbols on Discord posts (`assets/discord-emoji`) are [Font Awesome Free](https://fontawesome.com) icons, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The meeple is [Tabler Icons](https://tabler.io/icons)' `meeple-filled`, under [MIT](https://github.com/tabler/tabler-icons/blob/main/LICENSE). Game data comes from [BoardGameGeek](https://boardgamegeek.com) under its [API terms](https://boardgamegeek.com/wiki/page/XML_API_Terms_of_Use), which allow non-commercial use only: run Boardroom for your group, not as a paid service.
