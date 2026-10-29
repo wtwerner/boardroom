@@ -132,9 +132,15 @@ describe("pickedMessage", () => {
   it("pings the group's role and the people the date works for, who are down as going", () => {
     const { body, allowedMentions } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", voters: [sam, { name: "Riley" }] }, nightPing("10000000000000009"));
     expect(body.content).toBe(
-      "<@&10000000000000009> **November heavy** is set for <t:1793926800:F> (<t:1793926800:R>).\n<@10000000000000001>, you said that one works, so you're down as going. If you can't make it now, change it on the post. Everyone else, say if you're coming.",
+      "<@&10000000000000009> **November heavy** is set for <t:1793926800:F> (<t:1793926800:R>).\n<@10000000000000001> is down as going, since that date works for them. Anyone else, say on the post if you're coming.",
     );
     expect(allowedMentions).toEqual({ parse: [], roles: ["10000000000000009"], users: ["10000000000000001"] });
+  });
+
+  it("lists several people who are going with an and", () => {
+    const riley = { name: "Riley", discordId: "10000000000000004" };
+    const { body } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", voters: [sam, alex, riley] }, null);
+    expect(body.content).toContain("\n<@10000000000000001>, <@10000000000000002> and <@10000000000000004> are down as going, since that date works for them. Anyone else, say on the post if you're coming.");
   });
 
   it("still says it's set when nobody's pinged", () => {
@@ -148,7 +154,7 @@ describe("refindMessage", () => {
   it("says which date fell through, pings whoever was going, and says the games come back", () => {
     const { body, allowedMentions } = refindMessage({ by: "<@10000000000000003>", was: "2026-11-06T01:00:00.000Z", going: [sam, alex, { name: "Riley" }], games: 2, night: "core" });
     expect(body.content).toBe(
-      "↩️ <@10000000000000003> moved this back to finding a date: <t:1793926800:F> didn't work out.\n<@10000000000000001>, <@10000000000000002>, you were going. Say which dates work for you on the post.\nThe 2 games proposed for it come back once a date's picked.",
+      "↩️ <@10000000000000003> moved this back to finding a date: <t:1793926800:F> didn't work out.\n<@10000000000000001> and <@10000000000000002>, you were going. Say which dates work for you on the post.\nThe 2 games proposed for it come back once a date's picked.",
     );
     expect(allowedMentions).toEqual({ parse: [], users: ["10000000000000001", "10000000000000002"] });
   });

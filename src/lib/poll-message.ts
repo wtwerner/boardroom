@@ -134,6 +134,9 @@ export function dateChoiceLabel(startsAt: string, votes: number, timeZone: strin
   return `${at} · ${votes ? `${votes} can make it` : "nobody yet"}`;
 }
 
+/** "a", "a and b", "a, b and c" */
+const andList = (items: string[]) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
+
 /**
  * What the Find a new date form in Discord says about the poll's other dates, in its 100
  * characters: "Sun Nov 8 and Sun Nov 15 stay on the poll, with their votes. Add more, or none."
@@ -142,8 +145,7 @@ export function stayingLine(dates: string[], timeZone: string) {
   if (!dates.length) return "A date or two to offer instead of this one.";
   const day = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" }).replaceAll(",", "");
   const names = dates.map(day);
-  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-  const line = `${list} ${names.length === 1 ? "stays on the poll, with its votes" : "stay on the poll, with their votes"}. Add more, or none.`;
+  const line = `${andList(names)} ${names.length === 1 ? "stays on the poll, with its votes" : "stay on the poll, with their votes"}. Add more, or none.`;
   return line.length <= 100 ? line : `Its ${names.length} other dates stay on the poll, with their votes. Add more, or none.`;
 }
 
@@ -162,7 +164,7 @@ export function refindMessage(n: { by: string; was: string; going: CardPerson[];
   const going = n.going.filter((g) => g.discordId);
   const lines = [
     `↩️ ${n.by} moved this back to finding a date: <t:${unix(n.was)}:F> didn't work out.`,
-    ...(going.length ? [`${going.map(person).join(", ")}, you were going. Say which dates work for you on the post.`] : []),
+    ...(going.length ? [`${andList(going.map(person))}, you were going. Say which dates work for you on the post.`] : []),
     ...(n.games ? [`${gamesComing(n.games, n.night)} back once a date's picked.`] : []),
   ];
   return { body: { content: lines.join("\n") }, allowedMentions: { parse: [], users: [...new Set(going.map((g) => g.discordId!))] } };
@@ -170,15 +172,15 @@ export function refindMessage(n: { by: string; was: string; going: CardPerson[];
 
 /**
  * The reply on the post once a date is picked: pings whoever the group set for its nights, and
- * the people that date works for, who are down as going now and can change it on the post.
- * Everyone else is asked to say whether they're coming.
+ * the people that date works for, saying they're down as going (nothing for them to do), and
+ * asks everyone else to say whether they're coming.
  */
 export function pickedMessage(p: { title: string; startsAt: string; voters: CardPerson[] }, ping: NightPing | null) {
   const voters = p.voters.filter((v) => v.discordId);
   const lines = [
     `${ping ? `${ping.text} ` : ""}**${escape(p.title)}** is set for <t:${unix(p.startsAt)}:F> (<t:${unix(p.startsAt)}:R>).`,
     voters.length
-      ? `${voters.map(person).join(", ")}, you said that one works, so you're down as going. If you can't make it now, change it on the post. Everyone else, say if you're coming.`
+      ? `${andList(voters.map(person))} ${voters.length === 1 ? "is" : "are"} down as going, since that date works for them. Anyone else, say on the post if you're coming.`
       : "Say if you're coming on the post.",
   ];
   return {
