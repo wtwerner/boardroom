@@ -5,6 +5,7 @@
  * sends them.
  */
 
+import type { RsvpStatus } from "@/db/enums";
 import { escape } from "./discord-components";
 import { andList } from "./text";
 
@@ -44,26 +45,35 @@ export function logNudgeDue(n: NudgeNight, now: Date, timeZone: string) {
 }
 
 export type ReminderPerson = { name: string; discordId: string | null };
+/** Someone who answered for the night; the reminder pings whoever's going or a maybe */
+export type ReminderAnswer = ReminderPerson & { status: RsvpStatus };
 
 const mention = (p: ReminderPerson) => (p.discordId ? `<@${p.discordId}>` : escape(p.name));
 
 /**
  * "⏰ Thursday heavy starts in 3 hours", reminding whoever said they'd bring games to bring them
- * (the post says which), and pinging everyone else going or a maybe who's in Discord
+ * (the post says which), then pinging everyone else going or a maybe who's in Discord, under the
+ * symbols the post heads those lists with: "✅ Also going: @Riley · ❔ Maybe: @Sam"
  */
-export function reminderMessage(n: { title: string; startsAt: Date; location: string | null; people: ReminderPerson[]; bringing?: ReminderPerson[] }) {
+export function reminderMessage(n: { title: string; startsAt: Date; location: string | null; people: ReminderAnswer[]; bringing?: ReminderPerson[] }) {
   const unix = Math.floor(n.startsAt.getTime() / 1000);
   const bringers = [...new Map((n.bringing ?? []).map((b) => [b.discordId ?? b.name, b])).values()];
   const bringerIds = new Set(bringers.flatMap((b) => (b.discordId ? [b.discordId] : [])));
-  const others = [...new Set(n.people.flatMap((p) => (p.discordId && !bringerIds.has(p.discordId) ? [p.discordId] : [])))];
+  // Each person in Discord once, and not again if they're bringing games
+  const answered = new Map<string, ReminderAnswer>();
+  for (const p of n.people) if (p.discordId && !bringerIds.has(p.discordId) && !answered.has(p.discordId)) answered.set(p.discordId, p);
+  const going = [...answered.values()].filter((p) => p.status === "going");
+  const maybe = [...answered.values()].filter((p) => p.status === "maybe");
   const lines = [
     `⏰ **${escape(n.title)}** starts <t:${unix}:R>, at <t:${unix}:t>${n.location ? ` · 📍 ${escape(n.location)}` : ""}`,
     bringers.length && `🎲 Don't forget your games: ${andList(bringers.map(mention))}`,
-    others.map((id) => `<@${id}>`).join(" "),
+    [going.length && `✅ ${bringers.length ? "Also going" : "Going"}: ${andList(going.map(mention))}`, maybe.length && `❔ Maybe: ${andList(maybe.map(mention))}`]
+      .filter(Boolean)
+      .join(" · "),
   ];
   return {
     body: { content: lines.filter(Boolean).join("\n") },
-    allowedMentions: { parse: [] as [], users: [...bringerIds, ...others] },
+    allowedMentions: { parse: [] as [], users: [...bringerIds, ...answered.keys()] },
   };
 }
 

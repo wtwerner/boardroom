@@ -51,19 +51,19 @@ describe("logNudgeDue", () => {
 });
 
 describe("reminderMessage", () => {
-  it("says when and where, and pings everyone in Discord once", () => {
+  it("says when and where, and pings everyone going in Discord once, under the post's symbol", () => {
     const m = reminderMessage({
       title: "Thursday_heavy",
       startsAt,
       location: "Sam's",
       people: [
-        { name: "Sam", discordId: "100000000000000001" },
-        { name: "Alex", discordId: null },
-        { name: "Jordan", discordId: "100000000000000003" },
-        { name: "Sam", discordId: "100000000000000001" },
+        { name: "Sam", discordId: "100000000000000001", status: "going" },
+        { name: "Alex", discordId: null, status: "going" },
+        { name: "Jordan", discordId: "100000000000000003", status: "going" },
+        { name: "Sam", discordId: "100000000000000001", status: "going" },
       ],
     });
-    expect(m.body.content).toBe("⏰ **Thursday\\_heavy** starts <t:1793318400:R>, at <t:1793318400:t> · 📍 Sam's\n<@100000000000000001> <@100000000000000003>");
+    expect(m.body.content).toBe("⏰ **Thursday\\_heavy** starts <t:1793318400:R>, at <t:1793318400:t> · 📍 Sam's\n✅ Going: <@100000000000000001> and <@100000000000000003>");
     expect(m.allowedMentions).toEqual({ parse: [], users: ["100000000000000001", "100000000000000003"] });
   });
 
@@ -73,8 +73,8 @@ describe("reminderMessage", () => {
       startsAt,
       location: null,
       people: [
-        { name: "Sam", discordId: "100000000000000001" },
-        { name: "Jordan", discordId: "100000000000000003" },
+        { name: "Sam", discordId: "100000000000000001", status: "going" },
+        { name: "Jordan", discordId: "100000000000000003", status: "maybe" },
       ],
       bringing: [
         { name: "Sam", discordId: "100000000000000001" },
@@ -87,6 +87,24 @@ describe("reminderMessage", () => {
       "⏰ **Casual night** starts <t:1793318400:R>, at <t:1793318400:t>\n🎲 Don't forget your games: <@100000000000000001>, Casey and <@100000000000000003>",
     );
     expect(m.allowedMentions).toEqual({ parse: [], users: ["100000000000000001", "100000000000000003"] });
+  });
+
+  it("says who else is going, and the maybes, after whoever's bringing games", () => {
+    const m = reminderMessage({
+      title: "Game night",
+      startsAt,
+      location: null,
+      people: [
+        { name: "Sam", discordId: "100000000000000001", status: "going" },
+        { name: "Riley", discordId: "100000000000000004", status: "going" },
+        { name: "Jordan", discordId: "100000000000000003", status: "maybe" },
+      ],
+      bringing: [{ name: "Sam", discordId: "100000000000000001" }],
+    });
+    expect(m.body.content).toBe(
+      "⏰ **Game night** starts <t:1793318400:R>, at <t:1793318400:t>\n🎲 Don't forget your games: <@100000000000000001>\n✅ Also going: <@100000000000000004> · ❔ Maybe: <@100000000000000003>",
+    );
+    expect(m.allowedMentions.users).toEqual(["100000000000000001", "100000000000000004", "100000000000000003"]);
   });
 
   it("is one line when nobody's in Discord", () => {
