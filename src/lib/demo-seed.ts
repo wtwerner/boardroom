@@ -200,6 +200,8 @@ export async function seedGroup(now = new Date()) {
       emailVerified: true,
       // Members since the play history starts, so none of them show as new
       createdAt: new Date(`${cal.core[0].date}T12:00:00Z`),
+      // Their names are settled, so Home asks only for what's left: ranking their newer games
+      nameChosenAt: new Date(`${cal.core[0].date}T12:00:00Z`),
       discordId: `9000000000000000${i}`,
       bggUsername: `${p.name.toLowerCase()}_plays`,
       isAdmin: i === 0,
@@ -275,6 +277,23 @@ export async function seedGroup(now = new Date()) {
     ["u-sam", "Azul", "love", false],
     ["u-jordan", "Ark Nova", "love", false],
     ["u-jordan", "Just One", "meh", false],
+    // Enough ratings (10 each) that rating is done for everyone
+    ["u-sam", "Cartographers", "love", false],
+    ["u-sam", "Splendor", "like", false],
+    ["u-sam", "Just One", "like", false],
+    ["u-sam", "Wavelength", "like", false],
+    ["u-sam", "Skull", "meh", false],
+    ["u-alex", "Dune: Imperium", "like", false],
+    ["u-alex", "Lost Ruins of Arnak", "like", false],
+    ["u-alex", "Root", "like", false],
+    ["u-alex", "Wavelength", "meh", false],
+    ["u-jordan", "Dune: Imperium", "love", false],
+    ["u-jordan", "Heat: Pedal to the Metal", "like", false],
+    ["u-jordan", "Everdell", "meh", false],
+    ["u-jordan", "Wavelength", "meh", false],
+    ["u-casey", "Wavelength", "love", false],
+    ["u-casey", "The Quacks of Quedlinburg", "like", false],
+    ["u-casey", "Azul", "like", false],
   ];
   for (const [userId, game, sentiment, wantToPlay] of opinions) {
     await db.insert(schema.opinion).values({ userId, gameId: ids[game], sentiment, wantToPlay, wantToPlaySince: wantToPlay ? new Date() : null });
