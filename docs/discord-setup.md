@@ -11,7 +11,7 @@ You create and own the application, and that needs no permissions on the server.
 
 ## Part 1: create the application (you)
 
-1. Go to <https://discord.com/developers/applications> and choose **New Application**. Name it "Boardroom", or whatever should show next to the bot in the member list.
+1. Go to <https://discord.com/developers/applications> and choose **New Application**. Name it "Boardroom", or whatever should show next to the bot in the member list. For the meeple the site uses, upload [`docs/assets/discord-app-icon.png`](assets/discord-app-icon.png) as the **App Icon** on **General Information** and as the **Icon** on the **Bot** tab.
 2. **OAuth2** tab:
    - Copy the **Client ID** and use **Reset Secret** to get the **Client Secret**. Keep both in a password manager.
    - Under **Redirects**, add `http://localhost:3000/api/auth/callback/discord`. Add `https://<your-domain>/api/auth/callback/discord` once the site is deployed.
