@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { Suspense, cache } from "react";
 import { DEMO, SITE_NAME } from "@/config";
@@ -6,6 +7,7 @@ import { Avatar, DemoNote, Meeple } from "@/components/ui";
 import { getNewToRank } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
 import { loadSettings } from "@/lib/settings-store";
+import poweredByBgg from "./powered-by-bgg.png";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   await loadSettings();
@@ -66,7 +68,10 @@ function DemoBanner() {
   );
 }
 
-/** BGG's API terms ask for credit back to BoardGameGeek. */
+/**
+ * BGG's API terms ask for credit by name and their "Powered by BGG" logo, linked back. The logo's
+ * dark lettering needs a light chip to stay legible on the felt.
+ */
 function BggCredit({ className }: { className?: string }) {
   return (
     <a
@@ -75,7 +80,10 @@ function BggCredit({ className }: { className?: string }) {
       rel="noreferrer"
       className={`block text-xs underline-offset-2 hover:underline ${className ?? ""}`}
     >
-      Data and images from BoardGameGeek
+      <span className="mb-2 inline-flex rounded-md bg-white px-2 py-1">
+        <Image src={poweredByBgg} alt="Powered by BGG" className="h-7 w-auto" />
+      </span>
+      <span className="block">Data and images from BoardGameGeek</span>
     </a>
   );
 }
