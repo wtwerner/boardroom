@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { asc, count } from "drizzle-orm";
 import { DEMO, SETTINGS } from "@/config";
 import { db, schema } from "@/db";
-import { PageHeader, Panel, Section, Skeleton } from "@/components/ui";
+import { DemoNote, PageHeader, Panel, Section, Skeleton } from "@/components/ui";
 import { hasAnthropicKey } from "@/lib/ai";
 import { hasInteractions, listGuildChannels, listGuildRoles } from "@/lib/discord";
 import { canManageGroup, requireUser } from "@/lib/session";
@@ -48,9 +48,7 @@ async function GroupSettings() {
   return (
     <div className="max-w-2xl space-y-10">
       {DEMO && (
-        <p role="note" className="rounded-xl border border-meeple-yellow/60 bg-meeple-yellow/10 px-4 py-3 text-sm">
-          <strong>These stay as they are on the demo</strong>, since everyone trying it shares the group. On your own site, admins change them here.
-        </p>
+        <DemoNote>You can&apos;t change these on the demo, since everyone trying it shares one group. On your own group&apos;s site, admins can.</DemoNote>
       )}
       {!admins.length && (
         <p role="note" className="rounded-xl border border-meeple-yellow/60 bg-meeple-yellow/10 px-4 py-3 text-sm">

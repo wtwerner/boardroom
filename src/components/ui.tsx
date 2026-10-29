@@ -146,6 +146,20 @@ function initials(name: string) {
     .join("");
 }
 
+/** Marks what's only so on the demo, so it doesn't read like one of a real group's notes */
+export function DemoTag() {
+  return <span className="rounded-full bg-felt px-1.5 py-px text-[0.65rem] font-semibold tracking-wide text-felt-ink uppercase">Demo</span>;
+}
+
+/** A note only the demo shows: dashed felt, not the yellow of a real group's notes */
+export function DemoNote({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <p role="note" className={twMerge("rounded-xl border border-dashed border-accent/50 bg-felt-soft px-4 py-3 text-sm", className)}>
+      <DemoTag /> {children}
+    </p>
+  );
+}
+
 /** Marks a member who signed up in the last couple of weeks. */
 export function NewBadge() {
   return <span className="rounded-full bg-meeple-yellow/25 px-1.5 py-px text-[0.65rem] font-semibold tracking-wide uppercase">New</span>;

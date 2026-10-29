@@ -1045,8 +1045,8 @@ async function dropPlanRows(ids: number[]) {
   });
 }
 
-/** A demo's prep links stay as seeded: a link anyone adds there is one every visitor sees until the reset */
-const DEMO_LINKS = "Prep links stay as they are on the demo, since everyone trying it sees them.";
+/** On a demo, a link one visitor adds is one every visitor sees until the reset, so prep links stay as seeded */
+const DEMO_LINKS = "You can't add or remove prep links on the demo.";
 
 export async function addPrepLink(id: number, rawUrl: string, rawLabel: string): Promise<ActionResult> {
   await requireUser();

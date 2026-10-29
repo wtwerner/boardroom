@@ -48,7 +48,7 @@ export function DemoLogin() {
           </button>
         ))}
       </form>
-      <p className="mt-6 text-xs text-felt-ink/60">A real group signs in with Discord. Change anything you like here: it all resets every night.</p>
+      <p className="mt-6 text-xs text-felt-ink/60">A real group signs in with Discord. Play around here: it all resets every night.</p>
     </>
   );
 }

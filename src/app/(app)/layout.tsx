@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense, cache } from "react";
 import { DEMO, SITE_NAME } from "@/config";
 import { MoreMenu, type NavBadges, SideNav, TabBar } from "@/components/nav";
-import { Avatar, Meeple } from "@/components/ui";
+import { Avatar, DemoNote, Meeple } from "@/components/ui";
 import { getNewToRank } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
 import { loadSettings } from "@/lib/settings-store";
@@ -57,12 +57,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
 function DemoBanner() {
   return (
-    <p role="note" className="-mt-2 mb-6 rounded-lg border border-meeple-yellow/60 bg-meeple-yellow/10 px-3 py-2 text-sm md:-mt-4">
-      This is a demo with a made-up group. Change anything you like: it all resets every night.{" "}
+    <DemoNote className="-mt-2 mb-6 rounded-lg px-3 py-2 md:-mt-4">
+      This is a demo with a made-up group. Play around: it all resets every night.{" "}
       <a href="https://github.com/wtwerner/boardroom" className="text-accent underline-offset-4 hover:underline">
         Want one for your group?
       </a>
-    </p>
+    </DemoNote>
   );
 }
 

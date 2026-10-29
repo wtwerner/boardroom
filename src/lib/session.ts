@@ -66,7 +66,7 @@ export const canManageGroup = cache(async () => {
  */
 export async function requireAdmin(): Promise<CurrentUser> {
   const me = await requireUser();
-  if (DEMO) throw new Error("The demo's group settings stay as they are, so everyone trying it sees the same site.");
+  if (DEMO) throw new Error("You can't change group settings on the demo.");
   if (!(await canManageGroup())) throw new Error("Only the group's admins can change that.");
   return me;
 }

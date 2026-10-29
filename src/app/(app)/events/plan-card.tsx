@@ -6,7 +6,7 @@ import { ExternalLink, Unlock, X } from "lucide-react";
 import clsx from "clsx";
 import type { MeepleColor } from "@/db/enums";
 import { addPrepLink, choosePlan, removePrepLink, setPrepped } from "@/app/actions";
-import { GameCover, Meeple, buttonClass, playerRange, playtime } from "@/components/ui";
+import { DemoTag, GameCover, Meeple, buttonClass, playerRange, playtime } from "@/components/ui";
 import type { PlannedGame } from "@/lib/events";
 
 type Member = { id: string; name: string; color: MeepleColor | null };
@@ -67,7 +67,13 @@ export function PrepCard({ plan, members, meId, lockLinks }: { plan: PlannedGame
             </li>
           ))}
         </ul>
-        {!lockLinks && <AddLinkForm planId={plan.id} />}
+        {lockLinks ? (
+          <p className="mt-2 text-xs text-slate">
+            <DemoTag /> Adding links is off on the demo.
+          </p>
+        ) : (
+          <AddLinkForm planId={plan.id} />
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3">
