@@ -9,6 +9,7 @@ import type { Night, PollStatus } from "@/db/enums";
 import { type AppEmoji, buttonEmoji, icon } from "./icons";
 import { type Action, actionId } from "./interactions";
 import { type CardPerson, type NightPing, person } from "./night-message";
+import { andList } from "./text";
 import { ACTION_ROW, BUTTON, COMPONENTS_V2, CONTAINER, type Component, LINK_BUTTON_STYLE, NIGHT_ACCENT, SECONDARY, SECTION, SEPARATOR, TEXT, escape } from "./discord-components";
 
 /** Grey for a poll that's over without a date */
@@ -133,9 +134,6 @@ export function dateChoiceLabel(startsAt: string, votes: number, timeZone: strin
   const at = new Date(startsAt).toLocaleString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   return `${at} · ${votes ? `${votes} can make it` : "nobody yet"}`;
 }
-
-/** "a", "a and b", "a, b and c" */
-const andList = (items: string[]) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
 
 /**
  * What the Find a new date form in Discord says about the poll's other dates, in its 100

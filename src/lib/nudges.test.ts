@@ -67,7 +67,7 @@ describe("reminderMessage", () => {
     expect(m.allowedMentions).toEqual({ parse: [], users: ["100000000000000001", "100000000000000003"] });
   });
 
-  it("reminds whoever's bringing games which ones, without pinging them twice", () => {
+  it("reminds whoever's bringing games, once each and without pinging them twice", () => {
     const m = reminderMessage({
       title: "Casual night",
       startsAt,
@@ -77,13 +77,14 @@ describe("reminderMessage", () => {
         { name: "Jordan", discordId: "100000000000000003" },
       ],
       bringing: [
-        { name: "Sam", discordId: "100000000000000001", game: "Azul" },
-        { name: "Casey", discordId: null, game: "Wingspan" },
-        { name: "Sam", discordId: "100000000000000001", game: "Cascadia" },
+        { name: "Sam", discordId: "100000000000000001" },
+        { name: "Casey", discordId: null },
+        { name: "Sam", discordId: "100000000000000001" },
+        { name: "Jordan", discordId: "100000000000000003" },
       ],
     });
     expect(m.body.content).toBe(
-      "⏰ **Casual night** starts <t:1793318400:R>, at <t:1793318400:t>\n🎲 Don't forget your games: <@100000000000000001> **Azul**, **Cascadia** · Casey **Wingspan**\n<@100000000000000003>",
+      "⏰ **Casual night** starts <t:1793318400:R>, at <t:1793318400:t>\n🎲 Don't forget your games: <@100000000000000001>, Casey and <@100000000000000003>",
     );
     expect(m.allowedMentions).toEqual({ parse: [], users: ["100000000000000001", "100000000000000003"] });
   });

@@ -33,11 +33,11 @@ export async function sendReminders(now = new Date()) {
       .from(schema.nightRsvp)
       .innerJoin(schema.player, eq(schema.player.id, schema.nightRsvp.playerId))
       .where(and(eq(schema.nightRsvp.gameNightId, row.id), inArray(schema.nightRsvp.status, ["going", "maybe"])));
+    // In the order they said they'd bring something; reminderMessage names each once
     const bringing = await db
-      .select({ name: schema.user.name, discordId: schema.user.discordId, game: schema.game.name })
+      .select({ name: schema.user.name, discordId: schema.user.discordId })
       .from(schema.gamePlan)
       .innerJoin(schema.user, eq(schema.user.id, schema.gamePlan.bringerId))
-      .innerJoin(schema.game, eq(schema.game.id, schema.gamePlan.gameId))
       .where(eq(schema.gamePlan.gameNightId, row.id))
       .orderBy(schema.gamePlan.id);
     const { body, allowedMentions } = reminderMessage({ ...row, people, bringing });
