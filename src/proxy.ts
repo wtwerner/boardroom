@@ -13,6 +13,6 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Icons must load on the sign-in page too, before anyone is signed in
-  matcher: ["/((?!sign-in|api|_next|icon|apple-icon|.*\\.).*)"],
+  // Icons and link previews must load before anyone is signed in
+  matcher: ["/((?!sign-in|api|_next|icon|apple-icon|opengraph-image|.*\\.).*)"],
 };

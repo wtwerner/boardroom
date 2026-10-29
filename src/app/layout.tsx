@@ -15,6 +15,8 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { default: SITE_NAME, template: `%s · ${SITE_NAME}` },
     description: "What our game group plays, loves, and should play next.",
+    // Link previews land on the sign-in page, so they'd say "Sign in" without this
+    openGraph: { title: SITE_NAME, siteName: SITE_NAME },
   };
 }
 
