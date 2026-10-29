@@ -16,13 +16,13 @@ type Member = { id: string; name: string; color: MeepleColor | null };
  * A core night's game: proposals that everyone going backs or doesn't, then the one
  * locked in, with its prep. Anyone can propose, vote, lock in or unlock.
  */
-export function CoreGames({ games, going, meId }: { games: PlannedGame[]; going: Member[]; meId: string }) {
+export function CoreGames({ games, going, meId, lockLinks }: { games: PlannedGame[]; going: Member[]; meId: string; lockLinks: boolean }) {
   const chosen = games.find((g) => g.chosen);
   const proposals = games.filter((g) => !g.chosen).sort((a, b) => b.votes.length - a.votes.length || a.id - b.id);
 
   return (
     <div className="space-y-4">
-      {chosen && <PrepCard plan={chosen} members={going} meId={meId} />}
+      {chosen && <PrepCard plan={chosen} members={going} meId={meId} lockLinks={lockLinks} />}
       {proposals.length > 0 ? (
         <div>
           {chosen && <h3 className="mb-2 text-sm font-semibold">Also proposed</h3>}

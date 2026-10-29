@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
-import { GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
+import { DEMO, GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { LogPlayForm } from "../../plays/log-play-form";
 import { db, schema } from "@/db";
 import { DateBadge, NightTag } from "@/components/night-row";
@@ -122,7 +122,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
 
       <Section title={n.night === "core" ? "The game" : "What's coming"}>
         {n.night === "core" ? (
-          <CoreGames games={n.games} going={going.length ? going : people} meId={me.id} />
+          <CoreGames games={n.games} going={going.length ? going : people} meId={me.id} lockLinks={DEMO} />
         ) : (
           <CasualGames
             nightId={n.id}

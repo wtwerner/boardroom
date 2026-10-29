@@ -11,8 +11,11 @@ import type { PlannedGame } from "@/lib/events";
 
 type Member = { id: string; name: string; color: MeepleColor | null };
 
-/** A core night's locked-in game: what to read or watch beforehand, and who's done their prep. */
-export function PrepCard({ plan, members, meId }: { plan: PlannedGame; members: Member[]; meId: string }) {
+/**
+ * A core night's locked-in game: what to read or watch beforehand, and who's done their prep.
+ * lockLinks (a demo) shows the links without adding or removing any.
+ */
+export function PrepCard({ plan, members, meId, lockLinks }: { plan: PlannedGame; members: Member[]; meId: string; lockLinks: boolean }) {
   const g = plan.game;
   const [ready, setReady] = useOptimistic(plan.readyUserIds, (_ids, next: string[]) => next);
   const [pending, start] = useTransition();
@@ -51,7 +54,7 @@ export function PrepCard({ plan, members, meId }: { plan: PlannedGame; members: 
                 <ExternalLink className="size-3.5 shrink-0" />
                 <span className="truncate">{l.label}</span>
               </a>
-              {!l.builtIn && (
+              {!l.builtIn && !lockLinks && (
                 <button
                   type="button"
                   aria-label={`Remove ${l.label}`}
@@ -64,7 +67,7 @@ export function PrepCard({ plan, members, meId }: { plan: PlannedGame; members: 
             </li>
           ))}
         </ul>
-        <AddLinkForm planId={plan.id} />
+        {!lockLinks && <AddLinkForm planId={plan.id} />}
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line px-4 py-3">

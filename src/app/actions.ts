@@ -5,7 +5,7 @@ import { refresh, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
-import { CLAUDE_IDEAS_PER_DAY, GROUP_NIGHTS, SETTINGS, SITE_URL, TIME_ZONE } from "@/config";
+import { CLAUDE_IDEAS_PER_DAY, DEMO, GROUP_NIGHTS, SETTINGS, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
@@ -1045,8 +1045,12 @@ async function dropPlanRows(ids: number[]) {
   });
 }
 
+/** A demo's prep links stay as seeded: a link anyone adds there is one every visitor sees until the reset */
+const DEMO_LINKS = "Prep links stay as they are on the demo, since everyone trying it sees them.";
+
 export async function addPrepLink(id: number, rawUrl: string, rawLabel: string): Promise<ActionResult> {
   await requireUser();
+  if (DEMO) return { ok: false, error: DEMO_LINKS };
   let url: URL;
   try {
     url = new URL(rawUrl.trim());
@@ -1064,6 +1068,7 @@ export async function addPrepLink(id: number, rawUrl: string, rawLabel: string):
 
 export async function removePrepLink(id: number, url: string) {
   await requireUser();
+  if (DEMO) throw new Error(DEMO_LINKS);
   const plan = await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, id) });
   if (!plan) return;
   await db.update(schema.gamePlan).set({ links: plan.links.filter((l) => l.url !== url) }).where(eq(schema.gamePlan.id, id));
