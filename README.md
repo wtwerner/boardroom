@@ -135,14 +135,16 @@ After that, a nightly cron (`vercel.json`, 09:00 UTC) syncs Discord, BGG collect
 
 ### Reminders and the morning after
 
-With nights posted in Discord ([Part 4](docs/discord-setup.md#part-4-nights-in-discord-optional)), Boardroom replies to a night's post a few hours before it starts, pinging whoever's going or a maybe and reminding anyone bringing games to bring them. The morning after, it DMs whoever made the night if nothing's been logged for it. The same tick closes polls whose dates have all gone by. Vercel's Hobby crons only run once a day, so something else calls `/api/cron/tick` through the day. The repo has a GitHub Actions workflow for it (`.github/workflows/tick.yml`): add two repository secrets and it runs every 15 minutes.
+With nights posted in Discord ([Part 4](docs/discord-setup.md#part-4-nights-in-discord-optional)), Boardroom replies to a night's post a few hours before it starts, pinging whoever's going or a maybe and reminding anyone bringing games to bring them. The morning after, it DMs whoever made the night if nothing's been logged for it. The same tick closes polls whose dates have all gone by. Vercel's Hobby crons only run once a day, so something else has to call `/api/cron/tick` every few minutes through the day. A free scheduler like [cron-job.org](https://cron-job.org) does it on time: make a job that sends a GET to `https://<your-domain>/api/cron/tick` every 5 minutes, with the header `Authorization: Bearer <CRON_SECRET>` (the same value as in Vercel), and use its test run to check it gets a 200.
+
+The repo also has a GitHub Actions workflow that calls the tick (`.github/workflows/tick.yml`). It's scheduled every 15 minutes once you add two repository secrets:
 
 ```sh
 gh secret set SITE_URL      # https://<your-domain>
 gh secret set CRON_SECRET   # the same value as in Vercel
 ```
 
-That's free for a public repo or fork. On a private repo each run counts against GitHub's free Actions minutes, so run it hourly there (change `"2-59/15 * * * *"` to `"7 * * * *"`). GitHub turns off scheduled workflows in a repo with no activity for 60 days, and in a new fork until you open its **Actions** tab. Any other scheduler that can send `Authorization: Bearer <CRON_SECRET>` works too.
+GitHub runs scheduled workflows when it has room, though, often hours apart, so on its own it can miss a night's reminder. Keep it as a backup: a night is only reminded once, however many schedulers call the tick. It's free for a public repo or fork. On a private repo each run counts against GitHub's free Actions minutes, so run it hourly there (change `"2-59/15 * * * *"` to `"7 * * * *"`). GitHub turns off scheduled workflows in a repo with no activity for 60 days, and in a new fork until you open its **Actions** tab.
 
 ## Updating
 
