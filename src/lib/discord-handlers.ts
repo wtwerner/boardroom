@@ -31,9 +31,9 @@ import { joinThread, postInThread, syncNightPost, syncNightPostLater, upcomingOw
 import { localDate, nightTitle, nightWhen } from "./nights";
 import { inSentence } from "./text";
 import { formatForForm, parseDateList, parseTime, parseWhen } from "./when";
-import { addPollDate, cancelPoll, createPoll, findNewDate, loadPoll, ownPoll, pickPollDate, pollOfDate, reopenPoll, setPollVote } from "./poll-store";
+import { addPollDate, cancelPoll, createPoll, datesStaying, findNewDate, loadPoll, ownPoll, pickPollDate, pollOfDate, reopenPoll, setPollVote } from "./poll-store";
 import { announcePickedLater, announceRefindLater, joinPollThread, pollTitle, syncPollPost, syncPollPostLater } from "./poll-post";
-import { dateChoiceLabel, rankDates } from "./poll-message";
+import { dateChoiceLabel, rankDates, stayingLine } from "./poll-message";
 import { kindOfChannel } from "./discord-commands";
 import { escape } from "./discord-components";
 import { alreadyIn, canWelcome, welcomeCandidate, welcomeName, welcomeToGroup } from "./welcome";
@@ -194,12 +194,25 @@ async function submitted(i: Interaction) {
   return reply(`Saved: **${form.title || n.title}**, <t:${unix(when.startsAt)}:F>${form.location ? ` at ${form.location}` : ""}.`);
 }
 
-/** Find a new date on a night's post opens this: more dates to offer, at the night's time unless they say */
-function refindForm(n: typeof schema.gameNight.$inferSelect) {
+/**
+ * Find a new date on a night's post opens this: more dates to offer, at the night's time unless
+ * they say, and which of its poll's dates stay on
+ */
+async function refindForm(n: typeof schema.gameNight.$inferSelect) {
   if (n.cancelled) return reply("That event was cancelled.");
+  const staying = await datesStaying(n.id);
   return modal(actionId({ kind: "refind", nightId: n.id }), "Find a new date", [
-    { id: "dates", label: "Dates to offer", description: "Optional. This date comes off; answers are cleared, and its games come back with the next pick.", placeholder: "thu, sat 2pm, 11/7", long: true, maxLength: 300 },
-    { id: "time", label: "Time", value: formatForForm(n.startsAt, TIME_ZONE).time, placeholder: "7pm", required: true, maxLength: 20 },
+    {
+      id: "dates",
+      label: staying.length ? "More dates to offer" : "Dates to offer",
+      description: stayingLine(staying.map((d) => d.startsAt), TIME_ZONE),
+      placeholder: "thu, sat 2pm, 11/7",
+      // With none staying, the poll needs some
+      required: !staying.length,
+      long: true,
+      maxLength: 300,
+    },
+    { id: "time", label: "Time", description: "Dates start then unless one gives its own. Answers are cleared; its games come back with the pick.", value: formatForForm(n.startsAt, TIME_ZONE).time, placeholder: "7pm", required: true, maxLength: 20 },
   ]);
 }
 

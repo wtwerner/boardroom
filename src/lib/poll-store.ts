@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray, max } from "drizzle-orm";
+import { and, asc, count, eq, inArray, max } from "drizzle-orm";
 import { NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { type Night, POLL_MAX_DATES, type PollStatus } from "@/db/enums";
@@ -277,6 +277,24 @@ export async function findNewDate(nightId: number, dates: Date[], userId: string
       .where(eq(schema.gameNight.id, n.id));
     return { pollId, night: n.night, was: n.startsAt, going, games: games.length };
   });
+}
+
+/**
+ * The dates a night's poll keeps if the night goes back to finding one: the others still coming
+ * up, soonest first, with how many each worked for. None for a night that wasn't made from a poll.
+ */
+export async function datesStaying(nightId: number) {
+  const n = await ownNight(nightId);
+  const from = await db.query.datePoll.findFirst({ where: and(eq(p.gameNightId, n.id), eq(p.status, "picked")), columns: { id: true } });
+  if (!from) return [];
+  const dates = await db
+    .select({ startsAt: o.startsAt, votes: count(v.playerId) })
+    .from(o)
+    .leftJoin(v, eq(v.optionId, o.id))
+    .where(eq(o.pollId, from.id))
+    .groupBy(o.id)
+    .orderBy(asc(o.startsAt));
+  return dates.filter((d) => d.startsAt.getTime() !== n.startsAt.getTime() && d.startsAt.getTime() >= Date.now()).map((d) => ({ startsAt: d.startsAt.toISOString(), votes: d.votes }));
 }
 
 /** The poll finding a new date for a night that went back to one, if it's still open */

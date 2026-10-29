@@ -3,7 +3,7 @@ import { componentText } from "./discord-message";
 import { NIGHT_ACCENT } from "./discord-components";
 import { parseActionId } from "./interactions";
 import { nightPing } from "./night-message";
-import { type PollCard, buildPollMessage, buildPollThreadCopy, dateChoiceLabel, pickedMessage, pollThreadName, rankDates, refindMessage } from "./poll-message";
+import { type PollCard, buildPollMessage, buildPollThreadCopy, dateChoiceLabel, pickedMessage, pollThreadName, rankDates, refindMessage, stayingLine } from "./poll-message";
 
 const sam = { name: "Sam", discordId: "10000000000000001" };
 const alex = { name: "Alex", discordId: "10000000000000002" };
@@ -166,6 +166,20 @@ describe("refindMessage", () => {
   it("leaves out the ping and the games when there are none", () => {
     const { body } = refindMessage({ by: "**Sam**", was: "2026-11-06T01:00:00.000Z", going: [], games: 0, night: "core" });
     expect(body.content).toBe("↩️ **Sam** moved this back to finding a date: <t:1793926800:F> didn't work out.");
+  });
+});
+
+describe("stayingLine", () => {
+  const tz = "America/Chicago";
+  it("names the dates that stay, by day", () => {
+    expect(stayingLine(["2026-11-09T01:30:00.000Z", "2026-11-16T01:30:00.000Z"], tz)).toBe("Sun Nov 8 and Sun Nov 15 stay on the poll, with their votes. Add more, or none.");
+    expect(stayingLine(["2026-11-09T01:30:00.000Z"], tz)).toBe("Sun Nov 8 stays on the poll, with its votes. Add more, or none.");
+  });
+
+  it("counts them when naming them won't fit, and asks for dates when none stay", () => {
+    const many = Array.from({ length: 7 }, (_, i) => new Date(Date.UTC(2026, 10, 9 + i, 1, 30)).toISOString());
+    expect(stayingLine(many, tz)).toBe("Its 7 other dates stay on the poll, with their votes. Add more, or none.");
+    expect(stayingLine([], tz)).toBe("A date or two to offer instead of this one.");
   });
 });
 

@@ -16,7 +16,8 @@ import { canPostToDiscord, postsNights } from "@/lib/discord";
 import { isLegacy } from "@/lib/night";
 import { getTasteChances } from "@/lib/recommend";
 import { type NightDetail, loadNight } from "@/lib/events";
-import { findingDateFor } from "@/lib/poll-store";
+import { datesStaying, findingDateFor } from "@/lib/poll-store";
+import { dateChoiceLabel } from "@/lib/poll-message";
 import { nightWhen, tableFor } from "@/lib/nights";
 import { GamePicker, GameSearch } from "../game-picker";
 import { CasualGames } from "./casual-games";
@@ -77,7 +78,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     );
   }
 
-  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players] = await Promise.all([
+  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates] = await Promise.all([
     // Recency and "never played" come from this kind of night's plays only
     getShelf({ night: n.night }).then(async (all) => {
       const s = all.filter((g) => !isLegacy(g));
@@ -88,7 +89,10 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     db.select().from(schema.opinion),
     getPlayedBy(),
     db.select({ id: schema.player.id, name: schema.player.name }).from(schema.player).orderBy(schema.player.name),
+    datesStaying(n.id),
   ]);
+  // What Find a new date keeps: the other dates on the poll it was picked from
+  const staying = stayingDates.map((d) => dateChoiceLabel(d.startsAt, d.votes, TIME_ZONE));
   const people = members.map((m) => ({ id: m.id, name: m.name, color: m.color }));
   const byId = new Map(people.map((p) => [p.id, p]));
   const table = tableFor(n.going, n.guests);
@@ -109,7 +113,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
       <LiveRefresh nightId={n.id} />
       <div className="space-y-4">
         <BackLink />
-        <NightHeader n={n} />
+        <NightHeader n={n} staying={staying} />
         <Panel className="p-4">
           <People
             nightId={n.id}
@@ -228,7 +232,7 @@ function BackLink() {
 }
 
 /** When and where, its post in Discord, and edit and delete */
-function NightHeader({ n }: { n: NightDetail }) {
+function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }) {
   const when = nightWhen(n.startsAt, TIME_ZONE);
   return (
     <header className="flex flex-wrap items-start gap-4">
@@ -253,6 +257,7 @@ function NightHeader({ n }: { n: NightDetail }) {
             initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "" }}
             canDelete={n.plays.length === 0}
             canFindNewDate={!n.past}
+            staying={staying}
             posted={n.posted}
             setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: postsNights(n.night) }}
           />

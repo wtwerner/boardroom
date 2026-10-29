@@ -14,6 +14,7 @@ export function NightActions({
   initial,
   canDelete,
   canFindNewDate,
+  staying,
   posted,
   setup,
 }: {
@@ -22,6 +23,8 @@ export function NightActions({
   canDelete: boolean;
   /** It's still coming up, so it can go back to a poll for another date */
   canFindNewDate: boolean;
+  /** The other dates on the poll it was picked from, as they'll stay on it: "Sun, Nov 8, 7:30 PM · 3 can make it" */
+  staying: string[];
   /** It has a post in Discord, which goes too */
   posted: boolean;
   setup: NightSetup;
@@ -29,7 +32,7 @@ export function NightActions({
   const [open, setOpen] = useState<"edit" | "date" | null>(null);
   const [pending, start] = useTransition();
   if (open === "edit") return <NightForm id={id} initial={initial} onDone={() => setOpen(null)} setup={setup} />;
-  if (open === "date") return <NewDateForm id={id} title={initial.title} night={initial.night} posted={posted} onDone={() => setOpen(null)} />;
+  if (open === "date") return <NewDateForm id={id} title={initial.title} night={initial.night} staying={staying} posted={posted} onDone={() => setOpen(null)} />;
   return (
     <span className="flex gap-1.5">
       <button type="button" onClick={() => setOpen("edit")} className={buttonClass("secondary", "px-2.5 py-1.5 text-xs")}>
@@ -58,7 +61,21 @@ export function NightActions({
 }
 
 /** The night goes back to a poll: its date comes off, a few more go on, and its games wait for the pick */
-function NewDateForm({ id, title, night, posted, onDone }: { id: number; title: string; night: Night; posted: boolean; onDone: () => void }) {
+function NewDateForm({
+  id,
+  title,
+  night,
+  staying,
+  posted,
+  onDone,
+}: {
+  id: number;
+  title: string;
+  night: Night;
+  staying: string[];
+  posted: boolean;
+  onDone: () => void;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
@@ -75,10 +92,19 @@ function NewDateForm({ id, title, night, posted, onDone }: { id: number; title: 
     >
       <p className="text-sm text-slate">
         {title} goes back to a poll without this date, and everyone says which dates work instead.{posted ? " Its post in Discord turns back into the poll." : ""} Answers are
-        cleared, and {night === "casual" ? "the games people are bringing" : "the games proposed for it"} come back once a date&apos;s picked. If it came from a poll, that
-        poll&apos;s other dates stay on.
+        cleared, and {night === "casual" ? "the games people are bringing" : "the games proposed for it"} come back once a date&apos;s picked.
       </p>
-      <DateRows legend="Dates to offer" required={false} />
+      {staying.length > 0 && (
+        <div className="text-sm">
+          <p className="mb-1 font-medium">Staying on the poll, with their votes</p>
+          <ul className="space-y-0.5 text-slate">
+            {staying.map((d) => (
+              <li key={d}>{d}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <DateRows legend={staying.length ? "More dates to offer" : "Dates to offer"} rows={staying.length ? 1 : 2} required={!staying.length} />
       {error && (
         <p role="alert" className="text-sm text-meeple-red">
           {error}

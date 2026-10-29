@@ -134,6 +134,19 @@ export function dateChoiceLabel(startsAt: string, votes: number, timeZone: strin
   return `${at} · ${votes ? `${votes} can make it` : "nobody yet"}`;
 }
 
+/**
+ * What the Find a new date form in Discord says about the poll's other dates, in its 100
+ * characters: "Sun Nov 8 and Sun Nov 15 stay on the poll, with their votes. Add more, or none."
+ */
+export function stayingLine(dates: string[], timeZone: string) {
+  if (!dates.length) return "A date or two to offer instead of this one.";
+  const day = (iso: string) => new Date(iso).toLocaleString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" }).replaceAll(",", "");
+  const names = dates.map(day);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  const line = `${list} ${names.length === 1 ? "stays on the poll, with its votes" : "stay on the poll, with their votes"}. Add more, or none.`;
+  return line.length <= 100 ? line : `Its ${names.length} other dates stay on the poll, with their votes. Add more, or none.`;
+}
+
 /** "The 2 games proposed for it come", or on a casual night "The game someone's bringing comes" */
 function gamesComing(count: number, night: Night) {
   if (night === "casual") return count === 1 ? "The game someone's bringing comes" : `The ${count} games people are bringing come`;
