@@ -26,6 +26,16 @@ Next.js 16 · React 19 · TypeScript · Tailwind 4 · Drizzle + SQLite (Turso) �
 [docs/how-it-works.md](docs/how-it-works.md) covers all of it in detail, and the site's own *How it works* page explains every number to members.
 
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/clips/ranking-dark.gif">
+  <img alt="Ranking: answering 'Which would you rather play?' a few times, each game slotting into your list while the group's list re-sorts beside it" src="docs/assets/clips/ranking-light.gif">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/clips/plan-dark.gif">
+  <img alt="Planning a night: adding someone to who's coming re-scores the recommendations, switching to light games puts a new one on top, and proposing it adds it to the night" src="docs/assets/clips/plan-light.gif">
+</picture>
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/event-dark.png">
   <img alt="An event's page: who's coming, the game the group locked in with its prep links, and the other games proposed" src="docs/assets/screenshots/event.png">
 </picture>
