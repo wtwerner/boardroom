@@ -129,10 +129,10 @@ describe("dateChoiceLabel", () => {
 });
 
 describe("pickedMessage", () => {
-  it("pings the group's role and the people the date works for, to answer on the post", () => {
+  it("pings the group's role and the people the date works for, who are down as going", () => {
     const { body, allowedMentions } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", voters: [sam, { name: "Riley" }] }, nightPing("10000000000000009"));
     expect(body.content).toBe(
-      "<@&10000000000000009> **November heavy** is set for <t:1793926800:F> (<t:1793926800:R>).\n<@10000000000000001>, you said that one works. Say you're going on the post.",
+      "<@&10000000000000009> **November heavy** is set for <t:1793926800:F> (<t:1793926800:R>).\n<@10000000000000001>, you said that one works, so you're down as going. If you can't make it now, change it on the post. Everyone else, say if you're coming.",
     );
     expect(allowedMentions).toEqual({ parse: [], roles: ["10000000000000009"], users: ["10000000000000001"] });
   });

@@ -136,14 +136,16 @@ export function dateChoiceLabel(startsAt: string, votes: number, timeZone: strin
 
 /**
  * The reply on the post once a date is picked: pings whoever the group set for its nights, and
- * the people that date works for, to say whether they're coming. Picking a date doesn't answer
- * for anyone.
+ * the people that date works for, who are down as going now and can change it on the post.
+ * Everyone else is asked to say whether they're coming.
  */
 export function pickedMessage(p: { title: string; startsAt: string; voters: CardPerson[] }, ping: NightPing | null) {
   const voters = p.voters.filter((v) => v.discordId);
   const lines = [
     `${ping ? `${ping.text} ` : ""}**${escape(p.title)}** is set for <t:${unix(p.startsAt)}:F> (<t:${unix(p.startsAt)}:R>).`,
-    voters.length ? `${voters.map(person).join(", ")}, you said that one works. Say you're going on the post.` : "Say if you're coming on the post.",
+    voters.length
+      ? `${voters.map(person).join(", ")}, you said that one works, so you're down as going. If you can't make it now, change it on the post. Everyone else, say if you're coming.`
+      : "Say if you're coming on the post.",
   ];
   return {
     body: { content: lines.join("\n") },

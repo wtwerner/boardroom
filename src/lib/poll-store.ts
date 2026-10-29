@@ -181,8 +181,8 @@ export async function calledOffPolls(now = new Date()) {
 
 /**
  * Pick one of a poll's dates: the night is made, and the poll's post and thread become the
- * night's, so poll-post.ts turns the post into the night's card. Nobody's answered for: the
- * night starts with no answers, and the post asks.
+ * night's, so poll-post.ts turns the post into the night's card. Everyone that date worked for
+ * starts out going, in the order they said so; anyone can change their answer on the post.
  */
 export async function pickPollDate(pollId: number, optionId: number, fields: { title: string; location: string | null }, userId: string) {
   const row = await ownPoll(pollId);
@@ -196,6 +196,13 @@ export async function pickPollDate(pollId: number, optionId: number, fields: { t
   if (!claimed.length) throw new Error("Someone just picked a date for that.");
   try {
     const night = await createNight({ night: row.night, title: fields.title, startsAt: option.startsAt, location: fields.location }, userId);
+    const votes = await db.select({ playerId: v.playerId, votedAt: v.votedAt }).from(v).where(eq(v.optionId, optionId));
+    if (votes.length) {
+      await db
+        .insert(schema.nightRsvp)
+        // A vote doesn't record whether it came from the site or Discord, and nothing reads "via"
+        .values(votes.map((x) => ({ gameNightId: night.id, playerId: x.playerId, status: "going" as const, via: "site" as const, respondedAt: x.votedAt })));
+    }
     const post = row.messageId && !isClaim(row.messageId) ? { channelId: row.channelId, messageId: row.messageId, threadId: row.threadId, threadCardId: row.threadCardId, url: row.url } : null;
     if (post) await db.update(schema.gameNight).set(post).where(eq(schema.gameNight.id, night.id));
     // Its announcement becomes the night's too, edited into the night's when its post is

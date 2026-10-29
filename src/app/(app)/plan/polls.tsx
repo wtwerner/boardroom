@@ -289,7 +289,7 @@ function PickForm({
         <span className="mb-1 block font-medium">Where</span>
         <input name="location" maxLength={200} defaultValue={poll.location ?? ""} className={field} />
       </label>
-      <p className="text-xs text-slate">This makes the event. Its post asks the people that date works for whether they&apos;re coming.</p>
+      <p className="text-xs text-slate">This makes the event, with everyone that date works for down as going. They can change it on the event.</p>
       <div className="flex gap-2">
         <button className={buttonClass("primary")} disabled={pending || picked === null}>
           {pending ? "Making it…" : "Make the event"}

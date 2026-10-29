@@ -457,7 +457,7 @@ async function pollButton(i: Interaction, action: PollAction) {
       {
         id: "date",
         label: "Date",
-        description: "Picking it makes the event, and asks the people it works for if they're coming.",
+        description: "Picking it makes the event, with everyone it works for down as going.",
         options: ranked.map((d) => ({ label: dateChoiceLabel(d.startsAt, d.voters.length, TIME_ZONE), value: String(d.id) })),
         selected: String(ranked[0].id),
       },
@@ -498,5 +498,5 @@ async function pickDate(i: Interaction, pollId: number, form: Record<string, str
   const { night } = await pickPollDate(pollId, optionId, { title, location: form.location || null }, userId);
   announcePickedLater(pollId, optionId, { playerId: player.id });
   const plan = SITE_URL && night.night === "core" ? `\nPlan it: ${SITE_URL}/events/${night.id}` : "";
-  return reply(`Picked <t:${unix(option.startsAt)}:F> for **${escape(title)}**. The poll's post is the event now; people answer on it.${plan}`);
+  return reply(`Picked <t:${unix(option.startsAt)}:F> for **${escape(title)}**. The poll's post is the event now, and everyone that date worked for is down as going.${plan}`);
 }
