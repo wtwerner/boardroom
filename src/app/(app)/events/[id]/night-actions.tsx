@@ -29,7 +29,7 @@ export function NightActions({
   const [open, setOpen] = useState<"edit" | "date" | null>(null);
   const [pending, start] = useTransition();
   if (open === "edit") return <NightForm id={id} initial={initial} onDone={() => setOpen(null)} setup={setup} />;
-  if (open === "date") return <NewDateForm id={id} title={initial.title} posted={posted} onDone={() => setOpen(null)} />;
+  if (open === "date") return <NewDateForm id={id} title={initial.title} night={initial.night} posted={posted} onDone={() => setOpen(null)} />;
   return (
     <span className="flex gap-1.5">
       <button type="button" onClick={() => setOpen("edit")} className={buttonClass("secondary", "px-2.5 py-1.5 text-xs")}>
@@ -58,7 +58,7 @@ export function NightActions({
 }
 
 /** The night goes back to a poll: its date comes off, a few more go on, and its games wait for the pick */
-function NewDateForm({ id, title, posted, onDone }: { id: number; title: string; posted: boolean; onDone: () => void }) {
+function NewDateForm({ id, title, night, posted, onDone }: { id: number; title: string; night: Night; posted: boolean; onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
@@ -75,7 +75,8 @@ function NewDateForm({ id, title, posted, onDone }: { id: number; title: string;
     >
       <p className="text-sm text-slate">
         {title} goes back to a poll without this date, and everyone says which dates work instead.{posted ? " Its post in Discord turns back into the poll." : ""} Answers are
-        cleared, and the games proposed for it come back once a date&apos;s picked. If it came from a poll, that poll&apos;s other dates stay on.
+        cleared, and {night === "casual" ? "the games people are bringing" : "the games proposed for it"} come back once a date&apos;s picked. If it came from a poll, that
+        poll&apos;s other dates stay on.
       </p>
       <DateRows legend="Dates to offer" required={false} />
       {error && (

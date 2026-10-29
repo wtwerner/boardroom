@@ -39,6 +39,7 @@ describe("action ids", () => {
       { kind: "rsvp", nightId: 12, status: "declined" },
       { kind: "edit", nightId: 7 },
       { kind: "cancel", nightId: 7 },
+      { kind: "refind", nightId: 7 },
       { kind: "for", nightId: 7 },
       { kind: "new" },
       { kind: "welcome", userId: "100000000000000001" },

@@ -833,7 +833,7 @@ export async function findNewDate(nightId: number, dates: z.infer<typeof NewDate
   try {
     const found = await saveFindNewDate(nightId, parsed.data.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)), me.id);
     pollId = found.pollId;
-    announceRefindLater(pollId, { by: await mentionMe(me), was: found.was.toISOString(), going: found.going, games: found.games });
+    announceRefindLater(pollId, { by: await mentionMe(me), was: found.was.toISOString(), going: found.going, games: found.games, night: found.night });
   } catch (err) {
     return fail(err);
   }

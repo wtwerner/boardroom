@@ -59,7 +59,7 @@ describe("buildNightMessage", () => {
     expect(text).toContain("✅ **Going** · 0\n-# Nobody yet");
   });
 
-  it("has a button for each answer, as the symbol its list goes by, and for someone else, then Edit and a link to plan it", () => {
+  it("has a button for each answer, as the symbol its list goes by, and for someone else, then Edit, Find a new date and a link to plan it", () => {
     const [answers, more] = rows(buildNightMessage(base));
     expect(answers.map((x) => x.label ?? x.emoji?.name)).toEqual(["✅", "❔", "❌", "Someone else…"]);
     // All grey: a green Going would hide its green check
@@ -70,9 +70,10 @@ describe("buildNightMessage", () => {
       { kind: "rsvp", nightId: 12, status: "declined" },
       { kind: "for", nightId: 12 },
     ]);
-    expect(more.map((x) => x.label)).toEqual(["Edit", "Plan it in Boardroom"]);
+    expect(more.map((x) => x.label)).toEqual(["Edit", "Find a new date", "Plan it in Boardroom"]);
     expect(parseActionId(more[0].custom_id)).toEqual({ kind: "edit", nightId: 12 });
-    expect(more[1].url).toBe(base.planUrl);
+    expect(parseActionId(more[1].custom_id)).toEqual({ kind: "refind", nightId: 12 });
+    expect(more[2].url).toBe(base.planUrl);
   });
 
   it("leaves the site link off where most people can't open it", () => {

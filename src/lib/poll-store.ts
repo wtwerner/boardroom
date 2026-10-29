@@ -275,7 +275,7 @@ export async function findNewDate(nightId: number, dates: Date[], userId: string
       .update(schema.gameNight)
       .set({ cancelled: true, channelId: null, messageId: null, threadId: null, threadCardId: null, url: null, announceChannelId: null, announceMessageId: null })
       .where(eq(schema.gameNight.id, n.id));
-    return { pollId, was: n.startsAt, going, games: games.length };
+    return { pollId, night: n.night, was: n.startsAt, going, games: games.length };
   });
 }
 

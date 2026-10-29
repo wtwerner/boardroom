@@ -134,17 +134,23 @@ export function dateChoiceLabel(startsAt: string, votes: number, timeZone: strin
   return `${at} · ${votes ? `${votes} can make it` : "nobody yet"}`;
 }
 
+/** "The 2 games proposed for it come", or on a casual night "The game someone's bringing comes" */
+function gamesComing(count: number, night: Night) {
+  if (night === "casual") return count === 1 ? "The game someone's bringing comes" : `The ${count} games people are bringing come`;
+  return count === 1 ? "The game proposed for it comes" : `The ${count} games proposed for it come`;
+}
+
 /**
  * The note in the thread when a night goes back to finding a date: who did it and which date
- * fell through, a ping for whoever was going to say which dates work now, and whether the
- * games proposed for it come back with the next pick.
+ * fell through, a ping for whoever was going to say which dates work now, and that its games
+ * (proposed, or being brought to a casual night) come back with the next pick.
  */
-export function refindMessage(n: { by: string; was: string; going: CardPerson[]; games: number }) {
+export function refindMessage(n: { by: string; was: string; going: CardPerson[]; games: number; night: Night }) {
   const going = n.going.filter((g) => g.discordId);
   const lines = [
     `↩️ ${n.by} moved this back to finding a date: <t:${unix(n.was)}:F> didn't work out.`,
     ...(going.length ? [`${going.map(person).join(", ")}, you were going. Say which dates work for you on the post.`] : []),
-    ...(n.games ? [`${n.games === 1 ? "The game proposed for it comes" : `The ${n.games} games proposed for it come`} back once a date's picked.`] : []),
+    ...(n.games ? [`${gamesComing(n.games, n.night)} back once a date's picked.`] : []),
   ];
   return { body: { content: lines.join("\n") }, allowedMentions: { parse: [], users: [...new Set(going.map((g) => g.discordId!))] } };
 }

@@ -146,7 +146,7 @@ describe("pickedMessage", () => {
 
 describe("refindMessage", () => {
   it("says which date fell through, pings whoever was going, and says the games come back", () => {
-    const { body, allowedMentions } = refindMessage({ by: "<@10000000000000003>", was: "2026-11-06T01:00:00.000Z", going: [sam, alex, { name: "Riley" }], games: 2 });
+    const { body, allowedMentions } = refindMessage({ by: "<@10000000000000003>", was: "2026-11-06T01:00:00.000Z", going: [sam, alex, { name: "Riley" }], games: 2, night: "core" });
     expect(body.content).toBe(
       "↩️ <@10000000000000003> moved this back to finding a date: <t:1793926800:F> didn't work out.\n<@10000000000000001>, <@10000000000000002>, you were going. Say which dates work for you on the post.\nThe 2 games proposed for it come back once a date's picked.",
     );
@@ -154,11 +154,17 @@ describe("refindMessage", () => {
   });
 
   it("says one game comes back", () => {
-    expect(refindMessage({ by: "**Sam**", was: "2026-11-06T01:00:00.000Z", going: [], games: 1 }).body.content).toContain("\nThe game proposed for it comes back once a date's picked.");
+    expect(refindMessage({ by: "**Sam**", was: "2026-11-06T01:00:00.000Z", going: [], games: 1, night: "core" }).body.content).toContain("\nThe game proposed for it comes back once a date's picked.");
+  });
+
+  it("calls a casual night's games the ones people are bringing", () => {
+    const note = (games: number) => refindMessage({ by: "**Sam**", was: "2026-11-06T01:00:00.000Z", going: [], games, night: "casual" }).body.content;
+    expect(note(3)).toContain("\nThe 3 games people are bringing come back once a date's picked.");
+    expect(note(1)).toContain("\nThe game someone's bringing comes back once a date's picked.");
   });
 
   it("leaves out the ping and the games when there are none", () => {
-    const { body } = refindMessage({ by: "**Sam**", was: "2026-11-06T01:00:00.000Z", going: [], games: 0 });
+    const { body } = refindMessage({ by: "**Sam**", was: "2026-11-06T01:00:00.000Z", going: [], games: 0, night: "core" });
     expect(body.content).toBe("↩️ **Sam** moved this back to finding a date: <t:1793926800:F> didn't work out.");
   });
 });

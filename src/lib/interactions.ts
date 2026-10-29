@@ -95,6 +95,8 @@ export type Action =
   | { kind: "for"; nightId: number }
   | { kind: "new" }
   | { kind: "cancel"; nightId: number }
+  /** Find a new date on a night's post, and the form it opens */
+  | { kind: "refind"; nightId: number }
   /** Invite someone to the core group's nights: the confirm button after Invite to … */
   | { kind: "welcome"; userId: string }
   /** Answer being asked to bring a game to a casual night: the buttons on the DM */
@@ -163,7 +165,7 @@ export function parseActionId(id: string | undefined): Action | null {
   const nightId = Number(rawNight);
   if (!Number.isInteger(nightId) || nightId <= 0) return null;
   if (kind === "rsvp") return RSVP_CODES[code] ? { kind, nightId, status: RSVP_CODES[code] } : null;
-  if (kind === "edit" || kind === "cancel" || kind === "for") return { kind, nightId };
+  if (kind === "edit" || kind === "cancel" || kind === "for" || kind === "refind") return { kind, nightId };
   return null;
 }
 

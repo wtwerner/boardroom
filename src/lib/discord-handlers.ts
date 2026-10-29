@@ -31,8 +31,8 @@ import { joinThread, postInThread, syncNightPost, syncNightPostLater, upcomingOw
 import { localDate, nightTitle, nightWhen } from "./nights";
 import { inSentence } from "./text";
 import { formatForForm, parseDateList, parseTime, parseWhen } from "./when";
-import { addPollDate, cancelPoll, createPoll, loadPoll, ownPoll, pickPollDate, pollOfDate, reopenPoll, setPollVote } from "./poll-store";
-import { announcePickedLater, joinPollThread, pollTitle, syncPollPost, syncPollPostLater } from "./poll-post";
+import { addPollDate, cancelPoll, createPoll, findNewDate, loadPoll, ownPoll, pickPollDate, pollOfDate, reopenPoll, setPollVote } from "./poll-store";
+import { announcePickedLater, announceRefindLater, joinPollThread, pollTitle, syncPollPost, syncPollPostLater } from "./poll-post";
 import { dateChoiceLabel, rankDates } from "./poll-message";
 import { kindOfChannel } from "./discord-commands";
 import { escape } from "./discord-components";
@@ -154,6 +154,7 @@ async function component(i: Interaction) {
   }
   if (!isMember(i)) return reply(MEMBERS_ONLY());
   if (action.kind === "edit") return editForm(n);
+  if (action.kind === "refind") return refindForm(n);
 
   // Confirmed from /event cancel
   await cancelNight(n.id);
@@ -178,6 +179,7 @@ async function submitted(i: Interaction) {
   if (action?.kind === "newPoll") return newPoll(i, form);
   if (action?.kind === "pollAdd") return suggestDate(i, action.pollId, form);
   if (action?.kind === "pollPick") return pickDate(i, action.pollId, form);
+  if (action?.kind === "refind") return refindDate(i, action.nightId, form);
   if (action?.kind !== "edit") return reply("That form is from an older version. Try again.");
 
   const n = await ownNight(action.nightId);
@@ -190,6 +192,29 @@ async function submitted(i: Interaction) {
   const before = await editNight(n.id, { title: form.title || n.title, startsAt: when.startsAt, location: form.location || null, capacity: seats });
   syncNightPostLater(n.id, { note: { before, by: { name: memberName(i), discordId: i.member!.user.id } } });
   return reply(`Saved: **${form.title || n.title}**, <t:${unix(when.startsAt)}:F>${form.location ? ` at ${form.location}` : ""}.`);
+}
+
+/** Find a new date on a night's post opens this: more dates to offer, at the night's time unless they say */
+function refindForm(n: typeof schema.gameNight.$inferSelect) {
+  if (n.cancelled) return reply("That event was cancelled.");
+  return modal(actionId({ kind: "refind", nightId: n.id }), "Find a new date", [
+    { id: "dates", label: "Dates to offer", description: "Optional. This date comes off; answers are cleared, and its games come back with the next pick.", placeholder: "thu, sat 2pm, 11/7", long: true, maxLength: 300 },
+    { id: "time", label: "Time", value: formatForForm(n.startsAt, TIME_ZONE).time, placeholder: "7pm", required: true, maxLength: 20 },
+  ]);
+}
+
+/** The Find a new date form sent back: the night goes back to a poll, and its post turns back into it */
+async function refindDate(i: Interaction, nightId: number, form: Record<string, string>) {
+  const userId = await accountFor(i);
+  if (!userId) return signInFirst();
+  const time = parseTime(form.time ?? "");
+  if (!time) return reply(`Couldn't read "${form.time}" as a time. Try 7pm or 19:00.`);
+  const dates = form.dates ? parseDateList(form.dates, time, new Date(), TIME_ZONE, POLL_MAX_DATES) : [];
+  if ("error" in dates) return reply(dates.error);
+  const n = await ownNight(nightId);
+  const found = await findNewDate(nightId, dates.map((d) => d.startsAt), userId);
+  announceRefindLater(found.pollId, { by: `<@${i.member!.user.id}>`, was: found.was.toISOString(), going: found.going, games: found.games, night: found.night });
+  return reply(`Moved **${escape(n.title)}** back to finding a date. Its post is the poll again, where people say which dates work.`);
 }
 
 const ANSWERS: { status: RsvpStatus; label: string }[] = [
