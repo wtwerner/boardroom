@@ -43,7 +43,14 @@ async function main() {
     try {
       await refreshLogPost(newest, night);
       for (const m of older) await deletePlaysMessage(night, m).catch((err) => console.error(`${key}: couldn't delete ${m}`, err));
-      console.log(`${key}: ${ps.length} ${ps.length === 1 ? "game" : "games"} in ${newest}${older.length ? `, merged from ${older.length + 1} posts` : ""}`);
+      const nights = await db
+        .select({ id: schema.gameNight.id, cancelled: schema.gameNight.cancelled, threadId: schema.gameNight.threadId, logCopyId: schema.gameNight.logCopyId })
+        .from(schema.gameNight)
+        .where(and(eq(schema.gameNight.night, night), eq(schema.gameNight.date, ps[0].playedOn)));
+      const where = nights.length
+        ? nights.map((n) => `night ${n.id}${n.cancelled ? " (cancelled)" : ""}, ${n.threadId ? (n.logCopyId ? "copy in its thread" : "a thread but no copy") : "no thread"}`).join("; ")
+        : "no night on that date";
+      console.log(`${key}: ${ps.length} ${ps.length === 1 ? "game" : "games"} in ${newest}${older.length ? `, merged from ${older.length + 1} posts` : ""} · ${where}`);
     } catch (err) {
       console.error(`${key}: couldn't update ${newest}`, err);
     }

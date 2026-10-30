@@ -73,9 +73,9 @@ describe("buildPlayMessage for a night of several games", () => {
   });
   const [card, row] = msg.components as { components: { type: number; items?: unknown[]; label?: string }[]; accent_color?: number }[];
 
-  it("shows every box and a button per game", () => {
+  it("shows every box, with no buttons that repeat the title's links", () => {
     expect(card.components.find((c) => c.type === 12)?.items).toHaveLength(2);
-    expect(row.components.map((b) => b.label)).toEqual(["Dune: Imperium – Uprising", "The White Castle"]);
+    expect(row).toBeUndefined();
     expect(card.accent_color).toBe(0xc9960f);
     expect(componentText(msg.components)).toContain("-# 🎉 First time playing The White Castle together, logged by Sam");
   });
@@ -91,12 +91,14 @@ describe("buildPlayMessage for a night of several games", () => {
 
 describe("buildPlayMessage for a long night", () => {
   const games = Array.from({ length: 7 }, (_, i) => ({ gameName: `Game ${i + 1}`, bggId: 1000 + i, playNumber: 2, appUrl: `https://boardroom.example/games/${1000 + i}` }));
-  const msg = buildPlayMessage({ ...play, games, threadId: "10000000000000030" });
-  const rows = msg.components.slice(1) as { type: number; components: { label: string }[] }[];
+  const msg = buildPlayMessage({ ...play, games, threadId: "10000000000000030", nightUrl: "https://boardroom.example/events/12" });
 
-  it("links every game, five to a row", () => {
-    expect(rows.map((r) => r.components.length)).toEqual([5, 2]);
-    expect(rows.flatMap((r) => r.components.map((b) => b.label))).toEqual(games.map((g) => g.gameName));
+  it("links every game in the title, and the night's page in one button", () => {
+    const text = componentText(msg.components);
+    for (const g of games) expect(text).toContain(`[${g.gameName}](https://boardgamegeek.com/boardgame/${g.bggId})`);
+    const rows = msg.components.slice(1) as { components: { label: string; url: string }[] }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].components).toEqual([expect.objectContaining({ label: "See the night in Boardroom", url: "https://boardroom.example/events/12" })]);
   });
 
   it("links the night's thread, and still reads back", () => {

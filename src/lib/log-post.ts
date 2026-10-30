@@ -20,13 +20,14 @@ export type SharedDetails = Omit<FormattablePlay, "games">;
 /** The order a night's plays were played in: moved by hand, or else as they were logged */
 export const playOrder = sql`coalesce(${schema.play.position}, ${schema.play.id})`;
 
-/** The night Boardroom runs on a date, for its thread */
+/** The night on a date, for its page and its thread (one with a thread, if there are two) */
 async function nightOn(night: Night, date: string) {
   const n = schema.gameNight;
   return (
     (await db.query.gameNight.findFirst({
-      where: and(eq(n.night, night), eq(n.date, date), eq(n.cancelled, false), isNotNull(n.threadId)),
+      where: and(eq(n.night, night), eq(n.date, date), eq(n.cancelled, false)),
       columns: { id: true, threadId: true, messageId: true, logCopyId: true },
+      orderBy: sql`${n.threadId} is null`,
     })) ?? null
   );
 }
@@ -38,7 +39,7 @@ const threadOf = (n: Awaited<ReturnType<typeof nightOn>>) => (n?.threadId && !n.
  * The Discord card for a night's games: box art, how often the group has played each, and links back.
  * The casual night's posts don't link here: most of that channel can't sign in.
  */
-export async function playCard(games: NightGame[], shared: SharedDetails, night: Night, opts: { loggedBy?: string; threadId?: string | null } = {}) {
+export async function playCard(games: NightGame[], shared: SharedDetails, night: Night, opts: { loggedBy?: string; threadId?: string | null; nightId?: number | null } = {}) {
   const site = night === "core" ? SITE_URL : undefined;
   const posted = await Promise.all(
     games.map(async ({ gameId, gameName }) => {
@@ -47,7 +48,8 @@ export async function playCard(games: NightGame[], shared: SharedDetails, night:
       return { gameName, bggId: gameId, imageUrl: g?.image ?? g?.thumbnail, playNumber, appUrl: site ? `${site}/games/${gameId}` : null };
     }),
   );
-  return buildPlayMessage({ ...shared, games: posted, loggedBy: opts.loggedBy, threadId: opts.threadId, emoji: await fetchAppEmoji() });
+  const nightUrl = site && opts.nightId ? `${site}/events/${opts.nightId}` : null;
+  return buildPlayMessage({ ...shared, games: posted, loggedBy: opts.loggedBy, threadId: opts.threadId, nightUrl, emoji: await fetchAppEmoji() });
 }
 
 /** The plays a message of ours lists, in the night's order */
@@ -60,7 +62,7 @@ function playsIn(messageId: string) {
 }
 
 /** A message's card from its plays: everyone at any of its games, the notes, and who logged it */
-async function cardFor(plays: (typeof schema.play.$inferSelect)[], night: Night, threadId: string | null) {
+async function cardFor(plays: (typeof schema.play.$inferSelect)[], night: Night, on: Awaited<ReturnType<typeof nightOn>>) {
   const seats = await db
     .select({ playId: schema.playPlayer.playId, name: schema.player.name, discordId: schema.player.discordId, playerId: schema.player.id })
     .from(schema.playPlayer)
@@ -83,8 +85,8 @@ async function cardFor(plays: (typeof schema.play.$inferSelect)[], night: Night,
     ? (await db.query.user.findFirst({ where: eq(schema.user.id, first.createdBy), columns: { name: true } }))?.name
     : undefined;
   return {
-    body: await playCard(games, shared, night, { loggedBy, threadId }),
-    copy: await playCard(games, shared, night, { loggedBy }),
+    body: await playCard(games, shared, night, { loggedBy, threadId: threadOf(on), nightId: on?.id }),
+    copy: await playCard(games, shared, night, { loggedBy, nightId: on?.id }),
     content: formatPlayMessage({ ...shared, games: games.map((g) => ({ gameName: g.gameName, bggId: g.gameId })) }),
   };
 }
@@ -105,8 +107,7 @@ export async function refreshLogPost(messageId: string, night: Night, date?: str
     const stale = plays.filter((p, i) => p.sourceRef !== `${messageId}:${i}`);
     for (const p of stale) await db.update(schema.play).set({ sourceRef: `${messageId}:moving-${p.id}` }).where(eq(schema.play.id, p.id));
     for (const p of stale) await db.update(schema.play).set({ sourceRef: `${messageId}:${plays.indexOf(p)}` }).where(eq(schema.play.id, p.id));
-    const thread = threadOf(await nightOn(night, plays[0].playedOn));
-    const { body, content } = await cardFor(plays, night, thread);
+    const { body, content } = await cardFor(plays, night, await nightOn(night, plays[0].playedOn));
     await editPlaysMessage(night, messageId, body, { content });
   }
   // A deleted play is gone from the list, so its date comes with it
@@ -142,7 +143,7 @@ export async function addToLog(night: Night, date: string, playIds: number[]) {
       plays = await playsIn(existing);
     }
   }
-  const { body } = await cardFor(plays, night, threadOf(await nightOn(night, date)));
+  const { body } = await cardFor(plays, night, await nightOn(night, date));
   const messageId = await postPlaysMessage(night, body);
   for (const [i, p] of plays.entries()) await db.update(schema.play).set({ sourceRef: `${messageId}:${i}` }).where(eq(schema.play.id, p.id));
   await syncLogCopy(night, date);
@@ -167,7 +168,7 @@ export async function syncLogCopy(night: Night, date: string) {
       }
       return;
     }
-    const { copy } = await cardFor(plays, night, null);
+    const { copy } = await cardFor(plays, night, n);
     if (n.logCopyId && (await editMessage(thread, n.logCopyId, copy))) return;
     const posted = await postMessage(thread, copy);
     // Another request posted one first: keep theirs

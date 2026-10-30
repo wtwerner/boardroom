@@ -14,9 +14,6 @@ import { ACCENT, ACTION_ROW, BUTTON, COMPONENTS_V2, CONTAINER, LINK_BUTTON_STYLE
 
 export { COMPONENTS_V2 };
 
-/** Links to a night's games, five to a row: a message holds 40 parts in all, the card's included */
-const MAX_GAME_BUTTONS = 20;
-
 /** Gold for a game's first play with the group */
 const FIRST_PLAY_ACCENT = 0xc9960f;
 
@@ -41,6 +38,8 @@ export type PlayPost = {
   loggedBy?: string;
   /** The night's thread in Discord, linked at the bottom */
   threadId?: string | null;
+  /** The night's page in the app, for a post of several games */
+  nightUrl?: string | null;
   /** The bot's own emoji, once uploaded; plain emoji without them */
   emoji?: AppEmoji;
 };
@@ -88,25 +87,22 @@ export function buildPlayMessage(p: PlayPost): { flags: number; components: Comp
     ...(footer ? [{ type: TEXT, content: `-# ${footer}` }] : []),
   ];
 
+  // One game: its BGG page and its page here. Several: each is linked in the title already, and
+  // a button apiece wraps unevenly under the card, so there's one to the night's page here
   const buttons = (
     only
       ? [
           bgg(only) && { type: BUTTON, style: LINK_BUTTON_STYLE, label: "BoardGameGeek", url: bgg(only) },
           only.appUrl && { type: BUTTON, style: LINK_BUTTON_STYLE, label: `Open in ${SITE_NAME}`, url: only.appUrl },
         ]
-      : // One per game, to its page here or else on BGG
-        p.games.slice(0, MAX_GAME_BUTTONS).map((g) => {
-          const url = g.appUrl ?? bgg(g);
-          return url && { type: BUTTON, style: LINK_BUTTON_STYLE, label: g.gameName.slice(0, 80), url };
-        })
+      : [p.nightUrl && { type: BUTTON, style: LINK_BUTTON_STYLE, label: `See the night in ${SITE_NAME}`.slice(0, 80), url: p.nightUrl }]
   ).filter(Boolean) as Component[];
 
   return {
     flags: COMPONENTS_V2,
     components: [
       { type: CONTAINER, accent_color: firsts.length ? FIRST_PLAY_ACCENT : ACCENT, components: card },
-      // Discord allows five buttons in a row
-      ...Array.from({ length: Math.ceil(buttons.length / 5) }, (_, i) => ({ type: ACTION_ROW, components: buttons.slice(i * 5, i * 5 + 5) })),
+      ...(buttons.length ? [{ type: ACTION_ROW, components: buttons }] : []),
     ],
   };
 }
