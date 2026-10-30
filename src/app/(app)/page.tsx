@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
 import { AttendanceBars, MonthColumns } from "@/components/charts";
 import type { MeepleColor, Tier } from "@/db/enums";
-import { NightRow, OnNow, isOn } from "@/components/night-row";
+import { NightRow, isOn } from "@/components/night-row";
 import { type NightDetail, getNightsByDate, getUpcomingNights } from "@/lib/events";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { Avatar, Empty, GameCover, Meeple, PlayerChip, Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass, formatDate } from "@/components/ui";
@@ -42,9 +42,11 @@ export default function HomePage() {
 
 async function Home() {
   const me = await requireUser();
+  const upcoming = getUpcomingNights();
   const [stats, lastNight, mostPlayed, attendance, months, group, shame, wanted, review, setup, members, plans, newMembers, taste, toRank] = await Promise.all([
     getHeadlineStats(),
-    getLastNight(),
+    // The last event is the last one that's over, not one that's still on
+    upcoming.then((nights) => getLastNight(nights.filter(isOn))),
     getMostPlayed(8),
     getAttendance(),
     getPlaysByMonth(),
@@ -54,7 +56,7 @@ async function Home() {
     getReviewQueue(),
     getSetupStatus(me),
     getMembers(),
-    getUpcomingNights(),
+    upcoming,
     getNewMembers(),
     getTasteInsights(),
     getNewToRank(me.id, me.playerId),
@@ -62,8 +64,9 @@ async function Home() {
   const nameOf = new Map(members.map((m) => [m.id, m.name]));
   const lastNightId = lastNight && (await getNightsByDate([{ night: lastNight.night, date: lastNight.date }])).get(`${lastNight.night}:${lastNight.date}`)?.id;
 
-  // The last night played is still on
-  const onNow = plans.find((n) => n.id === lastNightId && isOn(n));
+  // A night that's on gets its own section, above what's coming up
+  const onNow = plans.filter(isOn);
+  const comingUp = plans.filter((n) => !isOn(n));
 
   if (stats.all.plays === 0) return <FirstRun name={me.name} />;
 
@@ -73,31 +76,21 @@ async function Home() {
     <div className="space-y-10">
       <SetupNudge name={me.name} status={setup} toRank={toRank} />
       <NewMembers members={newMembers.filter((m) => m.id !== me.id)} />
-      {plans.length > 0 && <UpNext nights={plans.slice(0, 3)} members={members} />}
+      {onNow.length > 0 && <HappeningNow nights={onNow} members={members} />}
+      {comingUp.length > 0 && <UpNext nights={comingUp.slice(0, 3)} members={members} />}
 
       {lastNight && (
         <section>
-          {onNow ? (
-            // Still going: what's been played so far, and where to log the next one
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate">
-              <OnNow />
-              {CASUAL_NIGHT && <span>{NIGHT_NAMES[lastNight.night]} ·</span>}
-              <span>Played so far</span>
-              <span>·</span>
-              <TextLink href={`/events/${onNow.id}#log`}>Log the next game</TextLink>
-            </p>
-          ) : (
-            <p className="text-sm text-slate">
-              Last event was {dayWord(lastNight.date, localDate(new Date()))?.toLowerCase() ?? formatDate(lastNight.date, { weekday: "long", month: "long", day: "numeric" })}
-              {CASUAL_NIGHT && ` · ${NIGHT_NAMES[lastNight.night]}`}
-              {lastNightId && (
-                <>
-                  {" · "}
-                  <TextLink href={`/events/${lastNightId}`}>See the event</TextLink>
-                </>
-              )}
-            </p>
-          )}
+          <p className="text-sm text-slate">
+            Last event was {dayWord(lastNight.date, localDate(new Date()))?.toLowerCase() ?? formatDate(lastNight.date, { weekday: "long", month: "long", day: "numeric" })}
+            {CASUAL_NIGHT && ` · ${NIGHT_NAMES[lastNight.night]}`}
+            {lastNightId && (
+              <>
+                {" · "}
+                <TextLink href={`/events/${lastNightId}`}>See the event</TextLink>
+              </>
+            )}
+          </p>
           <div className="mt-3 grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
             <div className="flex -space-x-6">
               {lastNight.plays.slice(0, 4).map((p, i) => (
@@ -333,6 +326,23 @@ function uniqueSeats(plays: PlayRow[]) {
       if (!seen.has(s.playerId)) seen.set(s.playerId, s);
     }
   return [...seen.values()];
+}
+
+/** Nights that are on, with what's been played so far and, for just the one, where to log the next game */
+function HappeningNow({ nights, members }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[] }) {
+  const colors = Object.fromEntries(members.map((m) => [m.id, m.color]));
+  const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
+  return (
+    <Section title="Happening now" action={nights.length === 1 && <TextLink href={`/events/${nights[0].id}#log`}>Log a game</TextLink>}>
+      <ul className="grid gap-3 lg:grid-cols-2">
+        {nights.map((n) => (
+          <li key={n.id}>
+            <NightRow n={n} colors={colors} names={names} />
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
 }
 
 function UpNext({ nights, members }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[] }) {

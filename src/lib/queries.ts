@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, countDistinct, desc, eq, inArray, isNotNull, isNull, max, sql } from "drizzle-orm";
+import { and, count, countDistinct, desc, eq, inArray, isNotNull, isNull, max, not, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MUST_PLAY_LIMIT, TIERS, type MeepleColor, type Night, type Sentiment, type Tier } from "@/db/enums";
 import { localDate, recentMonths } from "./nights";
@@ -128,9 +128,14 @@ export async function getPlays(opts: { limit?: number; offset?: number; gameId?:
   }));
 }
 
-/** The latest night anything was played, of either kind; of two on one day, the one logged last */
-export async function getLastNight() {
-  const [latest] = await db.select({ day: play.playedOn, night: play.night }).from(play).orderBy(desc(play.playedOn), desc(play.id)).limit(1);
+/** The latest night anything was played, of either kind, leaving out `skip` (nights still on); of two on one day, the one logged last */
+export async function getLastNight(skip: { night: Night; date: string | null }[] = []) {
+  const [latest] = await db
+    .select({ day: play.playedOn, night: play.night })
+    .from(play)
+    .where(and(...skip.flatMap((n) => (n.date ? [not(and(eq(play.night, n.night), eq(play.playedOn, n.date))!)] : []))))
+    .orderBy(desc(play.playedOn), desc(play.id))
+    .limit(1);
   if (!latest) return null;
   return { date: latest.day, night: latest.night, plays: await getPlays({ date: latest.day, night: latest.night, limit: 20 }) };
 }
