@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { componentText } from "./discord-message";
-import { type NightCard, buildNightMessage, buildNightThreadCopy, changeNote, movedMessage, nightPing, threadName } from "./night-message";
+import { type NightCard, buildNightMessage, buildNightThreadCopy, changeNote, movedMessage, nightPing, seatOpenedNote, threadName } from "./night-message";
 import { parseActionId } from "./interactions";
 
 const base: NightCard = {
@@ -35,9 +35,16 @@ describe("buildNightMessage", () => {
 
   it("lists who's coming in a quote, with mentions, guests and others counted by hand", () => {
     const text = componentText(buildNightMessage({ ...base, others: 2, capacity: 6 }).components);
-    expect(text).toContain("✅ **Going** · 5/6\n> <@10000000000000001> +1\n> Riley\n> -# and 2 others");
+    expect(text).toContain("✅ **Going** · 5 of 6 seats\n> <@10000000000000001> +1\n> Riley\n> -# and 2 others");
     expect(text).toContain("❔ **Maybe** · 1\n> <@10000000000000002>");
     expect(text).not.toContain("Can't make it");
+  });
+
+  it("says when every seat's taken, and who's waiting for one", () => {
+    const text = componentText(buildNightMessage({ ...base, capacity: 3, waitlist: [{ name: "Casey" }, { name: "Jordan", discordId: "10000000000000003" }] }).components);
+    expect(text).toContain("✅ **Going** · 3 of 3 seats, full");
+    expect(text).toContain("⏳ **Waiting for a seat** · 2\n> Casey, <@10000000000000003>");
+    expect(componentText(buildNightThreadCopy({ ...base, capacity: 3, waitlist: [{ name: "Casey" }] }).components)).toBe("-# ✅ 3/3 going · ⏳ 1 waiting · ❔ 1 maybe");
   });
 
   it("runs the maybes together on one line", () => {
@@ -234,5 +241,15 @@ describe("nightPing", () => {
     const m = buildNightMessage(base, nightPing("here"));
     expect(m.components[0]).toEqual({ type: 10, content: "@here" });
     expect(buildNightMessage(base).components[0]).toMatchObject({ type: 17 });
+  });
+});
+
+describe("seatOpenedNote", () => {
+  it("tells whoever got a seat, pinging the ones in Discord", () => {
+    expect(seatOpenedNote([{ name: "Casey", discordId: "10000000000000004", guests: 1 }])).toEqual({
+      content: "🎟️ A seat opened up: <@10000000000000004>, you're going.",
+      users: ["10000000000000004"],
+    });
+    expect(seatOpenedNote([{ name: "Casey" }, { name: "Jordan", discordId: "10000000000000003" }]).content).toBe("🎟️ Seats opened up: Casey and <@10000000000000003>, you're going.");
   });
 });

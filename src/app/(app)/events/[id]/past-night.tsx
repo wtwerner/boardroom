@@ -9,9 +9,9 @@ type Member = { id: string; name: string; color: MeepleColor | null };
 
 /**
  * A night that's happened: who came, what was played, and how that compares with the plan.
- * `logForm` logs its plays, open until something's logged (the morning-after DM links here).
+ * `log` logs its plays, open until something's logged (the morning-after DM links here).
  */
-export function PastNight({ n, members, logForm }: { n: NightDetail; members: Member[]; logForm: ReactNode }) {
+export function PastNight({ n, members, log }: { n: NightDetail; members: Member[]; log: ReactNode }) {
   const byId = new Map(members.map((m) => [m.id, m]));
   const came = cameTo(n);
   const cameIds = new Set(came.map((s) => s.playerId));
@@ -30,7 +30,7 @@ export function PastNight({ n, members, logForm }: { n: NightDetail; members: Me
         )}
       </Panel>
 
-      <PlayedSection n={n} logForm={logForm} />
+      <PlayedSection n={n} log={log} />
 
       {n.games.length > 0 && (
         <Section title={n.night === "core" ? "The plan" : "What was brought"}>
@@ -69,59 +69,33 @@ export function PastNight({ n, members, logForm }: { n: NightDetail; members: Me
 }
 
 /**
- * What's been logged for a night, with `logForm` to log it: on its page once it's over, and
- * below who's coming once it starts.
+ * What's been played on a night, logged with `log` (live-log.tsx): on its page once it starts, and
+ * once it's over. Without one (a night with no date), what's logged is only listed.
  */
-export function PlayedSection({ n, logForm }: { n: NightDetail; logForm: ReactNode }) {
-  const came = cameTo(n);
+export function PlayedSection({ n, log }: { n: NightDetail; log: ReactNode }) {
   return (
     <Section title="What was played">
-      {n.plays.length ? (
-        <ul className="space-y-2">
-          {n.plays.map((p) => {
-            const sameTable = p.players.length === came.length;
-            return (
+      {log ??
+        (n.plays.length ? (
+          <ul className="space-y-2">
+            {n.plays.map((p) => (
               <li key={p.id} className="flex items-center gap-3 rounded-xl border border-line bg-card p-3">
                 <GameCover src={p.thumbnail} name={p.name} size="sm" />
-                <span className="min-w-0 flex-1">
-                  {p.gameId ? (
-                    <Link href={`/games/${p.gameId}`} className="font-semibold hover:underline">
-                      {p.name}
-                    </Link>
-                  ) : (
-                    <span className="font-semibold">{p.name}</span>
-                  )}
-                  {!sameTable && (
-                    <span className="mt-1 flex flex-wrap gap-1">
-                      {p.players.map((s) => (
-                        <PlayerChip key={s.playerId} name={s.name} color={s.color} />
-                      ))}
-                    </span>
-                  )}
-                </span>
+                {p.gameId ? (
+                  <Link href={`/games/${p.gameId}`} className="min-w-0 flex-1 font-semibold hover:underline">
+                    {p.name}
+                  </Link>
+                ) : (
+                  <span className="min-w-0 flex-1 font-semibold">{p.name}</span>
+                )}
               </li>
-            );
-          })}
-        </ul>
-      ) : logForm ? (
-        <Panel id="log" className="scroll-mt-6 space-y-3 p-4">
-          <p className="text-sm text-slate">Nothing logged for this event yet. Log what you played and it shows up here.</p>
-          {logForm}
-        </Panel>
-      ) : (
-        <Empty>
-          Nothing logged for this event. <TextLink href="/plays">Log it on Plays</TextLink> and it shows up here.
-        </Empty>
-      )}
-      {n.plays.length > 0 && logForm && (
-        <details id="log" className="group mt-3 scroll-mt-6 rounded-xl border border-line bg-card">
-          <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold marker:hidden">
-            <span className="group-open:hidden">+ Log another game from this night</span>
-            <span className="hidden group-open:inline">Log another game from this night</span>
-          </summary>
-          <div className="border-t border-line p-4">{logForm}</div>
-        </details>
-      )}
+            ))}
+          </ul>
+        ) : (
+          <Empty>
+            Nothing logged for this event. <TextLink href="/plays">Log it on Plays</TextLink> and it shows up here.
+          </Empty>
+        ))}
     </Section>
   );
 }

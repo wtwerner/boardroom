@@ -14,6 +14,9 @@ import { ACCENT, ACTION_ROW, BUTTON, COMPONENTS_V2, CONTAINER, LINK_BUTTON_STYLE
 
 export { COMPONENTS_V2 };
 
+/** Links to a night's games, five to a row: a message holds 40 parts in all, the card's included */
+const MAX_GAME_BUTTONS = 20;
+
 /** Gold for a game's first play with the group */
 const FIRST_PLAY_ACCENT = 0xc9960f;
 
@@ -36,6 +39,8 @@ export type PlayPost = {
   notes?: string | null;
   players: { name: string; discordId?: string | null }[];
   loggedBy?: string;
+  /** The night's thread in Discord, linked at the bottom */
+  threadId?: string | null;
   /** The bot's own emoji, once uploaded; plain emoji without them */
   emoji?: AppEmoji;
 };
@@ -66,7 +71,9 @@ export function buildPlayMessage(p: PlayPost): { flags: number; components: Comp
     : firsts.length
       ? `${icon(e, "first")} First time playing ${listNames(firsts.map((g) => escape(g.gameName)))} together`
       : null;
-  const footer = [playCount, p.loggedBy && `logged by ${escape(p.loggedBy)}`].filter(Boolean).join(", ");
+  const footer = [[playCount, p.loggedBy && `logged by ${escape(p.loggedBy)}`].filter(Boolean).join(", "), p.threadId && `<#${p.threadId}>`]
+    .filter(Boolean)
+    .join(" · ");
   const art = p.games.filter((g) => g.imageUrl);
 
   const card: Component[] = [
@@ -87,8 +94,8 @@ export function buildPlayMessage(p: PlayPost): { flags: number; components: Comp
           bgg(only) && { type: BUTTON, style: LINK_BUTTON_STYLE, label: "BoardGameGeek", url: bgg(only) },
           only.appUrl && { type: BUTTON, style: LINK_BUTTON_STYLE, label: `Open in ${SITE_NAME}`, url: only.appUrl },
         ]
-      : // One per game (Discord allows five in a row), to its page here or else on BGG
-        p.games.slice(0, 5).map((g) => {
+      : // One per game, to its page here or else on BGG
+        p.games.slice(0, MAX_GAME_BUTTONS).map((g) => {
           const url = g.appUrl ?? bgg(g);
           return url && { type: BUTTON, style: LINK_BUTTON_STYLE, label: g.gameName.slice(0, 80), url };
         })
@@ -98,7 +105,8 @@ export function buildPlayMessage(p: PlayPost): { flags: number; components: Comp
     flags: COMPONENTS_V2,
     components: [
       { type: CONTAINER, accent_color: firsts.length ? FIRST_PLAY_ACCENT : ACCENT, components: card },
-      ...(buttons.length ? [{ type: ACTION_ROW, components: buttons }] : []),
+      // Discord allows five buttons in a row
+      ...Array.from({ length: Math.ceil(buttons.length / 5) }, (_, i) => ({ type: ACTION_ROW, components: buttons.slice(i * 5, i * 5 + 5) })),
     ],
   };
 }

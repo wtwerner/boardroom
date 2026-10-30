@@ -5,6 +5,7 @@ import { db, schema } from "@/db";
 import { canPostToDiscord, discordCode, postsNights, replyToMessage, sendDirectMessage } from "./discord";
 import { isClaim, postChannel } from "./night-post";
 import { logNudgeDm, logNudgeDue, reminderDue, reminderMessage } from "./nudges";
+import { fillSeats } from "./rsvp";
 import { syncDiscordPlays } from "./sync";
 
 /**
@@ -28,12 +29,15 @@ export async function sendReminders(now = new Date()) {
     // Claimed first, so two ticks running at once don't both remind
     const claimed = await db.update(n).set({ remindedAt: now }).where(and(eq(n.id, row.id), isNull(n.remindedAt))).returning({ id: n.id });
     if (!claimed.length) continue;
-    const people = await db
-      .select({ name: schema.player.name, discordId: schema.player.discordId, status: schema.nightRsvp.status })
+    const answers = await db
+      .select({ name: schema.player.name, discordId: schema.player.discordId, status: schema.nightRsvp.status, guests: schema.nightRsvp.guests })
       .from(schema.nightRsvp)
       .innerJoin(schema.player, eq(schema.player.id, schema.nightRsvp.playerId))
       .where(and(eq(schema.nightRsvp.gameNightId, row.id), inArray(schema.nightRsvp.status, ["going", "maybe"])))
       .orderBy(schema.nightRsvp.respondedAt);
+    // Anyone still waiting for a seat isn't told to come
+    const { waitlist } = fillSeats(answers.filter((a) => a.status === "going"), row.capacity, row.guests);
+    const people = answers.filter((a) => !waitlist.includes(a));
     // In the order they said they'd bring something; reminderMessage names each once
     const bringing = await db
       .select({ name: schema.user.name, discordId: schema.user.discordId })

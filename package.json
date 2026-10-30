@@ -20,7 +20,8 @@
     "sync:discord": "node scripts/with-env.mjs .env.discord tsx --conditions=react-server scripts/sync.ts",
     "discord:commands": "tsx --conditions=react-server scripts/discord-commands.ts",
     "move:posts": "tsx --conditions=react-server scripts/move-posts.ts",
-    "refresh:posts": "tsx --conditions=react-server scripts/refresh-posts.ts"
+    "refresh:posts": "tsx --conditions=react-server scripts/refresh-posts.ts",
+    "refresh:logs": "tsx --conditions=react-server scripts/refresh-logs.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

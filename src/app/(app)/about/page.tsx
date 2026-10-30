@@ -212,7 +212,7 @@ export default async function AboutPage() {
               <Facts
                 rows={[
                   ["Counts both kinds", `What you've played (so it's yours to rate and rank), clearing your votes when you play a game, the shelf's play counts${CLAUDE ? `, and what Claude sees (plays at ${casual} are marked)` : ""}.`],
-                  ["Home", `Its numbers and charts count both kinds, split by color: green for ${core}, gold for ${casual}. Last event is the last ${core}.`],
+                  ["Home", `Its numbers and charts count both kinds, split by color: green for ${core}, gold for ${casual}. Last event is the latest of either kind.`],
                   [
                     "Switches between them",
                     `Plays, Plan, and Discover's group picks. Each Discover tab shows the games for its kind of event, at its usual table size: ${heavy} (weight ${HEAVY_WEIGHT} and up) for ${core}, ${light} for ${casual}, no heavier than 4 in 5 of the games it has played.${CLAUDE ? " Each has its own list of Claude's picks." : ""}`,

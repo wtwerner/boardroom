@@ -3,7 +3,6 @@ import { notFound, redirect } from "next/navigation";
 import { Suspense } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { DEMO, GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
-import { LogPlayForm } from "../../plays/log-play-form";
 import { db, schema } from "@/db";
 import { DateBadge, NightTag, NightWhen } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
@@ -23,7 +22,9 @@ import { GamePicker, GameSearch } from "../game-picker";
 import { CasualGames } from "./casual-games";
 import { CoreGames } from "./core-games";
 import { NightActions } from "./night-actions";
+import { LiveLog } from "./live-log";
 import { PastNight, PlayedSection } from "./past-night";
+import { inSentence } from "@/lib/text";
 import { People } from "./people";
 
 export const metadata: Metadata = { title: "Event" };
@@ -48,19 +49,20 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   }
 
   if (n.past) {
-    const [members, logForm] = await Promise.all([getMembers(), nightLogForm(n)]);
+    const [members, log] = await Promise.all([getMembers(), nightLog(n)]);
     return (
       <div className="space-y-10">
         <div className="space-y-4">
           <BackLink />
           <NightHeader n={n} />
         </div>
-        <PastNight n={n} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} logForm={logForm} />
+        <LiveRefresh nightId={n.id} />
+        <PastNight n={n} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} log={log} />
       </div>
     );
   }
 
-  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates, logForm] = await Promise.all([
+  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates, log] = await Promise.all([
     // Recency and "never played" come from this kind of night's plays only
     getShelf({ night: n.night }).then(async (all) => {
       const s = all.filter((g) => !isLegacy(g));
@@ -73,7 +75,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     db.select({ id: schema.player.id, name: schema.player.name }).from(schema.player).orderBy(schema.player.name),
     datesStaying(n.id),
     // Once it starts, what's played can be logged as the night goes
-    n.started ? nightLogForm(n) : null,
+    n.started ? nightLog(n) : null,
   ]);
   // What Find a new date keeps: the other dates on the poll it was picked from
   const staying = stayingDates.map((d) => dateChoiceLabel(d.startsAt, d.votes, TIME_ZONE));
@@ -104,6 +106,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
             going={n.going}
             maybe={n.maybe}
             declined={n.declined}
+            waitlist={n.waitlist}
             guests={n.guests}
             othersComing={n.othersComing}
             capacity={n.capacity}
@@ -114,7 +117,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
         </Panel>
       </div>
 
-      {logForm && <PlayedSection n={n} logForm={logForm} />}
+      {log && <PlayedSection n={n} log={log} />}
 
       <Section title={n.night === "core" ? "The game" : "What's coming"}>
         {n.night === "core" ? (
@@ -209,26 +212,33 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   );
 }
 
-/** The form to log a night's plays from its page, with its date, place and kind filled in */
-async function nightLogForm(n: NightDetail) {
+/**
+ * Logging what's played from the night's page, as it's played: the games planned or brought to
+ * tap, with whoever's playing (the last game's table, or before anything is logged, who said
+ * they were going)
+ */
+async function nightLog(n: NightDetail) {
   if (!n.date || n.cancelled) return null;
   const [games, players] = await Promise.all([getAllGamesForPicker(), getPlayers()]);
   const played = new Set(n.plays.flatMap((p) => (p.gameId ? [p.gameId] : [])));
-  // Who's logged so far, or before anything is, who said they were going
-  const table = n.plays.length ? n.plays.flatMap((p) => p.players.map((s) => s.playerId)) : n.going.map((a) => a.playerId);
+  const last = n.plays.at(-1);
+  const seated = last ? last.players.map((s) => s.playerId) : n.going.map((a) => a.playerId);
   return (
-    <LogPlayForm
+    <LiveLog
+      nightId={n.id}
+      night={n.night}
+      playedOn={n.date}
+      location={n.location}
+      plays={n.plays}
+      planned={n.games.filter((g) => !played.has(g.game.id)).map((g) => ({ id: g.game.id, name: g.game.name }))}
       games={games}
       players={players}
+      seated={seated}
       canPost={Object.fromEntries(GROUP_NIGHTS.map((k) => [k, canPostToDiscord(k)]))}
       nightNames={NIGHT_NAMES}
-      fromEvent={{
-        night: n.night,
-        playedOn: n.date,
-        location: n.location,
-        playerIds: [...new Set(table)],
-        games: n.games.filter((g) => !played.has(g.game.id)).map((g) => ({ id: g.game.id, name: g.game.name })),
-      }}
+      postLabel={`Post it to ${GROUP_NIGHTS.length > 1 ? `the ${inSentence(NIGHT_NAMES[n.night])}'s` : "the"} Discord plays channel${n.posted ? " and the event's thread" : ""}`}
+      canEnd={n.started && !n.past && n.plays.length > 0}
+      collapsed={n.past && n.plays.length > 0}
     />
   );
 }
@@ -254,11 +264,11 @@ function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }
           {n.cancelled && <span className="rounded-full bg-meeple-red/12 px-2 py-0.5 text-xs font-medium">Cancelled</span>}
         </div>
         <p className="text-slate">
-          {n.fromPlays ? when.label : <NightWhen iso={n.startsAt} soon={soonLabel(n.startsAt, TIME_ZONE)} date={`${when.label},`} keepDate />}
+          {n.fromPlays ? when.label : <NightWhen iso={n.startsAt} soon={n.past ? null : soonLabel(n.startsAt, TIME_ZONE)} date={`${when.label},`} keepDate />}
           {n.location && ` · ${n.location}`}
         </p>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-3">
+      <div className="flex max-w-full shrink-0 flex-wrap items-center gap-3">
         {n.posted && n.url && (
           <a href={discordAppUrl(n.url) ?? n.url} className="inline-flex items-center gap-1.5 text-sm font-medium text-accent underline-offset-4 hover:underline">
             <ExternalLink className="size-3.5" /> Open in Discord
@@ -267,7 +277,7 @@ function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }
         {!n.cancelled && (
           <NightActions
             id={n.id}
-            initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "" }}
+            initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "", capacity: n.capacity }}
             canDelete={n.plays.length === 0}
             canFindNewDate={!n.past}
             staying={staying}

@@ -43,6 +43,13 @@
       "when": 1793215358970,
       "tag": "0005_optimal_abomination",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1793369896290,
+      "tag": "0006_friendly_kulan_gath",
+      "breakpoints": true
     }
   ]
 }

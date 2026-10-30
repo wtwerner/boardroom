@@ -60,7 +60,7 @@ async function Home() {
     getNewToRank(me.id, me.playerId),
   ]);
   const nameOf = new Map(members.map((m) => [m.id, m.name]));
-  const lastNightId = lastNight && (await getNightsByDate([{ night: "core", date: lastNight.date }])).get(`core:${lastNight.date}`)?.id;
+  const lastNightId = lastNight && (await getNightsByDate([{ night: lastNight.night, date: lastNight.date }])).get(`${lastNight.night}:${lastNight.date}`)?.id;
 
   if (stats.all.plays === 0) return <FirstRun name={me.name} />;
 
@@ -76,6 +76,7 @@ async function Home() {
         <section>
           <p className="text-sm text-slate">
             Last event was {dayWord(lastNight.date, localDate(new Date()))?.toLowerCase() ?? formatDate(lastNight.date, { weekday: "long", month: "long", day: "numeric" })}
+            {CASUAL_NIGHT && ` · ${NIGHT_NAMES[lastNight.night]}`}
             {lastNightId && (
               <>
                 {" · "}

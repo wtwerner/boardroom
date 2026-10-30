@@ -105,3 +105,12 @@ export function monthLabel(month: string, withYear = false) {
   const name = new Date(Date.UTC(y, m - 1, 1)).toLocaleString("en-US", { month: "short", timeZone: "UTC" });
   return withYear ? `${name} '${String(y % 100).padStart(2, "0")}` : name;
 }
+
+/** The list with item `i` moved `by` places; the same list when it can't move that way */
+export function moveIn<T>(list: T[], i: number, by: -1 | 1): T[] {
+  const j = i + by;
+  if (i < 0 || j < 0 || j >= list.length) return list;
+  const next = [...list];
+  [next[i], next[j]] = [next[j], next[i]];
+  return next;
+}

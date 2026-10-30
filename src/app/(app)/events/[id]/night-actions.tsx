@@ -19,7 +19,7 @@ export function NightActions({
   setup,
 }: {
   id: number;
-  initial: { night: Night; title: string; date: string; time: string; location: string };
+  initial: { night: Night; title: string; date: string; time: string; location: string; capacity: number | null };
   canDelete: boolean;
   /** It's still coming up, so it can go back to a poll for another date */
   canFindNewDate: boolean;

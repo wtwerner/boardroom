@@ -26,7 +26,7 @@ import {
   reply,
   updateReply,
 } from "./interactions";
-import { answerBringAsk, cancelNight, createNight, editNight, ownNight, playerForDiscordUser, playerNamed, setRsvp } from "./night-store";
+import { answerBringAsk, cancelNight, createNight, editNight, ownNight, playerForDiscordUser, playerNamed, setRsvp, waitingFor } from "./night-store";
 import { joinThread, postInThread, syncNightPost, syncNightPostLater, upcomingOwnNights } from "./night-post";
 import { localDate, nightTitle, nightWhen, soonLabel } from "./nights";
 import { inSentence } from "./text";
@@ -99,7 +99,7 @@ async function command(i: Interaction) {
   if (i.data?.name !== commandName()) return reply("That command isn't mine.");
   const { sub, values } = commandOptions(i.data.options);
   if (!isMember(i)) return reply(MEMBERS_ONLY());
-  if (sub === "new") return newNightForm(i);
+  if (sub === "new") return newNightForm(i, Number(values.seats) || undefined);
   if (sub === "poll") return newPollForm(i);
   const nightId = Number(values.event);
   if (!Number.isInteger(nightId)) return reply("Pick an event from the list.");
@@ -142,8 +142,9 @@ async function component(i: Interaction) {
   if (action.kind === "rsvp") {
     if (!mayAnswer(i, n.night)) return reply(NOT_THIS_ONE());
     const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
+    const waiting = await waitingFor(n.id);
     await setRsvp({ nightId: n.id, playerId: player.id, status: action.status, via: "discord" });
-    syncNightPostLater(n.id, { join: player.id });
+    syncNightPostLater(n.id, { join: player.id, waiting });
     return deferUpdate();
   }
   if (action.kind === "for") {
@@ -178,7 +179,7 @@ async function submitted(i: Interaction) {
   // Like the card's own buttons, anyone may answer on the casual night
   if (action?.kind === "for") return answerFor(i, action.nightId, form);
   if (!isMember(i)) return reply(MEMBERS_ONLY());
-  if (action?.kind === "new") return newNight(i, form);
+  if (action?.kind === "new") return newNight(i, form, action.seats ?? null);
   if (action?.kind === "newPoll") return newPoll(i, form);
   if (action?.kind === "pollAdd") return suggestDate(i, action.pollId, form);
   if (action?.kind === "pollPick") return pickDate(i, action.pollId, form);
@@ -192,8 +193,9 @@ async function submitted(i: Interaction) {
   const seats = form.seats ? Number(form.seats) : null;
   if (seats !== null && !(Number.isInteger(seats) && seats > 0 && seats <= 100)) return reply("Seats should be a number, or empty for no limit.");
 
+  const waiting = await waitingFor(n.id);
   const before = await editNight(n.id, { title: form.title || n.title, startsAt: when.startsAt, location: form.location || null, capacity: seats });
-  syncNightPostLater(n.id, { note: { before, by: { name: memberName(i), discordId: i.member!.user.id } } });
+  syncNightPostLater(n.id, { note: { before, by: { name: memberName(i), discordId: i.member!.user.id } }, waiting });
   return reply(`Saved: **${form.title || n.title}**, <t:${unix(when.startsAt)}:F>${form.location ? ` at ${form.location}` : ""}.`);
 }
 
@@ -253,8 +255,9 @@ async function answerFor(i: Interaction, nightId: number, form: Record<string, s
   if (!picked && !form.name) return reply("Pick someone, or give their name.");
 
   const playerId = picked ? (await playerForDiscordUser(picked.id, picked.name)).id : await playerNamed(form.name);
+  const waiting = await waitingFor(n.id);
   await setRsvp({ nightId: n.id, playerId, status: answer.status, via: "discord" });
-  syncNightPostLater(n.id, { join: playerId });
+  syncNightPostLater(n.id, { join: playerId, waiting });
   const who = picked ? `<@${picked.id}>` : `**${escape(form.name)}**`;
   return reply(`Answered **${answer.label}** for ${who} on **${n.title}**.`);
 }
@@ -315,9 +318,10 @@ const signInFirst = () => reply(`Sign in to ${SITE_NAME} once first${SITE_URL ? 
 
 /**
  * /event new opens the form, as the kind of night whose channel it was used in, with the
- * last night of that kind's time and place filled in
+ * last night of that kind's time and place filled in. Seats given after the command come back
+ * with the form.
  */
-async function newNightForm(i: Interaction) {
+async function newNightForm(i: Interaction, seats?: number) {
   if (!(await accountFor(i))) return signInFirst();
   const fromChannel = kindOfChannel(i.channel_id, Object.fromEntries(GROUP_NIGHTS.map((k) => [k, [eventsChannel(k), playsChannel(k)]])));
   const night: Night = CASUAL_NIGHT && fromChannel ? fromChannel : "core";
@@ -331,11 +335,11 @@ async function newNightForm(i: Interaction) {
     { id: "title", label: "Title", placeholder: `Empty: "${nightTitle(night, localDate(new Date()))}", with its date`, maxLength: 100 },
     { id: "location", label: "Where", value: last.location ?? undefined, maxLength: 100 },
   ];
-  return modal(actionId({ kind: "new" }), "New event", fields);
+  return modal(actionId({ kind: "new", seats }), seats ? `New event, ${seats} seats` : "New event", fields);
 }
 
 /** The /event new form sent back: make the night, then post it */
-async function newNight(i: Interaction, form: Record<string, string>) {
+async function newNight(i: Interaction, form: Record<string, string>, capacity: number | null) {
   const userId = await accountFor(i);
   if (!userId) return signInFirst();
   const night: Night = CASUAL_NIGHT && NIGHTS.includes(form.kind as Night) ? (form.kind as Night) : "core";
@@ -347,11 +351,11 @@ async function newNight(i: Interaction, form: Record<string, string>) {
   const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
   const title = form.title || nightTitle(night, when.date);
   const location = form.location || null;
-  const row = await createNight({ night, title, startsAt: when.startsAt, location }, userId);
+  const row = await createNight({ night, title, startsAt: when.startsAt, location, capacity }, userId);
 
   // Posting takes a few calls to Discord, so the reply comes once it's up
   after(async () => {
-    let done = `Made **${title}** (${NIGHT_NAMES[night]}), <t:${unix(when.startsAt)}:F>${location ? ` at ${location}` : ""}.`;
+    let done = `Made **${title}** (${NIGHT_NAMES[night]}), <t:${unix(when.startsAt)}:F>${location ? ` at ${location}` : ""}${capacity ? `, ${capacity} seats` : ""}.`;
     try {
       if (!postsNights(night)) {
         // Saved, but there's nowhere to post it: say so, rather than leave people looking for a post

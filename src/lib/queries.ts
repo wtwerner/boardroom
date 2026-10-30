@@ -3,6 +3,7 @@ import { and, count, countDistinct, desc, eq, inArray, isNotNull, isNull, max, s
 import { db, schema } from "@/db";
 import { MUST_PLAY_LIMIT, TIERS, type MeepleColor, type Night, type Sentiment, type Tier } from "@/db/enums";
 import { localDate, recentMonths } from "./nights";
+import { playOrder } from "./log-post";
 import { matchByName, playerLabels } from "./players";
 import { groupRanking } from "./ranking";
 import { rankLists } from "./setup";
@@ -102,7 +103,8 @@ export async function getPlays(opts: { limit?: number; offset?: number; gameId?:
         opts.night ? eq(play.night, opts.night) : undefined,
       ),
     )
-    .orderBy(desc(play.playedOn), desc(play.id))
+    // A night's games in the order they were played
+    .orderBy(desc(play.playedOn), playOrder)
     .limit(opts.limit ?? 50)
     .offset(opts.offset ?? 0);
 
@@ -126,10 +128,11 @@ export async function getPlays(opts: { limit?: number; offset?: number; gameId?:
   }));
 }
 
+/** The latest night anything was played, of either kind; of two on one day, the one logged last */
 export async function getLastNight() {
-  const [latest] = await db.select({ day: max(play.playedOn) }).from(play).where(eq(play.night, "core"));
-  if (!latest?.day) return null;
-  return { date: latest.day, plays: await getPlays({ date: latest.day, night: "core", limit: 20 }) };
+  const [latest] = await db.select({ day: play.playedOn, night: play.night }).from(play).orderBy(desc(play.playedOn), desc(play.id)).limit(1);
+  if (!latest) return null;
+  return { date: latest.day, night: latest.night, plays: await getPlays({ date: latest.day, night: latest.night, limit: 20 }) };
 }
 
 export async function getMostPlayed(limit = 8) {

@@ -115,3 +115,8 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* The page behind an open dialog stays put, so scrolling a long one on a phone doesn't move it */
+html:has(dialog[open]:modal) {
+  overflow: hidden;
+}

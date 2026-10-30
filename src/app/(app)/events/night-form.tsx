@@ -9,7 +9,7 @@ import { DateInput } from "@/components/date-input";
 import { buttonClass } from "@/components/ui";
 import { fillTitle, titleGame } from "@/lib/night-title";
 
-type Values = { night: Night; title: string; date: string; time: string; location: string };
+type Values = { night: Night; title: string; date: string; time: string; location: string; capacity: number | null };
 
 /**
  * From the server's config: which nights the group has, what each is called, the template a
@@ -55,6 +55,7 @@ export function NightForm({ id, initial, onDone, setup }: { id?: number; initial
           date: String(f.get("date") ?? ""),
           time: String(f.get("time") ?? ""),
           location: String(f.get("location") ?? "") || null,
+          capacity: Number(f.get("capacity")) || null,
         };
         start(async () => {
           const res = id ? await updateNight(id, values) : await addNight(values);
@@ -67,7 +68,7 @@ export function NightForm({ id, initial, onDone, setup }: { id?: number; initial
       }}
     >
       {setup.nights.length > 1 && (
-        <fieldset className="flex gap-1.5">
+        <fieldset className="flex flex-wrap gap-1.5">
           <legend className="sr-only">Which kind of event</legend>
           {setup.nights.map((n) => (
             <button
@@ -107,10 +108,18 @@ export function NightForm({ id, initial, onDone, setup }: { id?: number; initial
           className={field}
         />
       </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium">Where</span>
-        <input name="location" maxLength={200} defaultValue={initial?.location ?? ""} placeholder="Sam's place" className={field} />
-      </label>
+      <div className="grid grid-cols-[1fr_6rem] gap-3">
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium">Where</span>
+          <input name="location" maxLength={200} defaultValue={initial?.location ?? ""} placeholder="Sam's place" className={field} />
+        </label>
+        <label className="block text-sm">
+          <span className="mb-1 block font-medium">Seats</span>
+          <input name="capacity" type="number" inputMode="numeric" min={1} max={100} defaultValue={initial?.capacity ?? ""} placeholder="No limit" className={field} />
+        </label>
+      </div>
+      {/* Only when adding: editing opens in the night's header, which this would widen on a phone */}
+      {!id && <p className="-mt-1 text-xs text-slate">With a seat limit, anyone going once it&apos;s full waits for a seat, and gets the next one that opens.</p>}
       {error && <p role="alert" className="text-sm text-meeple-red">{error}</p>}
       <div className="flex gap-2">
         <button className={buttonClass("primary")} disabled={pending}>

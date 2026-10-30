@@ -43,6 +43,8 @@ export type NightCard = {
   going: CardPerson[];
   maybe: CardPerson[];
   declined: CardPerson[];
+  /** Said they're going once the seats were full, in line for one */
+  waitlist?: CardPerson[];
   /** Others coming who aren't named, counted on the site */
   others: number;
   plan:
@@ -70,7 +72,8 @@ export function buildNightMessage(n: NightCard, ping?: NightPing | null): { flag
     { type: TEXT, content: [`${icon(e, "date")} <t:${unix}:F>`, `${icon(e, "countdown")} <t:${unix}:R>`, n.location && `${icon(e, "place")} ${escape(n.location)}`].filter(Boolean).join("\n") },
     { type: SEPARATOR, divider: true, spacing: 2 },
     // Names in a quote under each answer: going a name to a line; maybe and can't make it run on, being read less
-    { type: TEXT, content: goingBlock(`${icon(e, "going")} **Going** · ${count}${n.capacity ? `/${n.capacity}` : ""}`, n.going, n.others) },
+    { type: TEXT, content: goingBlock(`${icon(e, "going")} **Going** · ${seats(n, count)}`, n.going, n.others) },
+    ...(n.waitlist?.length ? [{ type: TEXT, content: `${icon(e, "countdown")} **Waiting for a seat** · ${n.waitlist.length}\n> ${n.waitlist.map(person).join(", ")}` }] : []),
     ...(n.maybe.length ? [{ type: TEXT, content: `${icon(e, "maybe")} **Maybe** · ${n.maybe.length}\n> ${n.maybe.map(person).join(", ")}` }] : []),
     ...(n.declined.length ? [{ type: TEXT, content: `${icon(e, "declined")} **Can't make it** · ${n.declined.length}\n> ${n.declined.map(person).join(", ")}` }] : []),
     { type: SEPARATOR, divider: true, spacing: 2 },
@@ -87,6 +90,9 @@ export function buildNightMessage(n: NightCard, ping?: NightPing | null): { flag
     ],
   };
 }
+
+/** How many are going, out of the seats when there's a limit: "5", "5 of 6 seats", "6 of 6 seats, full" */
+const seats = (n: NightCard, count: number) => (n.capacity ? `${count} of ${n.capacity} seats${count >= n.capacity ? ", full" : ""}` : `${count}`);
 
 /** Everyone going, with their guests and the others counted on the site */
 const headcount = (n: NightCard) => n.going.reduce((sum, p) => sum + 1 + (p.guests ?? 0), 0) + n.others;
@@ -109,6 +115,7 @@ export function buildNightThreadCopy(n: NightCard): { flags: number; components:
 export function answerTally(n: NightCard, e: AppEmoji) {
   return [
     `${icon(e, "going")} ${headcount(n)}${n.capacity ? `/${n.capacity}` : ""} going`,
+    n.waitlist?.length && `${icon(e, "countdown")} ${n.waitlist.length} waiting`,
     n.maybe.length && `${icon(e, "maybe")} ${n.maybe.length} maybe`,
     n.declined.length && `${icon(e, "declined")} ${n.declined.length} can't`,
   ]
@@ -240,4 +247,14 @@ function planComponents(plan: NightCard["plan"], e: AppEmoji): Component[] {
   const more = plan.proposals.length - top.length;
   const votes = (n: number) => `${n} ${n === 1 ? "vote" : "votes"}`;
   return [text(`${icon(e, "vote")} **Proposed**\n${top.map((g) => `${link(g)} · ${votes(g.votes)}`).join("\n")}${more > 0 ? `\n-# and ${more} more` : ""}`)];
+}
+
+/** "🎟️ A seat opened up: @Casey, you're going." for whoever was waiting and got one, pinging them */
+export function seatOpenedNote(seated: CardPerson[]) {
+  const names = seated.map((p) => person({ ...p, guests: 0 }));
+  const who = names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return {
+    content: `🎟️ ${seated.length === 1 ? "A seat opened up" : "Seats opened up"}: ${who}, you're going.`,
+    users: seated.flatMap((p) => (p.discordId ? [p.discordId] : [])),
+  };
 }

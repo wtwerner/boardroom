@@ -88,3 +88,21 @@ describe("buildPlayMessage for a night of several games", () => {
     ]);
   });
 });
+
+describe("buildPlayMessage for a long night", () => {
+  const games = Array.from({ length: 7 }, (_, i) => ({ gameName: `Game ${i + 1}`, bggId: 1000 + i, playNumber: 2, appUrl: `https://boardroom.example/games/${1000 + i}` }));
+  const msg = buildPlayMessage({ ...play, games, threadId: "10000000000000030" });
+  const rows = msg.components.slice(1) as { type: number; components: { label: string }[] }[];
+
+  it("links every game, five to a row", () => {
+    expect(rows.map((r) => r.components.length)).toEqual([5, 2]);
+    expect(rows.flatMap((r) => r.components.map((b) => b.label))).toEqual(games.map((g) => g.gameName));
+  });
+
+  it("links the night's thread, and still reads back", () => {
+    const text = componentText(msg.components);
+    expect(text).toContain("-# logged by Sam · <#10000000000000030>");
+    const parsed = parsePlayMessage({ content: text, timestamp: "2026-10-19T02:00:00Z", timeZone: "America/New_York" })!;
+    expect(parsed.map((p) => p.gameName)).toEqual(games.map((g) => g.gameName));
+  });
+});

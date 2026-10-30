@@ -9,9 +9,10 @@ describe("nightCommands", () => {
     expect(nightCommands("session")[0].name).toBe("session");
   });
 
-  it("makes a night or a poll with a form, not options typed after the command", () => {
+  it("makes a night or a poll with a form, with only a night's seats typed after the command", () => {
     const [newNight, poll] = nightCommands("event")[0].options;
-    expect(newNight).not.toHaveProperty("options");
+    expect(newNight.options).toEqual([expect.objectContaining({ name: "seats", min_value: 1 })]);
+    expect(newNight.options?.[0]).not.toHaveProperty("required");
     expect(poll).not.toHaveProperty("options");
   });
 

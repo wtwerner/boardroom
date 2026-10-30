@@ -34,11 +34,12 @@ export function PlayEditorProvider({
         ref={dialog}
         onClose={() => setEditing(null)}
         aria-labelledby="edit-play-title"
-        className="m-auto w-[min(42rem,calc(100%-2rem))] rounded-xl border border-ink/70 bg-card p-5 text-ink shadow-token backdrop:bg-ink/40"
+        className="m-auto max-h-[calc(100dvh-2rem)] w-[min(42rem,calc(100%-2rem))] overflow-x-hidden overflow-y-auto overscroll-contain rounded-xl border border-ink/70 bg-card p-5 text-ink shadow-token backdrop:bg-ink/40"
       >
         {editing && (
           <>
-            <h2 id="edit-play-title" className="font-wide mb-4 text-lg">
+            {/* Focused when it opens, rather than the game list: a phone would open its picker or zoom in */}
+            <h2 id="edit-play-title" tabIndex={-1} autoFocus className="font-wide mb-4 text-lg outline-none">
               Edit {editing.name}
             </h2>
             <LogPlayForm key={editing.playId} games={games} players={players} canPost={canPost} nightNames={nightNames} editing={editing} onDone={() => setEditing(null)} />

@@ -173,6 +173,11 @@ export const play = sqliteTable(
     /** Discord message id (+ index when one message logs several games) */
     sourceRef: text("source_ref").unique(),
     needsReview: integer("needs_review", { mode: "boolean" }).notNull().default(false),
+    /**
+     * Where it falls in its night's order, once someone moves it. A night's plays sort by this or
+     * else their id, so it's one of the night's play ids and a new play goes last.
+     */
+    position: integer("position"),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     ...timestamps,
   },
@@ -325,6 +330,10 @@ export const gameNight = sqliteTable(
     remindedAt: integer("reminded_at", { mode: "timestamp_ms" }),
     /** When whoever made it was asked to log what was played */
     logNudgedAt: integer("log_nudged_at", { mode: "timestamp_ms" }),
+    /** Someone said that's everything played: it's over before its time runs out */
+    endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+    /** A copy of its log post (what was played) in its thread (log-post.ts) */
+    logCopyId: text("log_copy_id"),
     ...timestamps,
   },
   (t) => [index("game_night_starts_idx").on(t.startsAt), index("game_night_date_idx").on(t.night, t.date)],

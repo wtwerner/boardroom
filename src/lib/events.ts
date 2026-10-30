@@ -1,8 +1,9 @@
 import "server-only";
-import { and, asc, desc, eq, exists, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, exists, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { Night } from "@/db/enums";
-import { type Attendee, groupAnswers } from "./rsvp";
+import { type Attendee, fillSeats, groupAnswers } from "./rsvp";
+import { playOrder } from "./log-post";
 
 /** A night stays upcoming until this long after it starts, so it's still there on the night */
 const GRACE_MS = 12 * 3_600_000;
@@ -68,7 +69,9 @@ async function loadNights(nights: (typeof schema.gameNight.$inferSelect)[]) {
   return nights.map((n) => {
     const answers = groupAnswers(rsvps.filter((r) => r.gameNightId === n.id));
     const attendee = (r: (typeof rsvps)[number]): Attendee => ({ name: r.name, playerId: r.playerId, userId: r.userId, guests: r.guests, discordId: r.discordId });
-    const going = answers.going.map(attendee);
+    // With a seat limit, whoever said going after it filled is waiting for a seat
+    const seats = fillSeats(answers.going.map(attendee), n.capacity, n.guests);
+    const going = seats.going;
     return {
       id: n.id,
       night: n.night,
@@ -90,11 +93,13 @@ async function loadNights(nights: (typeof schema.gameNight.$inferSelect)[]) {
       going,
       maybe: answers.maybe.map(attendee),
       declined: answers.declined.map(attendee),
-      waitlist: answers.waitlist.map(attendee),
+      /** Said they're going once every seat was taken, in line for one */
+      waitlist: [...seats.waitlist, ...answers.waitlist.map(attendee)],
       date: n.date,
       /** It's begun, so its page can log what's played */
       started: n.startsAt.getTime() <= Date.now(),
-      past: n.startsAt.getTime() < Date.now() - GRACE_MS,
+      /** Over: someone said that's everything, or it's long enough since it started */
+      past: n.endedAt !== null || n.startsAt.getTime() < Date.now() - GRACE_MS,
       plays: played.filter((p) => p.night === n.night && p.playedOn === n.date),
       games: plans
         .filter((p) => p.gameNightId === n.id)
@@ -126,7 +131,7 @@ export async function getUpcomingNights() {
   const rows = await db
     .select()
     .from(schema.gameNight)
-    .where(and(eq(schema.gameNight.cancelled, false), gte(schema.gameNight.startsAt, new Date(Date.now() - GRACE_MS))))
+    .where(and(eq(schema.gameNight.cancelled, false), isNull(schema.gameNight.endedAt), gte(schema.gameNight.startsAt, new Date(Date.now() - GRACE_MS))))
     .orderBy(asc(schema.gameNight.startsAt));
   return loadNights(rows);
 }
@@ -142,11 +147,11 @@ async function getNightPlays(nights: { night: Night; date: string | null }[]) {
   const keys = nights.filter((n) => n.date);
   if (keys.length === 0) return [];
   const rows = await db
-    .select({ id: schema.play.id, night: schema.play.night, playedOn: schema.play.playedOn, gameId: schema.play.gameId, gameName: schema.play.gameName, location: schema.play.location, title: game.name, thumbnail: game.thumbnail, image: game.image })
+    .select({ id: schema.play.id, night: schema.play.night, playedOn: schema.play.playedOn, gameId: schema.play.gameId, gameName: schema.play.gameName, location: schema.play.location, notes: schema.play.notes, source: schema.play.source, sourceRef: schema.play.sourceRef, title: game.name, thumbnail: game.thumbnail, image: game.image })
     .from(schema.play)
     .leftJoin(game, eq(game.id, schema.play.gameId))
     .where(or(...keys.map((n) => and(eq(schema.play.night, n.night), eq(schema.play.playedOn, n.date!)))))
-    .orderBy(asc(schema.play.id));
+    .orderBy(playOrder);
   const seats = rows.length
     ? await db
         .select({ playId: schema.playPlayer.playId, playerId: schema.player.id, name: schema.player.name, color: schema.player.color, userId: schema.player.userId })
@@ -170,7 +175,7 @@ export async function getPastNights(limit: number) {
     .where(
       and(
         eq(n.cancelled, false),
-        lt(n.startsAt, new Date(Date.now() - GRACE_MS)),
+        or(isNotNull(n.endedAt), lt(n.startsAt, new Date(Date.now() - GRACE_MS))),
         or(
           exists(db.select({ x: sql`1` }).from(schema.nightRsvp).where(eq(schema.nightRsvp.gameNightId, n.id))),
           exists(db.select({ x: sql`1` }).from(schema.gamePlan).where(eq(schema.gamePlan.gameNightId, n.id))),
@@ -197,7 +202,8 @@ export async function getNightsByDate(keys: { night: Night; date: string }[]) {
 
 /**
  * A fingerprint of everything a night's page (or Plan, with no id) shows that can change
- * elsewhere: the night, answers, games, votes and prep, and on Plan the polls to find a date.
+ * elsewhere: the night, answers, games, votes and prep, what's been played on a night's page (so
+ * a game ticked off at the table shows for everyone), and on Plan the polls to find a date.
  * Open pages compare it every few seconds and refresh when it moves, so a change made in
  * Discord shows up without a reload.
  */
@@ -211,7 +217,7 @@ export async function nightsVersion(nightId?: number) {
       (select coalesce(max(updated_at), 0) || ':' || count(*) || ':' || coalesce(sum(chosen), 0) from game_plan ${only(sql`game_night_id`)}) || '|' ||
       (select count(*) from plan_vote v join game_plan p on p.id = v.plan_id ${only(sql`p.game_night_id`)}) || '|' ||
       (select count(*) from plan_ready r join game_plan p on p.id = r.plan_id ${only(sql`p.game_night_id`)}) ||
-      ${nightId ? sql`''` : sql`'|' || (select coalesce(max(updated_at), 0) || ':' || count(*) from date_poll) || ':' || (select count(*) from date_poll_option) || ':' || (select count(*) from date_poll_vote)`} as v
+      ${nightId ? sql`'|' || (select coalesce(max(p.updated_at), 0) || ':' || count(*) || ':' || coalesce(sum(p.position), 0) || ':' || (select count(*) from play_player pp join play q on q.id = pp.play_id join ${n} m on q.night = m.night and q.played_on = m.date where m.id = ${nightId}) from play p join ${n} g on p.night = g.night and p.played_on = g.date where g.id = ${nightId})` : sql`'|' || (select coalesce(max(updated_at), 0) || ':' || count(*) from date_poll) || ':' || (select count(*) from date_poll_option) || ':' || (select count(*) from date_poll_vote)`} as v
   `);
   return row?.v ?? "";
 }

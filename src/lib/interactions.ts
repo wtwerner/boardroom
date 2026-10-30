@@ -93,7 +93,8 @@ export type Action =
   | { kind: "edit"; nightId: number }
   /** Answer for someone else: the card's button, and the form it opens */
   | { kind: "for"; nightId: number }
-  | { kind: "new" }
+  /** /event new's form, with the seats given after the command */
+  | { kind: "new"; seats?: number }
   | { kind: "cancel"; nightId: number }
   /** Find a new date on a night's post, and the form it opens */
   | { kind: "refind"; nightId: number }
@@ -123,7 +124,7 @@ export function actionId(a: Action): string {
     case "rsvp":
       return `v1:rsvp:${a.nightId}:${Object.entries(RSVP_CODES).find(([, s]) => s === a.status)?.[0] ?? "y"}`;
     case "new":
-      return "v1:new";
+      return a.seats ? `v1:new:${a.seats}` : "v1:new";
     case "welcome":
       return `v1:welcome:${a.userId}`;
     case "bring":
@@ -146,7 +147,10 @@ export function actionId(a: Action): string {
 export function parseActionId(id: string | undefined): Action | null {
   const [v, kind, rawNight, code] = (id ?? "").split(":");
   if (v !== "v1") return null;
-  if (kind === "new") return { kind };
+  if (kind === "new") {
+    const seats = Number(rawNight);
+    return Number.isInteger(seats) && seats > 0 && seats <= 100 ? { kind, seats } : { kind };
+  }
   if (kind === "newpoll") return { kind: "newPoll" };
   const poll = (Object.entries(POLL_CODES) as [keyof typeof POLL_CODES, string][]).find(([, code]) => code === kind)?.[0];
   if (poll) {

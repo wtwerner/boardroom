@@ -6,7 +6,7 @@ import type { Night, RsvpStatus } from "@/db/enums";
 import { retitle } from "./night-title";
 import { matchByName } from "./players";
 import { getKnownPlayers } from "./events";
-import { nextAnswer } from "./rsvp";
+import { fillSeats, nextAnswer } from "./rsvp";
 
 /**
  * Writes for the nights Boardroom runs, shared by the site's actions and the Discord handlers
@@ -100,6 +100,22 @@ export async function reviveNight(id: number, fields: { title: string; startsAt:
   // Named by the template, its title follows the game locked in for it
   await titleForGame(row.id);
   return ownNight(row.id);
+}
+
+/**
+ * Who's waiting for a seat at a night with a seat limit, by player: taken before a change that
+ * could open one (an answer, the seats, the others counted by hand), so whoever got one can be
+ * told (night-post.ts)
+ */
+export async function waitingFor(nightId: number) {
+  const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { capacity: true, guests: true } });
+  if (!n?.capacity) return [];
+  const going = await db
+    .select({ playerId: schema.nightRsvp.playerId, guests: schema.nightRsvp.guests })
+    .from(schema.nightRsvp)
+    .where(and(eq(schema.nightRsvp.gameNightId, nightId), eq(schema.nightRsvp.status, "going")))
+    .orderBy(schema.nightRsvp.respondedAt);
+  return fillSeats(going, n.capacity, n.guests).waitlist.map((a) => a.playerId);
 }
 
 /** Called off: it stays (so its post can say so) but leaves the list of nights */

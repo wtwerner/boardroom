@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, isNull, like, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { refresh, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
@@ -10,9 +10,10 @@ import { db, schema } from "@/db";
 import { MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
-import { canPostToDiscord, deletePlaysMessage, discordCode, editPlaysMessage, fetchAppEmoji, hasInteractions, holdsRole, postPlaysMessage, registerCommands, sendDirectMessage } from "@/lib/discord";
-import { type FormattablePlay, type ParsedPlayer, formatPlayMessage } from "@/lib/play-parser";
-import { buildPlayMessage } from "@/lib/discord-message";
+import { canPostToDiscord, discordCode, hasInteractions, holdsRole, registerCommands, sendDirectMessage } from "@/lib/discord";
+import type { ParsedPlayer } from "@/lib/play-parser";
+import { addToLog, playOrder, refreshLogPost } from "@/lib/log-post";
+import { moveIn } from "@/lib/nights";
 import { buildGroupContext, buildNightContext } from "@/lib/insights";
 import { describeTaste, getRecommendations, getTasteChances } from "@/lib/recommend";
 import { PICK_COUNT, askFor, choosePicks } from "@/lib/picks";
@@ -24,7 +25,7 @@ import { requireAdmin, requireUser } from "@/lib/session";
 import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
 import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
-import { answerBringAsk as saveBringAnswer, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame } from "@/lib/night-store";
+import { answerBringAsk as saveBringAnswer, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
 import { addPollDate, cancelPoll, createPoll, findNewDate as saveFindNewDate, ownPoll, pickPollDate as savePickedDate, reopenPoll as saveReopened, setPollVote as savePollVote } from "@/lib/poll-store";
@@ -136,66 +137,6 @@ export async function setGameTier(gameId: number, tier: Tier | null): Promise<Ac
 // ---------------------------------------------------------------------------
 
 type NightGame = { gameId: number; gameName: string };
-type SharedDetails = Omit<FormattablePlay, "games">;
-
-/**
- * The Discord card for a night's games: box art, how often the group has played each, and links back.
- * The casual night's posts don't link here: most of that channel can't sign in.
- */
-async function playCard(games: NightGame[], shared: SharedDetails, night: Night, loggedBy?: string) {
-  const site = night === "core" ? SITE_URL : undefined;
-  const posted = await Promise.all(
-    games.map(async ({ gameId, gameName }) => {
-      const [g] = await db.select({ image: schema.game.image, thumbnail: schema.game.thumbnail }).from(schema.game).where(eq(schema.game.id, gameId));
-      const playNumber = await db.$count(schema.play, and(eq(schema.play.gameId, gameId), lte(schema.play.playedOn, shared.playedOn)));
-      return { gameName, bggId: gameId, imageUrl: g?.image ?? g?.thumbnail, playNumber, appUrl: site ? `${site}/games/${gameId}` : null };
-    }),
-  );
-  return buildPlayMessage({ ...shared, games: posted, loggedBy, emoji: await fetchAppEmoji() });
-}
-
-/**
- * Rewrite the app's Discord post after one of its plays was edited or deleted: it lists
- * every play still logged against it, or goes away with the last one. Refs are renumbered
- * so they match the order the post now lists the games in.
- */
-async function refreshAppPost(messageId: string, night: Night) {
-  const plays = (
-    await db
-      .select()
-      .from(schema.play)
-      .where(and(eq(schema.play.source, "manual"), like(schema.play.sourceRef, `${messageId}:%`)))
-  ).sort((a, b) => Number(a.sourceRef!.split(":")[1]) - Number(b.sourceRef!.split(":")[1]));
-  if (plays.length === 0) return deletePlaysMessage(night, messageId);
-
-  for (const [i, p] of plays.entries()) {
-    if (p.sourceRef !== `${messageId}:${i}`) await db.update(schema.play).set({ sourceRef: `${messageId}:${i}` }).where(eq(schema.play.id, p.id));
-  }
-  const seats = await db
-    .select({ playId: schema.playPlayer.playId, name: schema.player.name, discordId: schema.player.discordId, playerId: schema.player.id })
-    .from(schema.playPlayer)
-    .innerJoin(schema.player, eq(schema.player.id, schema.playPlayer.playerId))
-    .where(inArray(schema.playPlayer.playId, plays.map((p) => p.id)));
-  // Everyone at any of its games, in the order the plays list them
-  const players = [...new Map(plays.flatMap((p) => seats.filter((s) => s.playId === p.id)).map((s) => [s.playerId, s])).values()].map((s) => ({
-    name: s.name,
-    discordId: s.discordId ?? undefined,
-  }));
-  const [first] = plays;
-  const shared: SharedDetails = {
-    playedOn: first.playedOn,
-    location: first.location,
-    notes: [...new Set(plays.map((p) => p.notes).filter(Boolean))].join(" · ") || null,
-    players,
-  };
-  const games = plays.map((p) => ({ gameId: p.gameId!, gameName: p.gameName })).filter((g) => g.gameId);
-  const loggedBy = first.createdBy
-    ? (await db.query.user.findFirst({ where: eq(schema.user.id, first.createdBy), columns: { name: true } }))?.name
-    : undefined;
-  await editPlaysMessage(night, messageId, await playCard(games, shared, night, loggedBy), {
-    content: formatPlayMessage({ ...shared, games: games.map((g) => ({ gameName: g.gameName, bggId: g.gameId })) }),
-  });
-}
 
 /** The log/edit play form, checked. Returns null if something required is missing. */
 function readPlayForm(form: FormData) {
@@ -292,11 +233,8 @@ export async function logPlay(_prev: ActionResult | null, form: FormData): Promi
     let posted = "";
     if (form.get("postToDiscord") === "on" && canPostToDiscord(f.night)) {
       try {
-        // One post for the night; each play gets the ref the Discord sync would give it, so the next sync skips them
-        const messageId = await postPlaysMessage(f.night, await playCard(games, seated, f.night, me.name));
-        for (const [i, playId] of playIds.entries()) {
-          await db.update(schema.play).set({ sourceRef: `${messageId}:${i}` }).where(eq(schema.play.id, playId));
-        }
+        // On the night's log post: added to the one it has, or a new one
+        await addToLog(f.night, f.playedOn, playIds);
         posted = " and posted it to Discord";
       } catch (err) {
         console.error("Posting play to Discord failed", err);
@@ -329,7 +267,7 @@ export async function updatePlay(playId: number, form: FormData): Promise<Action
     let discord = "";
     if (existing.source === "manual" && existing.sourceRef && canPostToDiscord(night)) {
       try {
-        await refreshAppPost(existing.sourceRef.split(":")[0], night);
+        await refreshLogPost(existing.sourceRef.split(":")[0], night);
         discord = " and updated its Discord post";
       } catch (err) {
         console.error("Editing Discord post failed", err);
@@ -349,9 +287,50 @@ export async function deletePlay(id: number) {
   if (deleted?.source === "discord") await rememberDeletedDiscordPlays([deleted.sourceRef]);
   // Take the play out of the message the app posted for it (or the whole message, if it was the only one)
   if (deleted?.source === "manual" && deleted.sourceRef && canPostToDiscord(deleted.night)) {
-    await refreshAppPost(deleted.sourceRef.split(":")[0], deleted.night).catch((err) => console.error("Updating Discord post failed", err));
+    await refreshLogPost(deleted.sourceRef.split(":")[0], deleted.night, deleted.playedOn).catch((err) => console.error("Updating Discord post failed", err));
   }
   refresh();
+}
+
+/** Move a play up or down its night's order, and its log post in Discord with it */
+export async function movePlay(id: number, by: -1 | 1): Promise<ActionResult> {
+  await requireUser();
+  const p = await db.query.play.findFirst({ where: eq(schema.play.id, id) });
+  if (!p) return { ok: false, error: "That play is gone." };
+  try {
+    const night = await db
+      .select({ id: schema.play.id, source: schema.play.source, sourceRef: schema.play.sourceRef })
+      .from(schema.play)
+      .where(and(eq(schema.play.night, p.night), eq(schema.play.playedOn, p.playedOn)))
+      .orderBy(playOrder);
+    const order = moveIn(night, night.findIndex((n) => n.id === id), by);
+    if (order === night) return { ok: true };
+    // Each takes one of the night's ids as its place, so plays logged later still go last
+    const places = night.map((n) => n.id).sort((a, b) => a - b);
+    for (const [i, n] of order.entries()) await db.update(schema.play).set({ position: places[i] }).where(eq(schema.play.id, n.id));
+    const posts = new Set(night.flatMap((n) => (n.source === "manual" && n.sourceRef ? [n.sourceRef.split(":")[0]] : [])));
+    if (posts.size && canPostToDiscord(p.night)) {
+      for (const messageId of posts) await refreshLogPost(messageId, p.night).catch((err) => console.error("Updating Discord post failed", err));
+    }
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
+}
+
+/**
+ * That's everything played: the night is over now rather than the morning after, so its page
+ * shows what was played and how it went against the plan, and it leaves the nights coming up.
+ */
+export async function endNight(id: number): Promise<ActionResult> {
+  await requireUser();
+  const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, id) });
+  if (!n) return { ok: false, error: "That's gone: it was deleted." };
+  if (n.startsAt.getTime() > Date.now()) return { ok: false, error: "It hasn't started yet." };
+  await db.update(schema.gameNight).set({ endedAt: new Date() }).where(and(eq(schema.gameNight.id, id), isNull(schema.gameNight.endedAt)));
+  refresh();
+  return { ok: true };
 }
 
 /** Point every unmatched play logged as `gameName` at a BGG game. */
@@ -716,16 +695,20 @@ const NightInput = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   time: z.string().regex(/^\d{2}:\d{2}$/),
   location: z.string().trim().max(200).nullable(),
+  /** Seats; null for no limit */
+  capacity: z.number().int().min(1).max(100).nullable(),
 });
+
+const NIGHT_INPUT_ERROR = "It needs a name, a date and a time, and seats (if any) between 1 and 100.";
 
 export async function addNight(input: z.infer<typeof NightInput>): Promise<ActionResult> {
   const me = await requireUser();
   const parsed = NightInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "It needs a name, a date and a time." };
-  const { night, title, date, time, location } = parsed.data;
+  if (!parsed.success) return { ok: false, error: NIGHT_INPUT_ERROR };
+  const { night, title, date, time, location, capacity } = parsed.data;
   let id: number;
   try {
-    ({ id } = await createNight({ night, title, startsAt: zonedToUtc(date, time, TIME_ZONE), location }, me.id));
+    ({ id } = await createNight({ night, title, startsAt: zonedToUtc(date, time, TIME_ZONE), location, capacity }, me.id));
     // Not marked going, but added to the thread to follow it
     syncNightPostLater(id, { creator: await playerForUser(me) });
   } catch (err) {
@@ -737,12 +720,13 @@ export async function addNight(input: z.infer<typeof NightInput>): Promise<Actio
 export async function updateNight(id: number, input: z.infer<typeof NightInput>): Promise<ActionResult> {
   const me = await requireUser();
   const parsed = NightInput.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "It needs a name, a date and a time." };
+  if (!parsed.success) return { ok: false, error: NIGHT_INPUT_ERROR };
   try {
-    const { night, title, date, time, location } = parsed.data;
-    const before = await editNight(id, { night, title, startsAt: zonedToUtc(date, time, TIME_ZONE), location });
+    const { night, title, date, time, location, capacity } = parsed.data;
+    const waiting = await waitingFor(id);
+    const before = await editNight(id, { night, title, startsAt: zonedToUtc(date, time, TIME_ZONE), location, capacity });
     const discordId = (await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } }))?.discordId;
-    syncNightPostLater(id, { note: { before, by: { name: me.name, discordId } } });
+    syncNightPostLater(id, { note: { before, by: { name: me.name, discordId } }, waiting });
   } catch (err) {
     return fail(err);
   }
@@ -905,8 +889,9 @@ export async function setRsvp(
   try {
     const playerId =
       opts.playerId ?? (opts.name !== undefined ? await playerNamed(String(opts.name), { isNew: opts.isNew === true }) : await playerForUser(me));
+    const waiting = await waitingFor(nightId);
     await saveRsvp({ nightId, playerId, status, guests: opts.guests, via: "site" });
-    syncNightPostLater(nightId, { join: playerId });
+    syncNightPostLater(nightId, { join: playerId, waiting });
   } catch (err) {
     return fail(err);
   }
@@ -919,8 +904,9 @@ export async function setOthersComing(id: number, others: number): Promise<Actio
   await requireUser();
   try {
     const n = await ownNight(id);
+    const waiting = await waitingFor(n.id);
     await db.update(schema.gameNight).set({ guests: Math.max(0, Math.min(20, Math.trunc(others) || 0)) }).where(eq(schema.gameNight.id, n.id));
-    syncNightPostLater(n.id);
+    syncNightPostLater(n.id, { waiting });
   } catch (err) {
     return fail(err);
   }

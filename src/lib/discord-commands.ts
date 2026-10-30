@@ -7,6 +7,7 @@ import type { Night } from "@/db/enums";
 
 const SUB_COMMAND = 1;
 const STRING = 3;
+const INTEGER = 4;
 
 /** A command on someone's right-click menu (Apps → …), rather than one typed after a slash */
 const USER_COMMAND = 2;
@@ -25,7 +26,13 @@ export function nightCommands(name: string) {
       // Leaving default_member_permissions out lets everyone use it; the server owner can narrow
       // that under Server Settings → Integrations, and the bot checks the member role itself
       options: [
-        { name: "new", description: "Make an event: a form opens for the date, time, title and place", type: SUB_COMMAND },
+        {
+          name: "new",
+          description: "Make an event: a form opens for the date, time, title and place",
+          type: SUB_COMMAND,
+          // The form has room for five fields, all taken, so a seat limit is given here
+          options: [{ name: "seats", description: "A seat limit, if there is one", type: INTEGER, min_value: 1, max_value: 100 }],
+        },
         { name: "poll", description: "Not sure when? Offer a few dates and let people say which work", type: SUB_COMMAND },
         { name: "edit", description: "Change an event's title, date, time, place or seats", type: SUB_COMMAND, options: [event] },
         { name: "cancel", description: "Cancel an event", type: SUB_COMMAND, options: [event] },

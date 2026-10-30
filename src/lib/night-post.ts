@@ -7,7 +7,8 @@ import { type MessageBody, addToThread, announceChannel, deleteMessage, deleteTh
 import { buildNightAnnouncement } from "./announce-message";
 import { type Announcement, removeAnnouncement, syncAnnouncement } from "./announce-post";
 import { type NightDetail, loadNight } from "./events";
-import { type CardPerson, type NightCard, type NightPing, buildNightMessage, buildNightThreadCopy, changeNote, goneMessage, nightPing, threadName } from "./night-message";
+import { type CardPerson, type NightCard, type NightPing, buildNightMessage, buildNightThreadCopy, changeNote, goneMessage, nightPing, seatOpenedNote, threadName } from "./night-message";
+import { waitingFor } from "./night-store";
 
 /**
  * Each night Boardroom runs has a post in its events channel and a thread for talking it over,
@@ -188,10 +189,14 @@ export async function joinThread(nightId: number, playerIds?: number[], alsoPlay
  * Run syncNightPost once the response has gone, so answering on the site stays instant.
  * `join` is someone who just answered, to add to the thread, and `creator` whoever made the
  * night, added once it's posted; `note` tells the thread what moved, and `renamed` renames the
- * thread for a title that changed without saying so (it follows the locked-in game). A Discord
- * hiccup is logged; the next change to the night posts it again.
+ * thread for a title that changed without saying so (it follows the locked-in game). `waiting`
+ * is who was waiting for a seat before the change (waitingFor): anyone who has one now is told
+ * in the thread. A Discord hiccup is logged; the next change to the night posts it again.
  */
-export function syncNightPostLater(nightId: number, opts: { join?: number; creator?: number; note?: { before: NoteFields; by: CardPerson }; renamed?: boolean } = {}) {
+export function syncNightPostLater(
+  nightId: number,
+  opts: { join?: number; creator?: number; note?: { before: NoteFields; by: CardPerson }; renamed?: boolean; waiting?: number[] } = {},
+) {
   after(async () => {
     try {
       const result = await syncNightPost(nightId);
@@ -199,6 +204,7 @@ export function syncNightPostLater(nightId: number, opts: { join?: number; creat
       else if (result && opts.join) await joinThread(nightId, [opts.join]);
       if (opts.note) await noteChange(nightId, opts.note.before, opts.note.by);
       if (opts.renamed && result === "edited") await renameNightThread(nightId);
+      if (opts.waiting?.length && result) await noteSeated(nightId, opts.waiting);
     } catch (err) {
       console.error(`Couldn't update night ${nightId}'s post in Discord`, err);
     }
@@ -217,6 +223,17 @@ async function noteChange(nightId: number, before: NoteFields, by: CardPerson) {
   await postMessage(row.threadId, { content: note });
   // The thread's name has the date in it
   if (before.title !== row.title || before.startsAt.getTime() !== row.startsAt.getTime()) await renameNightThread(nightId);
+}
+
+/** Tell the thread who got a seat that opened up, pinging them */
+async function noteSeated(nightId: number, waiting: number[]) {
+  const now = new Set(await waitingFor(nightId));
+  const n = await loadNight(nightId);
+  const seated = n?.going.filter((a) => waiting.includes(a.playerId) && !now.has(a.playerId)) ?? [];
+  if (!n || seated.length === 0) return;
+  const { content, users } = seatOpenedNote(seated);
+  const row = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { threadId: true, messageId: true } });
+  if (row?.threadId && !isClaim(row.messageId)) await postMessage(row.threadId, { content }, { parse: [], users });
 }
 
 /** Name the night's thread for its title. A forum post's name is the post's title, which works the same way. */
@@ -284,6 +301,7 @@ async function card(n: NightDetail): Promise<NightCard> {
     going: n.going.map(person),
     maybe: n.maybe.map(person),
     declined: n.declined.map(person),
+    waitlist: n.waitlist.map(person),
     others: n.othersComing,
     plan:
       n.night === "core"

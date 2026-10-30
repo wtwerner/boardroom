@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayWord, monthLabel, nightTitle, nightWhen, recentMonths, soonLabel, tableFor, zonedToUtc } from "./nights";
+import { dayWord, monthLabel, moveIn, nightTitle, nightWhen, recentMonths, soonLabel, tableFor, zonedToUtc } from "./nights";
 
 describe("zonedToUtc", () => {
   it("reads a date and time in the group's time zone", () => {
@@ -94,5 +94,18 @@ describe("soonLabel", () => {
 
   it("leaves nights further out to their weekday", () => {
     expect(soonLabel(at("2026-10-31", "19:00"), tz, now)).toBeNull();
+  });
+});
+
+describe("moveIn", () => {
+  it("swaps a game with its neighbor", () => {
+    expect(moveIn(["a", "b", "c"], 2, -1)).toEqual(["a", "c", "b"]);
+    expect(moveIn(["a", "b", "c"], 0, 1)).toEqual(["b", "a", "c"]);
+  });
+  it("leaves the list alone at either end", () => {
+    const list = ["a", "b"];
+    expect(moveIn(list, 0, -1)).toBe(list);
+    expect(moveIn(list, 1, 1)).toBe(list);
+    expect(moveIn(list, -1, 1)).toBe(list);
   });
 });

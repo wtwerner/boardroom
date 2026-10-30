@@ -46,3 +46,16 @@ export function groupAnswers<R extends RsvpRow>(rows: R[]) {
 export function headcount(going: { guests?: number }[], others: number) {
   return going.reduce((n, a) => n + 1 + (a.guests ?? 0), 0) + others;
 }
+
+/**
+ * A night with a seat limit seats whoever said they're going in the order they said it, each
+ * with the guests they're bringing, after the others counted by hand. Whoever doesn't fit waits
+ * for a seat, and so does everyone after them, so a seat that opens goes to whoever's waited
+ * longest. Nobody's answer changes: when a seat opens, the next one in line is going.
+ */
+export function fillSeats<A extends { guests?: number }>(going: A[], capacity: number | null, others: number) {
+  if (!capacity) return { going, waitlist: [] as A[] };
+  let taken = others;
+  const full = going.findIndex((a) => (taken += 1 + (a.guests ?? 0)) > capacity);
+  return full < 0 ? { going, waitlist: [] as A[] } : { going: going.slice(0, full), waitlist: going.slice(full) };
+}

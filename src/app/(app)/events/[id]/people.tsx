@@ -36,6 +36,8 @@ export function People(props: {
   going: Attendee[];
   maybe: Attendee[];
   declined: Attendee[];
+  /** Said they're going once the seats were full: in line for one */
+  waitlist: Attendee[];
   guests: number;
   othersComing: number;
   capacity: number | null;
@@ -46,9 +48,10 @@ export function People(props: {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const colors = Object.fromEntries(props.members.map((m) => [m.id, m.color]));
-  const all = [...props.going, ...props.maybe, ...props.declined];
+  const all = [...props.going, ...props.waitlist, ...props.maybe, ...props.declined];
   const mine = all.find((a) => a.playerId === props.myPlayerId);
-  const myStatus: RsvpStatus | null = !mine ? null : props.going.includes(mine) ? "going" : props.maybe.includes(mine) ? "maybe" : "declined";
+  const waiting = mine ? props.waitlist.includes(mine) : false;
+  const myStatus: RsvpStatus | null = !mine ? null : props.going.includes(mine) || waiting ? "going" : props.maybe.includes(mine) ? "maybe" : "declined";
   const count = props.going.length + props.guests;
 
   const answer = (status: RsvpStatus | null, opts?: { guests?: number; playerId?: number; name?: string; isNew?: boolean }) =>
@@ -83,12 +86,20 @@ export function People(props: {
           />
         )}
       </div>
+      {waiting && <p className="text-slate">Every seat&apos;s taken, so you&apos;re in line for one. If someone drops out, you&apos;re going.</p>}
       {error && <p className="text-meeple-red">{error}</p>}
 
       <div className="space-y-2">
         <Row label={`Going (${count}${props.capacity ? `/${props.capacity}` : ""})`}>
           {props.going.length ? props.going.map((a) => <Answered key={a.playerId} a={a} colors={colors} />) : <span className="text-slate">Nobody yet</span>}
         </Row>
+        {props.waitlist.length > 0 && (
+          <Row label={`Waiting for a seat (${props.waitlist.length})`}>
+            {props.waitlist.map((a) => (
+              <Answered key={a.playerId} a={a} colors={colors} faded />
+            ))}
+          </Row>
+        )}
         {props.maybe.length > 0 && (
           <Row label="Maybe">
             {props.maybe.map((a) => (

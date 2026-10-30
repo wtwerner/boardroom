@@ -42,6 +42,7 @@ describe("action ids", () => {
       { kind: "refind", nightId: 7 },
       { kind: "for", nightId: 7 },
       { kind: "new" },
+      { kind: "new", seats: 6 },
       { kind: "welcome", userId: "100000000000000001" },
       { kind: "bring", planId: 41, yes: true },
       { kind: "bring", planId: 41, yes: false },

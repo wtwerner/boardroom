@@ -60,7 +60,7 @@ One-off data fixes (not schema changes) go in `scripts/` as a tsx script with an
 ## Good to know
 
 - Scripts that import app code need `--conditions=react-server` (for `server-only`).
-- After changing how a post in Discord looks, `pnpm refresh:posts` edits the ones already up, so they don't wait for their night's next change.
+- After changing how a post in Discord looks, `pnpm refresh:posts` edits the ones already up, so they don't wait for their night's next change. `pnpm refresh:logs` does the same for the log posts of plays from the last 30 days.
 - Missing Tailwind classes after editing `@theme` in `globals.css` mean Turbopack's cache is stale: `rm -rf .next/dev`.
 - This is Next.js 16 with Cache Components; some APIs differ from older versions. The docs that match the installed version are in `node_modules/next/dist/docs/`.
 
