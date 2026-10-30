@@ -131,7 +131,7 @@ async function Home() {
           value={stats.thisYear.coreNights + stats.thisYear.casualNights}
           split={{ core: stats.thisYear.coreNights, casual: stats.thisYear.casualNights }}
         />
-        <Stat label="Different games" value={stats.all.games} />
+        <Stat label="Different games, all time" value={stats.all.games} />
         <Stat label="Plays logged, all time" value={stats.all.plays} split={stats.all} />
       </dl>
 
