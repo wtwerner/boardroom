@@ -73,6 +73,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
           <NightHeader n={n} />
         </div>
         <PlayedSection n={n} log={log} title="What's been played" />
+        <RulesAndTeach n={n} />
       </div>
     );
   }
@@ -257,6 +258,38 @@ async function nightLog(n: NightDetail) {
       demo={DEMO}
       collapsed={n.past && n.plays.length > 0}
     />
+  );
+}
+
+/**
+ * Rules and teach videos for the night that's on, to look things up at the table: the game locked
+ * in on a core night, or on a casual night the games brought that haven't been played yet. BGG's
+ * rules and how-to-play videos, plus any links added for the game's prep.
+ */
+function RulesAndTeach({ n }: { n: NightDetail }) {
+  const played = new Set(n.plays.flatMap((p) => (p.gameId ? [p.gameId] : [])));
+  const games = n.night === "core" ? n.games.filter((g) => g.chosen) : n.games.filter((g) => !played.has(g.game.id));
+  if (games.length === 0) return null;
+  return (
+    <Section title="Rules and teach">
+      <ul className="space-y-2">
+        {games.map((g) => {
+          const bgg = `https://boardgamegeek.com/boardgame/${g.game.id}`;
+          const links = [{ label: "Rules and player aids", url: `${bgg}/files` }, { label: "How-to-play videos", url: `${bgg}/videos/instructional` }, ...g.links];
+          return (
+            <li key={g.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+              <span className="font-semibold">{g.game.name}</span>
+              {links.map((l) => (
+                <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-accent underline-offset-4 hover:underline">
+                  <ExternalLink className="size-3.5 shrink-0" />
+                  {l.label}
+                </a>
+              ))}
+            </li>
+          );
+        })}
+      </ul>
+    </Section>
   );
 }
 
