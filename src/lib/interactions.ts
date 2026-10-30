@@ -5,6 +5,7 @@
  */
 
 import type { RsvpStatus } from "@/db/enums";
+import { COMPONENTS_V2 } from "./discord-components";
 
 // Interaction types Discord sends
 export const PING = 1;
@@ -57,6 +58,8 @@ export type Interaction = {
     /** For a command on someone's right-click menu, whoever was right-clicked */
     target_id?: string;
     custom_id?: string;
+    /** What was chosen in a select menu */
+    values?: string[];
     options?: CommandOption[];
     components?: unknown[];
     resolved?: Resolved;
@@ -109,8 +112,12 @@ export type Action =
   /** Suggest a date and Set the date on a poll's post, and the forms they open */
   | { kind: "pollAdd"; pollId: number }
   | { kind: "pollPick"; pollId: number }
-  /** None work, on a poll's post: can't, on every date on offer */
-  | { kind: "pollNone"; pollId: number }
+  /** None work: can't, on every date on offer; `here` from the My answers panel, which it updates */
+  | { kind: "pollNone"; pollId: number; here?: boolean }
+  /** My answers on a poll's post, which opens a panel only they see */
+  | { kind: "pollMine"; pollId: number }
+  /** One date's answer on that panel, chosen from its menu */
+  | { kind: "pollAns"; optionId: number }
   /** Call it off on a poll's post, and `sure` on the button that confirms it */
   | { kind: "pollOff"; pollId: number; sure?: boolean }
   /** Reopen, on the post of a poll that was called off */
@@ -119,7 +126,7 @@ export type Action =
 const RSVP_CODES: Record<string, RsvpStatus> = { y: "going", m: "maybe", n: "declined" };
 
 /** A poll's actions in custom_ids, kept short */
-const POLL_CODES = { pollVote: "pv", pollAdd: "padd", pollPick: "ppick", pollNone: "pnone", pollOff: "poff", pollReopen: "preo" } as const;
+const POLL_CODES = { pollVote: "pv", pollAdd: "padd", pollPick: "ppick", pollNone: "pnone", pollMine: "pmine", pollAns: "pans", pollOff: "poff", pollReopen: "preo" } as const;
 
 export function actionId(a: Action): string {
   switch (a.kind) {
@@ -134,10 +141,13 @@ export function actionId(a: Action): string {
     case "newPoll":
       return "v1:newpoll";
     case "pollVote":
-      return `v1:${POLL_CODES.pollVote}:${a.optionId}`;
+    case "pollAns":
+      return `v1:${POLL_CODES[a.kind]}:${a.optionId}`;
+    case "pollNone":
+      return `v1:${POLL_CODES.pollNone}:${a.pollId}${a.here ? ":p" : ""}`;
     case "pollAdd":
     case "pollPick":
-    case "pollNone":
+    case "pollMine":
     case "pollReopen":
       return `v1:${POLL_CODES[a.kind]}:${a.pollId}`;
     case "pollOff":
@@ -159,7 +169,8 @@ export function parseActionId(id: string | undefined): Action | null {
   if (poll) {
     const id = Number(rawNight);
     if (!Number.isInteger(id) || id <= 0) return null;
-    if (poll === "pollVote") return { kind: poll, optionId: id };
+    if (poll === "pollVote" || poll === "pollAns") return { kind: poll, optionId: id };
+    if (poll === "pollNone") return code === "p" ? { kind: poll, pollId: id, here: true } : { kind: poll, pollId: id };
     if (poll === "pollOff") return code === "y" ? { kind: poll, pollId: id, sure: true } : { kind: poll, pollId: id };
     return { kind: poll, pollId: id };
   }
@@ -251,6 +262,12 @@ export const ask = (content: string, buttons: { label: string; customId: string;
 
 /** Replace the message the button was on (one only they see), taking its buttons away */
 export const updateReply = (content: string) => ({ type: UPDATE_MESSAGE, data: { content, components: [], allowed_mentions: { parse: [] } } });
+
+/** A message built from components (Components V2) that only they see, like the My answers panel */
+export const panel = (body: { components: unknown[] }) => ({ type: CHANNEL_MESSAGE, data: { ...body, flags: EPHEMERAL | COMPONENTS_V2, allowed_mentions: { parse: [] } } });
+
+/** That panel again, in place of the one they just used */
+export const updatePanel = (body: { components: unknown[] }) => ({ type: UPDATE_MESSAGE, data: { ...body, flags: EPHEMERAL | COMPONENTS_V2, allowed_mentions: { parse: [] } } });
 
 /** "Thinking…", seen only by them, while slower work finishes after the response */
 export const deferReply = () => ({ type: DEFERRED_CHANNEL_MESSAGE, data: { flags: EPHEMERAL } });

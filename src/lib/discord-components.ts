@@ -6,6 +6,7 @@ export const COMPONENTS_V2 = 1 << 15;
 // Component type numbers from Discord's API
 export const ACTION_ROW = 1;
 export const BUTTON = 2;
+export const STRING_SELECT = 3;
 export const SECTION = 9;
 export const TEXT = 10;
 export const THUMBNAIL = 11;

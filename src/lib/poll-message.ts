@@ -6,13 +6,13 @@
  * night-post.ts sends it.
  */
 
-import type { Night } from "@/db/enums";
+import type { DateAnswer, Night } from "@/db/enums";
 import { type AppEmoji, buttonEmoji, icon } from "./icons";
 import { type Action, actionId } from "./interactions";
 import { type CardPerson, type NightPing, person } from "./night-message";
 import { andList } from "./text";
 import type { Verdict } from "./date-answers";
-import { ACTION_ROW, BUTTON, COMPONENTS_V2, CONTAINER, type Component, LINK_BUTTON_STYLE, NIGHT_ACCENT, SECONDARY, SECTION, SEPARATOR, TEXT, escape } from "./discord-components";
+import { ACTION_ROW, BUTTON, COMPONENTS_V2, CONTAINER, type Component, LINK_BUTTON_STYLE, NIGHT_ACCENT, SECONDARY, SECTION, SEPARATOR, STRING_SELECT, TEXT, escape } from "./discord-components";
 
 /** Grey for a night called off before it had a date */
 const DONE_ACCENT = 0x8a8f98;
@@ -47,6 +47,8 @@ export type PollCard = {
   progress?: { answered: number; of: number; waiting: CardPerson[] } | null;
   /** The fewest who need to be able to come, for "too few" */
   min?: number;
+  /** When it should be decided by (ISO), if whoever started it said */
+  decideBy?: string | null;
   /** The night's page, where the dates can be answered too */
   pollUrl: string | null;
   siteName: string;
@@ -65,6 +67,7 @@ export function buildPollMessage(p: PollCard, ping?: NightPing | null): { flags:
     p.location && `${icon(e, "place")} ${escape(p.location)}`,
     open && "Tap **Works for me** on each date you could make. The rest count as can't.",
     open && progressLine(p),
+    open && p.decideBy && `-# Decide by <t:${unix(p.decideBy)}:D>`,
     p.status === "closed" && "-# Every date's gone by. Suggest another, or call it off.",
   ].filter(Boolean);
   const done = doneLines(p.dates);
@@ -154,7 +157,7 @@ function pollRow(p: PollCard, e: AppEmoji): Component[] {
     return [
       button({ kind: "pollAdd", pollId: p.id }, "Suggest a date", buttonEmoji(e, "edit")),
       button({ kind: "pollPick", pollId: p.id }, "Set the date", buttonEmoji(e, "date")),
-      button({ kind: "pollNone", pollId: p.id }, "None work", buttonEmoji(e, "declined")),
+      button({ kind: "pollMine", pollId: p.id }, "My answers", buttonEmoji(e, "maybe")),
       button({ kind: "pollOff", pollId: p.id }, "Call it off", buttonEmoji(e, "cancelled")),
       ...site,
     ];
@@ -269,4 +272,60 @@ export function nudgeMessage(waiting: CardPerson[], by: string) {
   const pinged = waiting.filter((w) => w.discordId);
   const content = `👋 ${by} is waiting on ${andList(waiting.map(person))}: say which dates work on the post.`;
   return { body: { content }, allowedMentions: { parse: [], users: [...new Set(pinged.map((w) => w.discordId!))] } };
+}
+
+/** The choices on each date in the My answers panel */
+const PANEL_ANSWERS: { answer: DateAnswer; label: string }[] = [
+  { answer: "yes", label: "Works" },
+  { answer: "maybe", label: "If I have to" },
+  { answer: "no", label: "Can't" },
+];
+
+/**
+ * My answers, opened from the post and seen only by whoever opened it: each date on offer with a
+ * menu of works, if I have to and can't, on what they said (or can't, when they left it after
+ * answering another), and None work. Choosing updates it in place.
+ */
+export function buildAnswersPanel(p: { pollId: number; title: string; dates: { id: number; startsAt: string; mine: DateAnswer | null; assumed: boolean }[]; emoji?: AppEmoji }) {
+  const e = p.emoji ?? {};
+  const rows: Component[] = p.dates.flatMap((d) => [
+    { type: TEXT, content: `${icon(e, "date")} <t:${unix(d.startsAt)}:F>${d.assumed ? "\n-# You didn't say, so it counts as can't" : ""}` },
+    {
+      type: ACTION_ROW,
+      components: [
+        {
+          type: STRING_SELECT,
+          custom_id: actionId({ kind: "pollAns", optionId: d.id }),
+          placeholder: "Not answered yet",
+          options: PANEL_ANSWERS.map((a) => ({ label: a.label, value: a.answer, default: d.mine === a.answer && !d.assumed })),
+        },
+      ],
+    },
+  ]);
+  return {
+    flags: COMPONENTS_V2,
+    components: [
+      { type: TEXT, content: `### Your answers for ${escape(p.title)}` },
+      ...(rows.length ? rows : [{ type: TEXT, content: "-# No dates on offer right now." }]),
+      ...(rows.length ? [{ type: ACTION_ROW, components: [button({ kind: "pollNone", pollId: p.pollId, here: true }, "None of these work", buttonEmoji(e, "declined"))] }] : []),
+    ],
+  };
+}
+
+/**
+ * Said in the thread on the day it should be decided by, pinging whoever started it: the best
+ * date so far (or that none has enough), and who never answered
+ */
+export function decideByMessage(m: { starter: CardPerson | null; best: { startsAt: string; coming: number; everyone: boolean } | null; min: number; waiting: CardPerson[] }) {
+  const who = m.starter?.discordId ? `<@${m.starter.discordId}>, it` : "It";
+  const lines = [
+    `⏰ ${who}'s time to pick a date.`,
+    m.best
+      ? m.best.everyone
+        ? `<t:${unix(m.best.startsAt)}:F> works for everyone.`
+        : `<t:${unix(m.best.startsAt)}:F> works best so far: ${m.best.coming} can come.`
+      : `No date has ${m.min} who can come yet. Suggest another, or call it off.`,
+    ...(m.waiting.length ? [`-# Still waiting on ${andList(m.waiting.map((w) => escape(w.name)))}.`] : []),
+  ];
+  return { body: { content: lines.join("\n") }, allowedMentions: { parse: [], users: m.starter?.discordId ? [m.starter.discordId] : [] } };
 }

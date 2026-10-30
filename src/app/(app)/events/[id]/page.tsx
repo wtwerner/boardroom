@@ -19,8 +19,9 @@ import { type NightDetail, loadNight } from "@/lib/events";
 import { datesStaying, pollForNight } from "@/lib/poll-store";
 import { dateChoiceLabel } from "@/lib/poll-message";
 import { PollCard } from "../../plan/polls";
-import { pollView } from "../../plan/poll-view";
-import { nightWhen, soonLabel, tableFor } from "@/lib/nights";
+import type { CalendarSetup } from "../../plan/date-picker";
+import { calendarSetup, pollView } from "../../plan/poll-view";
+import { localDate, nightWhen, soonLabel, tableFor } from "@/lib/nights";
 import { GamePicker, GameSearch } from "../game-picker";
 import { CasualGames } from "./casual-games";
 import { CoreGames } from "./core-games";
@@ -76,7 +77,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     );
   }
 
-  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates, poll] = await Promise.all([
+  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates, poll, calendar] = await Promise.all([
     // Recency and "never played" come from this kind of night's plays only
     getShelf({ night: n.night }).then(async (all) => {
       const s = all.filter((g) => !isLegacy(g));
@@ -89,6 +90,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     db.select({ id: schema.player.id, name: schema.player.name }).from(schema.player).orderBy(schema.player.name),
     datesStaying(n.id),
     n.findingDate ? pollForNight(n.id) : null,
+    calendarSetup(),
   ]);
   // What Find a new date keeps: the other dates on the poll it was picked from
   const staying = stayingDates.map((d) => dateChoiceLabel(d.startsAt, d.votes, TIME_ZONE));
@@ -112,10 +114,10 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
       <LiveRefresh nightId={n.id} />
       <div className="space-y-4">
         <BackLink />
-        <NightHeader n={n} staying={staying} />
+        <NightHeader n={n} staying={staying} decideBy={poll?.decideBy ? localDate(new Date(poll.decideBy)) : null} calendar={calendar} />
         {poll ? (
           // Finding its date: everyone says which dates work, and their answers are who's coming once one's set
-          <PollCard poll={pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} />
+          <PollCard poll={pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} calendar={calendar} />
         ) : (
           <Panel className="p-4">
             <People
@@ -321,7 +323,19 @@ function TbdBadge({ night }: { night: NightDetail["night"] }) {
 }
 
 /** When and where, its post in Discord, and edit and delete */
-function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }) {
+function NightHeader({
+  n,
+  staying = [],
+  decideBy,
+  calendar,
+}: {
+  n: NightDetail;
+  staying?: string[];
+  /** The day its date should be decided by (YYYY-MM-DD) */
+  decideBy?: string | null;
+  /** For picking new dates when its date falls through; none on a night that's on or over */
+  calendar?: CalendarSetup;
+}) {
   const when = nightWhen(n.startsAt, TIME_ZONE);
   return (
     <header className="flex flex-wrap items-start gap-4">
@@ -358,9 +372,10 @@ function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }
           <NightActions
             id={n.id}
             initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "", capacity: n.capacity }}
-            findingDate={n.findingDate ? { named: n.named } : null}
+            findingDate={n.findingDate ? { named: n.named, decideBy: decideBy ?? "" } : null}
             canDelete={n.plays.length === 0}
-            canFindNewDate={!n.started && !n.findingDate}
+            canFindNewDate={!n.started && !n.findingDate && Boolean(calendar)}
+            calendar={calendar ?? null}
             staying={staying}
             posted={n.posted}
             setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: postsNights(n.night) }}

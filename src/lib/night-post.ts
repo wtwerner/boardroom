@@ -403,6 +403,7 @@ async function pollCard(n: NightDetail, poll: PollDetail | null): Promise<PollCa
     dates: poll.dates.map((d) => ({ id: d.id, startsAt: d.startsAt, past: d.past, fellThrough: d.fellThrough, yes: d.yes.map(who), maybe: d.maybe.map(who), verdict: d.verdict })),
     progress: poll.members.length ? { answered: poll.members.length - poll.waiting.length, of: poll.members.length, waiting: poll.waiting.map(who) } : null,
     min: poll.min,
+    decideBy: poll.decideBy,
     // Most of the casual night's channel can't open the site, as with its nights' posts
     pollUrl: SITE_URL && n.night === "core" ? `${SITE_URL}/events/${n.id}` : null,
     siteName: SITE_NAME,

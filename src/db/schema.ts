@@ -440,6 +440,10 @@ export const datePoll = sqliteTable("date_poll", {
   everyoneAnsweredAt: integer("everyone_answered_at", { mode: "timestamp_ms" }),
   /** When the members who hadn't answered were last nudged in its thread */
   nudgedAt: integer("nudged_at", { mode: "timestamp_ms" }),
+  /** When it should be decided by, if whoever started it said: the tick pings them then */
+  decideBy: integer("decide_by", { mode: "timestamp_ms" }),
+  /** When they were pinged for it; cleared when the date to decide by changes */
+  decidePingedAt: integer("decide_pinged_at", { mode: "timestamp_ms" }),
   createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   /**
    * Unused since 0007, when the night took over a poll's name, place and post. Kept so the

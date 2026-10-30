@@ -60,6 +60,8 @@ export type PollDetail = {
   createdBy: string | null;
   /** When the members still waiting were last nudged (ISO) */
   nudgedAt: string | null;
+  /** When it should be decided by, if whoever started it said (ISO) */
+  decideBy: string | null;
 };
 
 /** The group's members, by name */
@@ -147,6 +149,7 @@ async function loadPolls(ids: number[]): Promise<PollDetail[]> {
         min,
         createdBy: row.createdBy,
         nudgedAt: row.nudgedAt?.toISOString() ?? null,
+        decideBy: row.decideBy?.toISOString() ?? null,
       },
     ];
   });
@@ -194,8 +197,9 @@ async function placeNight(tx: Tx, pollId: number, nightId: number) {
  * A night without a date yet, offering these: it has its page and post from the start, and its
  * date's set once people have said which work. Its post goes up after (night-post.ts).
  */
-export async function createPoll(fields: { night: Night; title: string | null; location: string | null; dates: Date[] }, createdBy: string) {
+export async function createPoll(fields: { night: Night; title: string | null; location: string | null; dates: Date[]; decideBy?: Date | null }, createdBy: string) {
   const dates = checkDates(fields.dates);
+  if (fields.decideBy && fields.decideBy.getTime() < Date.now()) throw new Error("Pick a day to decide by that's coming up.");
   if (!dates.length) throw new Error("Give a date or two to pick from.");
   if (dates.length > POLL_MAX_DATES) throw new Error(`Offer ${POLL_MAX_DATES} dates at most.`);
   return db.transaction(async (tx) => {
@@ -203,7 +207,7 @@ export async function createPoll(fields: { night: Night; title: string | null; l
       .insert(g)
       .values({ night: fields.night, title: fields.title?.trim().slice(0, 100) || "", startsAt: dates[0], location: fields.location?.trim() || null, findingDate: true, createdBy })
       .returning();
-    const [poll] = await tx.insert(p).values({ night: fields.night, gameNightId: night.id, createdBy }).returning({ id: p.id });
+    const [poll] = await tx.insert(p).values({ night: fields.night, gameNightId: night.id, createdBy, decideBy: fields.decideBy ?? null }).returning({ id: p.id });
     await tx.insert(o).values(dates.map((startsAt) => ({ pollId: poll.id, startsAt, createdAt: new Date() })));
     return { nightId: night.id, pollId: poll.id };
   });
@@ -440,4 +444,29 @@ export async function nudgeWaiting(pollId: number) {
     .returning({ id: p.id });
   if (!claimed.length) throw new Error("They were nudged in the last 12 hours. Give them a little longer.");
   return { nightId: poll.nightId, waiting: poll.waiting };
+}
+
+/** When a night finding its date should be decided by, or none. Whoever started it is pinged then, even if they were before. */
+export async function setDecideBy(nightId: number, decideBy: Date | null) {
+  await findingNight(nightId);
+  if (decideBy && decideBy.getTime() < Date.now()) throw new Error("Pick a day to decide by that's coming up.");
+  const poll = await db.query.datePoll.findFirst({ where: eq(p.gameNightId, nightId), columns: { id: true, decideBy: true }, orderBy: asc(p.id) });
+  if (!poll || poll.decideBy?.getTime() === decideBy?.getTime()) return;
+  await db.update(p).set({ decideBy, decidePingedAt: null, updatedAt: new Date() }).where(eq(p.id, poll.id));
+}
+
+/** Polls whose day to decide by has come, still finding a date, claimed so each is pinged once */
+export async function decideByDue(now = new Date()) {
+  const rows = await db
+    .select({ id: p.id })
+    .from(p)
+    .innerJoin(g, eq(g.id, p.gameNightId))
+    .where(and(eq(g.findingDate, true), eq(g.cancelled, false), isNull(p.decidePingedAt), lt(p.decideBy, now)));
+  const due: PollDetail[] = [];
+  for (const { id } of rows) {
+    const claimed = await db.update(p).set({ decidePingedAt: now }).where(and(eq(p.id, id), isNull(p.decidePingedAt))).returning({ id: p.id });
+    const poll = claimed.length ? await loadPoll(id) : null;
+    if (poll) due.push(poll);
+  }
+  return due;
 }

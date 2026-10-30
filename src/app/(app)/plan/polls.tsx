@@ -13,7 +13,7 @@ import { type Verdict, rankDates } from "@/lib/date-answers";
 import { andList } from "@/lib/text";
 import { titleCase } from "@/lib/text";
 import type { NightSetup } from "../events/night-form";
-import { DateRows, readDates } from "./date-rows";
+import { type CalendarSetup, DatePicker, readDates } from "./date-picker";
 
 type Voter = { playerId: number; name: string; userId: string | null };
 
@@ -37,6 +37,10 @@ export type PollView = {
   min: number;
   /** The members still waiting can be pinged in its thread now */
   canNudge: boolean;
+  /** The day it should be decided by, written out ("Thu, Nov 5"), if whoever started it said */
+  decideBy: string | null;
+  /** The days its dates are on (YYYY-MM-DD), for the calendar */
+  offeredDays: string[];
   dates: {
     id: number;
     startsAt: string;
@@ -73,7 +77,19 @@ const ANSWERS: { answer: DateAnswer; label: string }[] = [
  * The same as the buttons on its post in Discord. `link` titles it with a link to the night's
  * page, for Plan.
  */
-export function PollCard({ poll, myPlayerId, colors, link = false }: { poll: PollView; myPlayerId: number | null; colors: Record<string, MeepleColor | null>; link?: boolean }) {
+export function PollCard({
+  poll,
+  myPlayerId,
+  colors,
+  calendar,
+  link = false,
+}: {
+  poll: PollView;
+  myPlayerId: number | null;
+  colors: Record<string, MeepleColor | null>;
+  calendar: CalendarSetup;
+  link?: boolean;
+}) {
   const [open, setOpen] = useState<"suggest" | "set" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -116,6 +132,7 @@ export function PollCard({ poll, myPlayerId, colors, link = false }: { poll: Pol
             {poll.progress.waiting.length ? `${poll.progress.answered} of ${poll.progress.of} answered` : "Everyone's answered"}
           </span>
           {poll.progress.waiting.length > 0 && <span className="text-slate">Waiting on {andList(poll.progress.waiting)}</span>}
+          {poll.decideBy && <span className="text-slate">Decide by {poll.decideBy}</span>}
           {poll.canNudge && (
             <button type="button" disabled={pending} onClick={() => run(() => nudgeForDates(poll.id))} className={buttonClass("ghost", "px-2 py-1 text-xs")}>
               Nudge {poll.progress.waiting.length === 1 ? "them" : "them all"} in Discord
@@ -128,7 +145,17 @@ export function PollCard({ poll, myPlayerId, colors, link = false }: { poll: Pol
 
       <ul className="space-y-2">
         {onOffer.map((d) => (
-          <DateRow key={d.id} date={d} min={poll.min} myPlayerId={myPlayerId} colors={colors} canAnswer={poll.status === "open"} onError={setError} />
+          <DateRow
+            key={d.id}
+            date={d}
+            min={poll.min}
+            // Said once above when it's everyone it's waiting on; a date's own only when it differs, like a date added since
+            waiting={d.waiting.length === poll.progress?.waiting.length ? [] : d.waiting}
+            myPlayerId={myPlayerId}
+            colors={colors}
+            canAnswer={poll.status === "open"}
+            onError={setError}
+          />
         ))}
       </ul>
       {done.length > 0 && (
@@ -146,6 +173,8 @@ export function PollCard({ poll, myPlayerId, colors, link = false }: { poll: Pol
 
       {open === "suggest" && (
         <SuggestForm
+          calendar={calendar}
+          offered={poll.offeredDays}
           usualTime={poll.usualTime}
           pending={pending}
           onCancel={() => setOpen(null)}
@@ -242,6 +271,7 @@ const VERDICT: Record<Verdict, { label: (min: number) => string; className: stri
 function DateRow({
   date,
   min,
+  waiting,
   myPlayerId,
   colors,
   canAnswer,
@@ -249,6 +279,8 @@ function DateRow({
 }: {
   date: DateView;
   min: number;
+  /** Members yet to answer it, when that's worth saying */
+  waiting: string[];
   myPlayerId: number | null;
   colors: Record<string, MeepleColor | null>;
   canAnswer: boolean;
@@ -320,17 +352,22 @@ function DateRow({
           )}
         </div>
       )}
-      {date.waiting.length > 0 && <p className="text-xs text-slate">Waiting on {andList(date.waiting)}</p>}
+      {waiting.length > 0 && <p className="text-xs text-slate">Waiting on {andList(waiting)}</p>}
     </li>
   );
 }
 
+/** Suggest one more date: a day on the calendar, at the time its other dates start */
 function SuggestForm({
+  calendar,
+  offered,
   usualTime,
   pending,
   onCancel,
   onSubmit,
 }: {
+  calendar: CalendarSetup;
+  offered: string[];
   usualTime: string;
   pending: boolean;
   onCancel: () => void;
@@ -338,27 +375,22 @@ function SuggestForm({
 }) {
   return (
     <form
-      className="flex flex-wrap items-end gap-2"
+      className="space-y-3 rounded-lg border border-line p-3"
       onSubmit={(e) => {
         e.preventDefault();
-        const f = new FormData(e.currentTarget);
-        onSubmit({ date: String(f.get("date") ?? ""), time: String(f.get("time") ?? "") });
+        const [picked] = readDates(new FormData(e.currentTarget));
+        if (picked) onSubmit(picked);
       }}
     >
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium">Date</span>
-        <DateInput name="date" required className={field} />
-      </label>
-      <label className="block text-sm">
-        <span className="mb-1 block font-medium">Starts</span>
-        <input name="time" type="time" required defaultValue={usualTime} className={field} />
-      </label>
-      <button className={buttonClass("primary")} disabled={pending}>
-        {pending ? "Adding…" : "Add it"}
-      </button>
-      <button type="button" onClick={onCancel} className={buttonClass("ghost")}>
-        Cancel
-      </button>
+      <DatePicker legend="Another date" setup={calendar} time={usualTime} offered={offered} single />
+      <div className="flex gap-2">
+        <button className={buttonClass("primary")} disabled={pending}>
+          {pending ? "Adding…" : "Add it"}
+        </button>
+        <button type="button" onClick={onCancel} className={buttonClass("ghost")}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
@@ -408,7 +440,7 @@ function SetForm({ poll, pending, onCancel, onSubmit }: { poll: PollView; pendin
 }
 
 /** Find a date: which kind of night (when the group has two), a few dates, each with a time, and optionally a name and place */
-export function PollForm({ setup }: { setup: NightSetup }) {
+export function PollForm({ setup, calendar, times }: { setup: NightSetup; calendar: CalendarSetup; /** Each kind of night's usual start (HH:MM) */ times: Record<Night, string> }) {
   const [open, setOpen] = useState(false);
   const [night, setNight] = useState<Night>("core");
   const [error, setError] = useState<string | null>(null);
@@ -431,7 +463,13 @@ export function PollForm({ setup }: { setup: NightSetup }) {
         const dates = readDates(f);
         start(async () => {
           // Opens the event's page once it's made
-          const res = await startPoll({ night, title: String(f.get("title") ?? ""), location: String(f.get("location") ?? "") || null, dates });
+          const res = await startPoll({
+            night,
+            title: String(f.get("title") ?? ""),
+            location: String(f.get("location") ?? "") || null,
+            dates,
+            decideBy: String(f.get("decideBy") ?? ""),
+          });
           if (!res.ok) setError(res.error);
         });
       }}
@@ -458,7 +496,7 @@ export function PollForm({ setup }: { setup: NightSetup }) {
           ))}
         </fieldset>
       )}
-      <DateRows />
+      <DatePicker setup={calendar} time={times[night]} />
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Name</span>
         <input name="title" maxLength={100} placeholder={`${titleCase(setup.names[night])} (optional)`} className={field} />
@@ -466,6 +504,11 @@ export function PollForm({ setup }: { setup: NightSetup }) {
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Where</span>
         <input name="location" maxLength={200} placeholder="Sam's place" className={field} />
+      </label>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Decide by</span>
+        <DateInput name="decideBy" className={clsx(field, "max-w-48")} />
+        <span className="mt-1 block text-xs text-slate">Optional. You&apos;ll get a ping in its thread that day to pick one.</span>
       </label>
       {error && <p role="alert" className="text-sm text-meeple-red">{error}</p>}
       <div className="flex gap-2">

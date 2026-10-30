@@ -12,7 +12,7 @@ import { getPastNights, getUpcomingNights, loadNight } from "@/lib/events";
 import { NightForm } from "../events/night-form";
 import { findingPolls } from "@/lib/poll-store";
 import { CalledOffPoll, PollCard, PollForm } from "./polls";
-import { pollView } from "./poll-view";
+import { calendarSetup, pollView, usualTimes } from "./poll-view";
 
 export const metadata: Metadata = { title: "Plan" };
 
@@ -34,7 +34,15 @@ export default function PlanPage(props: PageProps<"/plan">) {
 async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["searchParams"] }) {
   const me = await requireUser();
   const shown = Math.max(PAST_STEP, Math.min(500, Number((await searchParams).past) || PAST_STEP));
-  const [nights, past, members, polls, calledOff] = await Promise.all([getUpcomingNights(), getPastNights(shown), getMembers(), findingPolls(), findingPolls({ cancelled: true })]);
+  const [nights, past, members, polls, calledOff, calendar, times] = await Promise.all([
+    getUpcomingNights(),
+    getPastNights(shown),
+    getMembers(),
+    findingPolls(),
+    findingPolls({ cancelled: true }),
+    calendarSetup(),
+    usualTimes(),
+  ]);
   const colors = Object.fromEntries(members.map((m) => [m.id, m.color]));
   const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
 
@@ -48,7 +56,7 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
       {pollViews.length > 0 && (
         <div className="mb-4 space-y-3">
           {pollViews.map((p) => (
-            <PollCard key={p.id} poll={p} myPlayerId={me.playerId} colors={colors} link />
+            <PollCard key={p.id} poll={p} myPlayerId={me.playerId} colors={colors} calendar={calendar} link />
           ))}
         </div>
       )}
@@ -59,7 +67,7 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
           ))}
         </ul>
       )}
-      <PollForm setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: GROUP_NIGHTS.some(postsNights) }} />
+      <PollForm setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: GROUP_NIGHTS.some(postsNights) }} calendar={calendar} times={times} />
     </Section>
   );
 

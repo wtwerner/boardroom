@@ -6,8 +6,8 @@ import { nightPingSetting, postMessage, replyToMessage } from "./discord";
 import { isClaim, joinThread, postChannel, postInThread, renameNightThread, syncNightPost } from "./night-post";
 import type { CardPerson } from "./night-message";
 import { nightPing } from "./night-message";
-import { everyoneAnsweredMessage, nudgeMessage, pickedMessage, refindMessage } from "./poll-message";
-import { everyoneJustAnswered } from "./poll-store";
+import { decideByMessage, everyoneAnsweredMessage, nudgeMessage, pickedMessage, refindMessage } from "./poll-message";
+import { type PollDetail, everyoneJustAnswered } from "./poll-store";
 import { rankDates } from "./date-answers";
 
 /**
@@ -29,17 +29,25 @@ export function answeredLater(nightId: number, pollId: number, join?: number) {
       else if (result && join) await joinThread(nightId, [join]);
       const done = await everyoneJustAnswered(pollId);
       if (!done) return;
-      const best = rankDates(done.poll.dates).find((d) => d.verdict === "everyone" || d.verdict === "best");
-      const { body, allowedMentions } = everyoneAnsweredMessage({
-        starter: done.starter,
-        best: best ? { startsAt: best.startsAt, coming: best.yes.length + best.maybe.length, everyone: best.verdict === "everyone" } : null,
-        min: done.poll.min,
-      });
+      const { body, allowedMentions } = everyoneAnsweredMessage({ starter: done.starter, best: bestSoFar(done.poll), min: done.poll.min });
       await postInThread(nightId, body, allowedMentions);
     } catch (err) {
       console.error(`Couldn't update night ${nightId}'s post in Discord`, err);
     }
   });
+}
+
+/** The date that's best so far, as the thread's messages put it */
+function bestSoFar(poll: PollDetail) {
+  const best = rankDates(poll.dates).find((d) => d.verdict === "everyone" || d.verdict === "best");
+  return best ? { startsAt: best.startsAt, coming: best.yes.length + best.maybe.length, everyone: best.verdict === "everyone" } : null;
+}
+
+/** On the day it should be decided by (from the tick): ping whoever started it in the thread to pick a date */
+export async function sayDecideBy(poll: PollDetail) {
+  const starter = poll.createdBy ? (poll.members.find((m) => m.userId === poll.createdBy) ?? null) : null;
+  const { body, allowedMentions } = decideByMessage({ starter, best: bestSoFar(poll), min: poll.min, waiting: poll.waiting });
+  await postInThread(poll.nightId, body, allowedMentions);
 }
 
 /** Ping the members who haven't answered in the thread */

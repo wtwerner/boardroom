@@ -5,7 +5,8 @@ import { CalendarSync, Pencil, Trash2 } from "lucide-react";
 import type { Night } from "@/db/enums";
 import { deleteNight, findNewDate, updateNightDetails } from "@/app/actions";
 import { buttonClass } from "@/components/ui";
-import { DateRows, readDates } from "../../plan/date-rows";
+import { DateInput } from "@/components/date-input";
+import { type CalendarSetup, DatePicker, readDates } from "../../plan/date-picker";
 import { NightForm, type NightSetup } from "../night-form";
 
 /**
@@ -18,17 +19,20 @@ export function NightActions({
   findingDate,
   canDelete,
   canFindNewDate,
+  calendar,
   staying,
   posted,
   setup,
 }: {
   id: number;
   initial: { night: Night; title: string; date: string; time: string; location: string; capacity: number | null };
-  /** Its date isn't set yet; `named` when its name was given by hand */
-  findingDate: { named: boolean } | null;
+  /** Its date isn't set yet; `named` when its name was given by hand, and the day to decide by (YYYY-MM-DD) or "" */
+  findingDate: { named: boolean; decideBy: string } | null;
   canDelete: boolean;
   /** It's still coming up, so it can go back to a poll for another date */
   canFindNewDate: boolean;
+  /** For picking the dates to offer instead */
+  calendar: CalendarSetup | null;
   /** The other dates on the poll it was picked from, as they'll stay on it: "Sun, Nov 8, 7:30 PM · 3 can make it" */
   staying: string[];
   /** It has a post in Discord, which goes too */
@@ -37,9 +41,11 @@ export function NightActions({
 }) {
   const [open, setOpen] = useState<"edit" | "date" | null>(null);
   const [pending, start] = useTransition();
-  if (open === "edit" && findingDate) return <DetailsForm id={id} title={findingDate.named ? initial.title : ""} location={initial.location} onDone={() => setOpen(null)} />;
+  if (open === "edit" && findingDate)
+    return <DetailsForm id={id} title={findingDate.named ? initial.title : ""} location={initial.location} decideBy={findingDate.decideBy} onDone={() => setOpen(null)} />;
   if (open === "edit") return <NightForm id={id} initial={initial} onDone={() => setOpen(null)} setup={setup} />;
-  if (open === "date") return <NewDateForm id={id} title={initial.title} night={initial.night} staying={staying} posted={posted} onDone={() => setOpen(null)} />;
+  if (open === "date" && calendar)
+    return <NewDateForm id={id} title={initial.title} night={initial.night} day={initial.date} time={initial.time} calendar={calendar} staying={staying} posted={posted} onDone={() => setOpen(null)} />;
   return (
     <span className="flex gap-1.5">
       <button type="button" onClick={() => setOpen("edit")} className={buttonClass("secondary", "px-2.5 py-1.5 text-xs")}>
@@ -68,7 +74,7 @@ export function NightActions({
 }
 
 /** A night finding its date: its name, or none for the template's once it has a date, and its place */
-function DetailsForm({ id, title, location, onDone }: { id: number; title: string; location: string; onDone: () => void }) {
+function DetailsForm({ id, title, location, decideBy, onDone }: { id: number; title: string; location: string; decideBy: string; onDone: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
@@ -78,7 +84,7 @@ function DetailsForm({ id, title, location, onDone }: { id: number; title: strin
         e.preventDefault();
         const f = new FormData(e.currentTarget);
         start(async () => {
-          const res = await updateNightDetails(id, { title: String(f.get("title") ?? ""), location: String(f.get("location") ?? "") || null });
+          const res = await updateNightDetails(id, { title: String(f.get("title") ?? ""), location: String(f.get("location") ?? "") || null, decideBy: String(f.get("decideBy") ?? "") });
           if (!res.ok) setError(res.error ?? null);
           else onDone();
         });
@@ -91,6 +97,11 @@ function DetailsForm({ id, title, location, onDone }: { id: number; title: strin
       <label className="block text-sm">
         <span className="mb-1 block font-medium">Where</span>
         <input name="location" maxLength={200} defaultValue={location} placeholder="Sam's place" className={field} />
+      </label>
+      <label className="block text-sm">
+        <span className="mb-1 block font-medium">Decide by</span>
+        <DateInput name="decideBy" defaultValue={decideBy} className={field} />
+        <span className="mt-1 block text-xs text-slate">Optional. Whoever started it gets a ping in its thread that day to pick one.</span>
       </label>
       {error && (
         <p role="alert" className="text-sm text-meeple-red">
@@ -116,6 +127,9 @@ function NewDateForm({
   id,
   title,
   night,
+  day,
+  time,
+  calendar,
   staying,
   posted,
   onDone,
@@ -123,6 +137,10 @@ function NewDateForm({
   id: number;
   title: string;
   night: Night;
+  /** Its date that fell through (YYYY-MM-DD), and its time (HH:MM), the new dates' to start with */
+  day: string;
+  time: string;
+  calendar: CalendarSetup;
   staying: string[];
   posted: boolean;
   onDone: () => void;
@@ -156,7 +174,7 @@ function NewDateForm({
           </ul>
         </div>
       )}
-      <DateRows legend={staying.length ? "More dates to offer" : "Dates to offer"} rows={staying.length ? 1 : 2} required={!staying.length} />
+      <DatePicker legend={staying.length ? "More dates to offer (or none)" : "Dates to offer"} setup={calendar} time={time} offered={[day]} />
       {error && (
         <p role="alert" className="text-sm text-meeple-red">
           {error}

@@ -1,10 +1,10 @@
 import "server-only";
 import { after } from "next/server";
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { CASUAL_NIGHT, GROUP_NIGHTS, NIGHT_NAMES, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { NIGHTS, type Night, POLL_MAX_DATES, type RsvpStatus } from "@/db/enums";
-import { commandName, editInteractionReply, eventsChannel, playsChannel, postsNights } from "./discord";
+import { type DateAnswer, NIGHTS, type Night, POLL_MAX_DATES, type RsvpStatus } from "@/db/enums";
+import { commandName, editInteractionReply, eventsChannel, fetchAppEmoji, playsChannel, postsNights } from "./discord";
 import {
   APPLICATION_COMMAND,
   AUTOCOMPLETE,
@@ -21,19 +21,21 @@ import {
   formValues,
   memberName,
   modal,
+  panel,
   parseActionId,
   pickedUser,
   reply,
+  updatePanel,
   updateReply,
 } from "./interactions";
-import { answerBringAsk, cancelNight, createNight, editNight, ownNight, playerForDiscordUser, playerNamed, setRsvp, waitingFor } from "./night-store";
+import { answerBringAsk, cancelNight, createNight, editNight, lastMadeNight, ownNight, playerForDiscordUser, playerNamed, setRsvp, waitingFor } from "./night-store";
 import { joinThread, postInThread, syncNightPost, syncNightPostLater, upcomingOwnNights } from "./night-post";
 import { localDate, nightTitle, nightWhen, soonLabel } from "./nights";
 import { inSentence } from "./text";
 import { formatForForm, parseDateList, parseTime, parseWhen } from "./when";
 import { addPollDate, answerOf, createPoll, dateFellThrough, datesStaying, loadPoll, noDatesWork, ownPoll, pollOfDate, reopenPoll, setDateAnswer, setPollDate } from "./poll-store";
 import { announceDateSetLater, announceFellThroughLater, answeredLater } from "./poll-post";
-import { dateChoiceLabel, stayingLine } from "./poll-message";
+import { buildAnswersPanel, dateChoiceLabel, stayingLine } from "./poll-message";
 import { rankDates, toggleWorks } from "./date-answers";
 import { kindOfChannel } from "./discord-commands";
 import { escape } from "./discord-components";
@@ -137,7 +139,17 @@ async function component(i: Interaction) {
   if (!action || action.kind === "new" || action.kind === "newPoll") return reply("That button is from an older version. The event's post has the current ones.");
   if (action.kind === "welcome") return welcomeConfirmed(i, action.userId);
   if (action.kind === "bring") return bringAnswer(i, action);
-  if (action.kind === "pollVote" || action.kind === "pollAdd" || action.kind === "pollPick" || action.kind === "pollNone" || action.kind === "pollOff" || action.kind === "pollReopen") return pollButton(i, action);
+  if (
+    action.kind === "pollVote" ||
+    action.kind === "pollAdd" ||
+    action.kind === "pollPick" ||
+    action.kind === "pollNone" ||
+    action.kind === "pollMine" ||
+    action.kind === "pollAns" ||
+    action.kind === "pollOff" ||
+    action.kind === "pollReopen"
+  )
+    return pollButton(i, action);
   const n = await ownNight(action.nightId);
 
   if (action.kind === "rsvp") {
@@ -392,11 +404,7 @@ function editForm(n: typeof schema.gameNight.$inferSelect) {
 
 /** The usual time and place for this kind of night: the last one someone planned */
 async function lastNight(night: Night) {
-  const n = schema.gameNight;
-  const row = await db.query.gameNight.findFirst({
-    where: and(eq(n.night, night), eq(n.cancelled, false), isNotNull(n.createdBy)),
-    orderBy: desc(n.startsAt),
-  });
+  const row = await lastMadeNight(night);
   return { time: row ? formatForForm(row.startsAt, TIME_ZONE).time : "7:00 pm", location: row?.location ?? null };
 }
 
@@ -463,12 +471,27 @@ async function newPoll(i: Interaction, form: Record<string, string>) {
   return deferReply();
 }
 
-type PollAction = Extract<NonNullable<ReturnType<typeof parseActionId>>, { kind: "pollVote" | "pollAdd" | "pollPick" | "pollNone" | "pollOff" | "pollReopen" }>;
+type PollAction = Extract<NonNullable<ReturnType<typeof parseActionId>>, { kind: "pollVote" | "pollAdd" | "pollPick" | "pollNone" | "pollMine" | "pollAns" | "pollOff" | "pollReopen" }>;
+
+/** The My answers panel for someone, as their answers stand */
+async function answersPanel(pollId: number, playerId: number) {
+  const poll = await loadPoll(pollId);
+  if (!poll) throw new Error("That's gone: it was deleted.");
+  const n = await ownNight(poll.nightId);
+  const dates = poll.dates
+    .filter((d) => !d.past && !d.fellThrough)
+    .map((d) => {
+      const no = d.no.find((x) => x.playerId === playerId);
+      const mine: DateAnswer | null = d.yes.some((x) => x.playerId === playerId) ? "yes" : d.maybe.some((x) => x.playerId === playerId) ? "maybe" : no ? "no" : null;
+      return { id: d.id, startsAt: d.startsAt, mine, assumed: Boolean(no?.assumed) };
+    });
+  return buildAnswersPanel({ pollId, title: n.title || NIGHT_NAMES[n.night], dates, emoji: await fetchAppEmoji() });
+}
 
 /** The buttons on the post of a night finding its date, and the question Call it off asks */
 async function pollButton(i: Interaction, action: PollAction) {
   // Answers are for whoever the night is for: members for the core group's, anyone for the casual one
-  const row = action.kind === "pollVote" ? await pollOfDate(action.optionId) : await ownPoll(action.pollId);
+  const row = action.kind === "pollVote" || action.kind === "pollAns" ? await pollOfDate(action.optionId) : await ownPoll(action.pollId);
   if (!mayAnswer(i, row.night)) return reply(NOT_THIS_ONE());
   const nightId = row.gameNightId;
 
@@ -480,10 +503,25 @@ async function pollButton(i: Interaction, action: PollAction) {
     return deferUpdate();
   }
 
+  if (action.kind === "pollMine") {
+    const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
+    return panel(await answersPanel(row.id, player.id));
+  }
+
+  if (action.kind === "pollAns") {
+    const answer = i.data?.values?.[0];
+    if (answer !== "yes" && answer !== "maybe" && answer !== "no") return reply("Pick works, if I have to or can't.");
+    const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
+    await setDateAnswer(action.optionId, player.id, answer);
+    answeredLater(nightId, row.id, answer === "no" ? undefined : player.id);
+    return updatePanel(await answersPanel(row.id, player.id));
+  }
+
   if (action.kind === "pollNone") {
     const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
     await noDatesWork(row.id, player.id);
     answeredLater(nightId, row.id);
+    if (action.here) return updatePanel(await answersPanel(row.id, player.id));
     return reply("Got it: none of those work for you. If one does after all, tap **Works for me** beside it.");
   }
 

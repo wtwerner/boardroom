@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import type { Night, RsvpStatus } from "@/db/enums";
@@ -42,6 +42,16 @@ export async function createNight(fields: NightFields, createdBy: string) {
     .values({ ...fields, location: fields.location || null, date: dateOf(fields.startsAt), createdBy })
     .returning();
   return row;
+}
+
+/** The latest night of a kind someone made with a date, whose time and place a new one starts with */
+export async function lastMadeNight(night: Night) {
+  const n = schema.gameNight;
+  return db.query.gameNight.findFirst({
+    where: and(eq(n.night, night), eq(n.cancelled, false), eq(n.findingDate, false), isNotNull(n.createdBy)),
+    orderBy: desc(n.startsAt),
+    columns: { startsAt: true, location: true },
+  });
 }
 
 const isPast = (n: { startsAt: Date }) => n.startsAt.getTime() < Date.now() - nightGraceMs();

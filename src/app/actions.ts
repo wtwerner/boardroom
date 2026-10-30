@@ -28,7 +28,7 @@ import { zonedToUtc } from "@/lib/nights";
 import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
-import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
+import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, setDecideBy, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
 import { announceDateSetLater, announceFellThroughLater, answeredLater, nudgeLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
 import { welcomeSummary } from "@/lib/welcome-message";
@@ -735,7 +735,11 @@ export async function updateNight(id: number, input: z.infer<typeof NightInput>)
   return { ok: true, message: "Saved." };
 }
 
-const DetailsInput = z.object({ title: z.string().trim().max(100), location: z.string().trim().max(200).nullable() });
+/** A day to decide by (YYYY-MM-DD), or none: whoever started it is pinged at noon that day */
+const DecideBy = z.union([z.literal(""), z.string().regex(/^\d{4}-\d{2}-\d{2}$/)]).optional();
+const decideAt = (day: string | undefined) => (day ? zonedToUtc(day, "12:00", TIME_ZONE) : null);
+
+const DetailsInput = z.object({ title: z.string().trim().max(100), location: z.string().trim().max(200).nullable(), decideBy: DecideBy });
 
 /** A night finding its date: its name (or none yet, for the template's once it has a date) and place */
 export async function updateNightDetails(id: number, input: z.infer<typeof DetailsInput>): Promise<ActionResult> {
@@ -743,8 +747,10 @@ export async function updateNightDetails(id: number, input: z.infer<typeof Detai
   const parsed = DetailsInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "The name fits 100 characters, and the place 200." };
   try {
-    const before = await editNight(id, parsed.data);
-    syncNightPostLater(id, { renamed: before.title !== parsed.data.title });
+    const { decideBy, ...fields } = parsed.data;
+    const before = await editNight(id, fields);
+    if (decideBy !== undefined) await setDecideBy(id, decideAt(decideBy));
+    syncNightPostLater(id, { renamed: before.title !== fields.title });
   } catch (err) {
     return fail(err);
   }
@@ -772,6 +778,7 @@ const PollInput = z.object({
   title: z.string().trim().max(100),
   location: z.string().trim().max(200).nullable(),
   dates: z.array(DateTime).min(1).max(POLL_MAX_DATES),
+  decideBy: DecideBy,
 });
 
 /** How the thread names me: a mention when I'm linked to Discord */
@@ -785,10 +792,10 @@ export async function startPoll(input: z.infer<typeof PollInput>): Promise<Actio
   const me = await requireUser();
   const parsed = PollInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: `Give between one and ${POLL_MAX_DATES} dates, each with a time.` };
-  const { night, title, location, dates } = parsed.data;
+  const { night, title, location, dates, decideBy } = parsed.data;
   let nightId: number;
   try {
-    ({ nightId } = await createPoll({ night: GROUP_NIGHTS.includes(night) ? night : "core", title: title || null, location, dates: dates.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)) }, me.id));
+    ({ nightId } = await createPoll({ night: GROUP_NIGHTS.includes(night) ? night : "core", title: title || null, location, dates: dates.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)), decideBy: decideAt(decideBy) }, me.id));
     syncNightPostLater(nightId, { creator: await playerForUser(me) });
   } catch (err) {
     return fail(err);

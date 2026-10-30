@@ -3,7 +3,7 @@ import { componentText } from "./discord-message";
 import { NIGHT_ACCENT } from "./discord-components";
 import { parseActionId } from "./interactions";
 import { nightPing } from "./night-message";
-import { type PollCard, buildPollMessage, buildPollThreadCopy, dateChoiceLabel, everyoneAnsweredMessage, nudgeMessage, pickedMessage, pollThreadName, refindMessage, stayingLine } from "./poll-message";
+import { type PollCard, buildAnswersPanel, buildPollMessage, decideByMessage, buildPollThreadCopy, dateChoiceLabel, everyoneAnsweredMessage, nudgeMessage, pickedMessage, pollThreadName, refindMessage, stayingLine } from "./poll-message";
 
 const sam = { name: "Sam", discordId: "10000000000000001" };
 const alex = { name: "Alex", discordId: "10000000000000002" };
@@ -59,20 +59,20 @@ describe("buildPollMessage", () => {
     expect(text).toContain("📅 **<t:1794081600:F>** · 0 can come\n-# Nobody yet");
   });
 
-  it("puts Works for me beside each date, and suggest, set, none work, call off and the site's link below", () => {
+  it("puts Works for me beside each date, and suggest, set, my answers, call off and the site's link below", () => {
     const buttons = allButtons(buildPollMessage(base));
     expect(buttons.filter((b) => b.label === "Works for me").map((b) => parseActionId(b.custom_id))).toEqual([
       { kind: "pollVote", optionId: 21 },
       { kind: "pollVote", optionId: 22 },
     ]);
-    expect(buttons.slice(2).map((b) => b.label)).toEqual(["Suggest a date", "Set the date", "None work", "Call it off", "Open in Boardroom"]);
+    expect(buttons.slice(2).map((b) => b.label)).toEqual(["Suggest a date", "Set the date", "My answers", "Call it off", "Open in Boardroom"]);
     expect(parseActionId(buttons[3].custom_id)).toEqual({ kind: "pollPick", pollId: 3 });
-    expect(parseActionId(buttons[4].custom_id)).toEqual({ kind: "pollNone", pollId: 3 });
+    expect(parseActionId(buttons[4].custom_id)).toEqual({ kind: "pollMine", pollId: 3 });
     expect(buttons.at(-1)?.url).toBe("https://boardroom.example/events/12");
   });
 
   it("leaves the site's link off when there's none to give, as for a casual night", () => {
-    expect(allButtons(buildPollMessage({ ...base, pollUrl: null })).map((b) => b.label)).toEqual(["Works for me", "Works for me", "Suggest a date", "Set the date", "None work", "Call it off"]);
+    expect(allButtons(buildPollMessage({ ...base, pollUrl: null })).map((b) => b.label)).toEqual(["Works for me", "Works for me", "Suggest a date", "Set the date", "My answers", "Call it off"]);
   });
 
   it("moves a date that's gone by or fell through below, small, without a button", () => {
@@ -238,5 +238,62 @@ describe("nudgeMessage", () => {
     const { body, allowedMentions } = nudgeMessage([alex, { name: "Casey" }], "**Sam**");
     expect(body.content).toBe("👋 **Sam** is waiting on <@10000000000000002> and Casey: say which dates work on the post.");
     expect(allowedMentions).toEqual({ parse: [], users: ["10000000000000002"] });
+  });
+});
+
+describe("buildAnswersPanel", () => {
+  const panel = buildAnswersPanel({
+    pollId: 3,
+    title: "November heavy",
+    dates: [
+      { id: 21, startsAt: "2026-11-06T01:00:00.000Z", mine: "maybe", assumed: false },
+      { id: 22, startsAt: "2026-11-07T20:00:00.000Z", mine: "no", assumed: true },
+      { id: 23, startsAt: "2026-11-08T20:00:00.000Z", mine: null, assumed: false },
+    ],
+  });
+  type Select = { custom_id: string; placeholder: string; options: { label: string; value: string; default: boolean }[] };
+  const selects = panel.components.flatMap((c) => ((c as { type: number }).type === 1 ? ((c as { components: Select[] }).components as Select[]) : [])).filter((x) => "options" in x);
+
+  it("gives each date a menu of works, if I have to and can't, on what they said", () => {
+    expect(selects.map((x) => parseActionId(x.custom_id))).toEqual([
+      { kind: "pollAns", optionId: 21 },
+      { kind: "pollAns", optionId: 22 },
+      { kind: "pollAns", optionId: 23 },
+    ]);
+    expect(selects[0].options.map((o) => [o.label, o.default])).toEqual([["Works", false], ["If I have to", true], ["Can't", false]]);
+    expect(selects[2].options.every((o) => !o.default)).toBe(true);
+    expect(selects[2].placeholder).toBe("Not answered yet");
+  });
+
+  it("says when a date counts as can't because they left it", () => {
+    expect(componentText(panel.components)).toContain("📅 <t:1794081600:F>\n-# You didn't say, so it counts as can't");
+    expect(selects[1].options.every((o) => !o.default)).toBe(true);
+  });
+
+  it("ends with None of these work, which updates the panel", () => {
+    expect(allButtons(panel as Built).map((b) => [b.label, parseActionId(b.custom_id)])).toEqual([["None of these work", { kind: "pollNone", pollId: 3, here: true }]]);
+  });
+
+  it("fits Discord's 40 parts with the most dates there can be", () => {
+    const most = buildAnswersPanel({ pollId: 3, title: "x", dates: Array.from({ length: 8 }, (_, i) => ({ id: i, startsAt: "2026-11-06T01:00:00.000Z", mine: null, assumed: false })) });
+    expect(countParts(most as Built)).toBeLessThanOrEqual(40);
+  });
+});
+
+describe("decide by", () => {
+  it("shows the day on the post while it's open", () => {
+    expect(componentText(buildPollMessage({ ...base, decideBy: "2026-11-04T18:00:00.000Z" }).components)).toContain("-# Decide by <t:1793815200:D>");
+    expect(componentText(buildPollMessage({ ...base, status: "cancelled", decideBy: "2026-11-04T18:00:00.000Z" }).components)).not.toContain("Decide by");
+  });
+
+  it("pings whoever started it on the day with the best date and who's still waiting", () => {
+    const { body, allowedMentions } = decideByMessage({ starter: sam, best: { startsAt: "2026-11-06T01:00:00.000Z", coming: 3, everyone: false }, min: 2, waiting: [alex, { name: "Casey" }] });
+    expect(body.content).toBe("⏰ <@10000000000000001>, it's time to pick a date.\n<t:1793926800:F> works best so far: 3 can come.\n-# Still waiting on Alex and Casey.");
+    expect(allowedMentions).toEqual({ parse: [], users: ["10000000000000001"] });
+  });
+
+  it("says when no date has enough, or one works for everyone", () => {
+    expect(decideByMessage({ starter: null, best: null, min: 3, waiting: [] }).body.content).toBe("⏰ It's time to pick a date.\nNo date has 3 who can come yet. Suggest another, or call it off.");
+    expect(decideByMessage({ starter: null, best: { startsAt: "2026-11-06T01:00:00.000Z", coming: 4, everyone: true }, min: 2, waiting: [] }).body.content).toContain("<t:1793926800:F> works for everyone.");
   });
 });
