@@ -238,6 +238,7 @@ async function nightLog(n: NightDetail) {
       nightNames={NIGHT_NAMES}
       postLabel={`Post it to ${GROUP_NIGHTS.length > 1 ? `the ${inSentence(NIGHT_NAMES[n.night])}'s` : "the"} Discord plays channel${n.posted ? " and the event's thread" : ""}`}
       canEnd={n.started && !n.past && n.plays.length > 0}
+      demo={DEMO}
       collapsed={n.past && n.plays.length > 0}
     />
   );

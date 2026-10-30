@@ -5,7 +5,7 @@ import { db, schema } from "@/db";
 import type { Night, RsvpStatus } from "@/db/enums";
 import { retitle } from "./night-title";
 import { matchByName } from "./players";
-import { getKnownPlayers } from "./events";
+import { getKnownPlayers, nightGraceMs } from "./events";
 import { fillSeats, nextAnswer } from "./rsvp";
 
 /**
@@ -13,8 +13,6 @@ import { fillSeats, nextAnswer } from "./rsvp";
  * so a night made or answered in either place ends up the same. Errors are plain sentences,
  * shown to people as they are.
  */
-
-const GRACE_MS = 12 * 3_600_000;
 
 /** A night, as stored */
 export async function ownNight(id: number) {
@@ -46,7 +44,7 @@ export async function createNight(fields: NightFields, createdBy: string) {
   return row;
 }
 
-const isPast = (n: { startsAt: Date }) => n.startsAt.getTime() < Date.now() - GRACE_MS;
+const isPast = (n: { startsAt: Date }) => n.startsAt.getTime() < Date.now() - nightGraceMs();
 
 /** Change a night's details. Returns how it was, so the thread can be told what moved. */
 export async function editNight(id: number, fields: Partial<NightFields>) {

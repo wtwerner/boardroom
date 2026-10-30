@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt } from "drizzle-orm";
 import { CASUAL_NIGHT, CLAUDE, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import type { RsvpStatus } from "@/db/enums";
@@ -180,6 +180,8 @@ const BOX_ART: Record<number, [string, string]> = {
  * the games' BGG details are below. Sam is its admin, and Group settings go back to the
  * environment variables. Whoever calls it checks it's pointed at a database that's fine to wipe.
  */
+const HOUR = 3_600_000;
+
 export async function seedGroup(now = new Date()) {
   const cal = demoCalendar(now);
   // Start clean, everyone signed out. BGA's game list and the Discover catalog stay: they aren't the group's.
@@ -361,6 +363,39 @@ export async function seedGroup(now = new Date()) {
   for (const [option, userIds] of [[offered[0], ["u-alex", "u-jordan"]], [offered[1], ["u-alex", "u-sam", "u-casey"]]] as const) {
     for (const userId of userIds) await db.insert(schema.datePollVote).values({ optionId: option.id, playerId: await playerOf(userId), votedAt: new Date() });
   }
+
+  // A night that's on: it started an hour before the reset and stays on until the next one
+  // (events.ts), so the demo can be logged as it happens. The warm-up is logged; the game
+  // locked in is next.
+  const startedAt = new Date(Math.floor((now.getTime() - HOUR) / HOUR) * HOUR);
+  const today = startedAt.toLocaleDateString("en-CA", { timeZone: TIME_ZONE });
+  const [on] = await db
+    .insert(schema.gameNight)
+    .values({ night: "core", date: today, title: nightTitle("core", today, "Heat"), startsAt: startedAt, location: "Casey's", createdBy: "u-casey" })
+    .returning();
+  await rsvp(on.id, { "u-sam": "going", "u-alex": "going", "u-jordan": "going", "u-casey": "going" });
+  const tonight: [string, string, string[], boolean][] = [
+    ["Heat: Pedal to the Metal", "u-casey", ["u-casey", "u-sam", "u-alex"], true],
+    ["Skull", "u-alex", ["u-alex", "u-jordan"], false],
+    ["The Crew: The Quest for Planet Nine", "u-sam", ["u-sam"], false],
+  ];
+  for (const [game, by, votes, chosen] of tonight) {
+    const [plan] = await db.insert(schema.gamePlan).values({ gameId: ids[game], gameNightId: on.id, chosen, createdBy: by }).returning();
+    await db.insert(schema.planVote).values(votes.map((userId) => ({ planId: plan.id, userId })));
+  }
+  const warmUp = "The Crew: The Quest for Planet Nine";
+  await savePlay(
+    {
+      gameName: warmUp,
+      bggId: ids[warmUp],
+      playedOn: today,
+      location: "Casey's",
+      players: await Promise.all(["u-sam", "u-alex", "u-jordan", "u-casey"].map(async (u) => ({ name: DEMO_PEOPLE.find((p) => p.id === u)?.name ?? u, playerId: await playerOf(u) }))),
+    },
+    { source: "manual", createdBy: "u-casey", gameId: ids[warmUp], night: "core" },
+  );
+  // The nights before it are over: without this, one the evening before a reset would still be on
+  await db.update(schema.gameNight).set({ endedAt: now }).where(lt(schema.gameNight.startsAt, new Date(startedAt.getTime() - HOUR)));
 
   // The next casual night, with a bring list and one owner asked to bring theirs
   if (CASUAL_NIGHT) {

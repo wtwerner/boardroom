@@ -1,5 +1,6 @@
 import "server-only";
 import { and, asc, desc, eq, exists, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { DEMO } from "@/config";
 import { db, schema } from "@/db";
 import type { Night } from "@/db/enums";
 import { type Attendee, fillSeats, groupAnswers } from "./rsvp";
@@ -7,6 +8,14 @@ import { playOrder } from "./log-post";
 
 /** A night stays upcoming until this long after it starts, so it's still there on the night */
 const GRACE_MS = 12 * 3_600_000;
+/**
+ * The demo's night that's on (demo-seed.ts) starts an hour before the daily reset and stays on
+ * until the next one, so anyone trying the demo can log it as it happens
+ */
+const DEMO_GRACE_MS = 26 * 3_600_000;
+
+/** How long after it starts a night is still on */
+export const nightGraceMs = () => (DEMO ? DEMO_GRACE_MS : GRACE_MS);
 
 const { game } = schema;
 
@@ -99,7 +108,7 @@ async function loadNights(nights: (typeof schema.gameNight.$inferSelect)[]) {
       /** It's begun, so its page can log what's played */
       started: n.startsAt.getTime() <= Date.now(),
       /** Over: someone said that's everything, or it's long enough since it started */
-      past: n.endedAt !== null || n.startsAt.getTime() < Date.now() - GRACE_MS,
+      past: n.endedAt !== null || n.startsAt.getTime() < Date.now() - nightGraceMs(),
       plays: played.filter((p) => p.night === n.night && p.playedOn === n.date),
       games: plans
         .filter((p) => p.gameNightId === n.id)
@@ -131,7 +140,7 @@ export async function getUpcomingNights() {
   const rows = await db
     .select()
     .from(schema.gameNight)
-    .where(and(eq(schema.gameNight.cancelled, false), isNull(schema.gameNight.endedAt), gte(schema.gameNight.startsAt, new Date(Date.now() - GRACE_MS))))
+    .where(and(eq(schema.gameNight.cancelled, false), isNull(schema.gameNight.endedAt), gte(schema.gameNight.startsAt, new Date(Date.now() - nightGraceMs()))))
     .orderBy(asc(schema.gameNight.startsAt));
   return loadNights(rows);
 }
@@ -175,7 +184,7 @@ export async function getPastNights(limit: number) {
     .where(
       and(
         eq(n.cancelled, false),
-        or(isNotNull(n.endedAt), lt(n.startsAt, new Date(Date.now() - GRACE_MS))),
+        or(isNotNull(n.endedAt), lt(n.startsAt, new Date(Date.now() - nightGraceMs()))),
         or(
           exists(db.select({ x: sql`1` }).from(schema.nightRsvp).where(eq(schema.nightRsvp.gameNightId, n.id))),
           exists(db.select({ x: sql`1` }).from(schema.gamePlan).where(eq(schema.gamePlan.gameNightId, n.id))),

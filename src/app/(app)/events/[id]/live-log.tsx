@@ -44,6 +44,7 @@ export function LiveLog({
   nightNames,
   postLabel,
   canEnd,
+  demo,
   collapsed,
 }: {
   nightId: number;
@@ -63,6 +64,8 @@ export function LiveLog({
   postLabel: string;
   /** It's on, with something logged: it can be ended */
   canEnd: boolean;
+  /** On the demo, which everyone shares, the night can't be ended */
+  demo: boolean;
   /** Over and logged: logging more is tucked away */
   collapsed: boolean;
 }) {
@@ -160,7 +163,10 @@ export function LiveLog({
         </p>
       )}
 
-      {canEnd && (
+      {canEnd && demo && (
+        <p className="border-t border-line pt-4 text-sm text-slate">On your own group&apos;s site, &ldquo;That&apos;s everything&rdquo; ends the night here. It stays on in the demo for the next person.</p>
+      )}
+      {canEnd && !demo && (
         <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">
           <button type="button" disabled={pending} onClick={() => start(async () => setStatus(await endNight(nightId)))} className={buttonClass("secondary")}>
             That&apos;s everything

@@ -325,6 +325,8 @@ export async function movePlay(id: number, by: -1 | 1): Promise<ActionResult> {
  */
 export async function endNight(id: number): Promise<ActionResult> {
   await requireUser();
+  // Everyone trying the demo shares its night that's on
+  if (DEMO) return { ok: false, error: "The night can't be ended on the demo, so it's still on for the next person." };
   const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, id) });
   if (!n) return { ok: false, error: "That's gone: it was deleted." };
   if (n.startsAt.getTime() > Date.now()) return { ok: false, error: "It hasn't started yet." };
