@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { DEMO, GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { DateBadge, NightTag, NightWhen } from "@/components/night-row";
+import { DateBadge, NightTag, NightWhen, OnNow, isOn } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
 import { discordAppUrl } from "@/lib/discord-components";
 import { Empty, Panel, Section, Skeleton, TextLink } from "@/components/ui";
@@ -62,7 +62,22 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     );
   }
 
-  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates, log] = await Promise.all([
+  // On now: answering, planning and the recommendations are behind it, so it's only what's played
+  if (n.started) {
+    const log = await nightLog(n);
+    return (
+      <div className="space-y-10">
+        <LiveRefresh nightId={n.id} />
+        <div className="space-y-4">
+          <BackLink />
+          <NightHeader n={n} />
+        </div>
+        <PlayedSection n={n} log={log} title="What's been played" />
+      </div>
+    );
+  }
+
+  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates] = await Promise.all([
     // Recency and "never played" come from this kind of night's plays only
     getShelf({ night: n.night }).then(async (all) => {
       const s = all.filter((g) => !isLegacy(g));
@@ -74,8 +89,6 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     getPlayedBy(),
     db.select({ id: schema.player.id, name: schema.player.name }).from(schema.player).orderBy(schema.player.name),
     datesStaying(n.id),
-    // Once it starts, what's played can be logged as the night goes
-    n.started ? nightLog(n) : null,
   ]);
   // What Find a new date keeps: the other dates on the poll it was picked from
   const staying = stayingDates.map((d) => dateChoiceLabel(d.startsAt, d.votes, TIME_ZONE));
@@ -116,8 +129,6 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
           />
         </Panel>
       </div>
-
-      {log && <PlayedSection n={n} log={log} />}
 
       <Section title={n.night === "core" ? "The game" : "What's coming"}>
         {n.night === "core" ? (
@@ -219,7 +230,8 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
  */
 async function nightLog(n: NightDetail) {
   if (!n.date || n.cancelled) return null;
-  const [games, players] = await Promise.all([getAllGamesForPicker(), getPlayers()]);
+  const [games, players, members] = await Promise.all([getAllGamesForPicker(), getPlayers(), n.night === "casual" ? getMembers() : []]);
+  const bringers = new Map(members.map((m) => [m.id, m.name]));
   const played = new Set(n.plays.flatMap((p) => (p.gameId ? [p.gameId] : [])));
   const last = n.plays.at(-1);
   const seated = last ? last.players.map((s) => s.playerId) : n.going.map((a) => a.playerId);
@@ -230,7 +242,11 @@ async function nightLog(n: NightDetail) {
       playedOn={n.date}
       location={n.location}
       plays={n.plays}
-      planned={n.games.filter((g) => !played.has(g.game.id)).map((g) => ({ id: g.game.id, name: g.game.name }))}
+      planned={n.games
+        .filter((g) => !played.has(g.game.id))
+        // The game locked in first, then the most wanted
+        .sort((a, b) => Number(b.chosen) - Number(a.chosen) || b.votes.length - a.votes.length)
+        .map((g) => ({ id: g.game.id, name: g.game.name, note: n.night === "core" ? (g.chosen ? "Locked in" : "Proposed") : g.bringerId ? `${bringers.get(g.bringerId) ?? "Someone"}'s bringing it` : null }))}
       games={games}
       players={players}
       seated={seated}
@@ -265,7 +281,16 @@ function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }
           {n.cancelled && <span className="rounded-full bg-meeple-red/12 px-2 py-0.5 text-xs font-medium">Cancelled</span>}
         </div>
         <p className="text-slate">
-          {n.fromPlays ? when.label : <NightWhen iso={n.startsAt} soon={n.past ? null : soonLabel(n.startsAt, TIME_ZONE)} date={`${when.label},`} keepDate />}
+          {n.fromPlays ? (
+            when.label
+          ) : isOn(n) ? (
+            <>
+              <OnNow className="mr-1.5" />
+              since {when.time}
+            </>
+          ) : (
+            <NightWhen iso={n.startsAt} soon={n.past ? null : soonLabel(n.startsAt, TIME_ZONE)} date={`${when.label},`} keepDate />
+          )}
           {n.location && ` · ${n.location}`}
         </p>
       </div>
@@ -280,7 +305,7 @@ function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }
             id={n.id}
             initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "", capacity: n.capacity }}
             canDelete={n.plays.length === 0}
-            canFindNewDate={!n.past}
+            canFindNewDate={!n.started}
             staying={staying}
             posted={n.posted}
             setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: postsNights(n.night) }}

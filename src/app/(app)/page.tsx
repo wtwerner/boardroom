@@ -4,7 +4,7 @@ import clsx from "clsx";
 import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
 import { AttendanceBars, MonthColumns } from "@/components/charts";
 import type { MeepleColor, Tier } from "@/db/enums";
-import { NightRow } from "@/components/night-row";
+import { NightRow, OnNow, isOn } from "@/components/night-row";
 import { type NightDetail, getNightsByDate, getUpcomingNights } from "@/lib/events";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { Avatar, Empty, GameCover, Meeple, PlayerChip, Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass, formatDate } from "@/components/ui";
@@ -62,6 +62,9 @@ async function Home() {
   const nameOf = new Map(members.map((m) => [m.id, m.name]));
   const lastNightId = lastNight && (await getNightsByDate([{ night: lastNight.night, date: lastNight.date }])).get(`${lastNight.night}:${lastNight.date}`)?.id;
 
+  // The last night played is still on
+  const onNow = plans.find((n) => n.id === lastNightId && isOn(n));
+
   if (stats.all.plays === 0) return <FirstRun name={me.name} />;
 
   const reviewCount = review.reduce((n, r) => n + r.count, 0);
@@ -74,16 +77,27 @@ async function Home() {
 
       {lastNight && (
         <section>
-          <p className="text-sm text-slate">
-            Last event was {dayWord(lastNight.date, localDate(new Date()))?.toLowerCase() ?? formatDate(lastNight.date, { weekday: "long", month: "long", day: "numeric" })}
-            {CASUAL_NIGHT && ` · ${NIGHT_NAMES[lastNight.night]}`}
-            {lastNightId && (
-              <>
-                {" · "}
-                <TextLink href={`/events/${lastNightId}`}>See the event</TextLink>
-              </>
-            )}
-          </p>
+          {onNow ? (
+            // Still going: what's been played so far, and where to log the next one
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate">
+              <OnNow />
+              {CASUAL_NIGHT && <span>{NIGHT_NAMES[lastNight.night]} ·</span>}
+              <span>Played so far</span>
+              <span>·</span>
+              <TextLink href={`/events/${onNow.id}#log`}>Log the next game</TextLink>
+            </p>
+          ) : (
+            <p className="text-sm text-slate">
+              Last event was {dayWord(lastNight.date, localDate(new Date()))?.toLowerCase() ?? formatDate(lastNight.date, { weekday: "long", month: "long", day: "numeric" })}
+              {CASUAL_NIGHT && ` · ${NIGHT_NAMES[lastNight.night]}`}
+              {lastNightId && (
+                <>
+                  {" · "}
+                  <TextLink href={`/events/${lastNightId}`}>See the event</TextLink>
+                </>
+              )}
+            </p>
+          )}
           <div className="mt-3 grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
             <div className="flex -space-x-6">
               {lastNight.plays.slice(0, 4).map((p, i) => (

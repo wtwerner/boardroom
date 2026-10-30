@@ -52,8 +52,8 @@ export function LiveLog({
   playedOn: string;
   location: string | null;
   plays: LoggedPlay[];
-  /** The games planned or brought that aren't logged yet, to tap */
-  planned: { id: number; name: string }[];
+  /** The games planned or brought that aren't logged yet, to tap, with where each stands ("Locked in", "Sam's bringing it") */
+  planned: { id: number; name: string; note: string | null }[];
   games: { id: number; name: string }[];
   players: PlayerOption[];
   /** Who's playing to start with: the last game's table, or who said they were going */
@@ -117,9 +117,13 @@ export function LiveLog({
                 type="button"
                 disabled={logging.has(g.id)}
                 onClick={() => log(g.id)}
-                className={clsx("rounded-full border border-line px-3 py-1 text-sm hover:border-ink/70", logging.has(g.id) && "animate-pulse bg-felt-soft")}
+                className={clsx(
+                  "rounded-xl border border-line bg-table px-3 py-2 text-left text-sm shadow-token hover:border-ink/70",
+                  logging.has(g.id) && "animate-pulse bg-felt-soft",
+                )}
               >
-                {logging.has(g.id) ? `Logging ${g.name}…` : `+ ${g.name}`}
+                <span className="block font-semibold">{logging.has(g.id) ? `Logging ${g.name}…` : `+ ${g.name}`}</span>
+                {g.note && <span className="block text-xs text-slate">{g.note}</span>}
               </button>
             ))}
           </div>
@@ -183,6 +187,7 @@ export function LiveLog({
         <ol className="mb-3 space-y-2">
           {plays.map((p, i) => (
             <li key={p.id} className="group flex items-center gap-3 rounded-xl border border-line bg-card p-3">
+              <span className="w-4 shrink-0 text-center text-sm text-slate tabular-nums">{i + 1}</span>
               <GameCover src={p.thumbnail} name={p.name} size="sm" />
               <span className="min-w-0 flex-1">
                 {p.gameId ? (

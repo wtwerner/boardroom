@@ -46,6 +46,22 @@ export function NightWhen({ iso, soon, date, keepDate = false }: { iso: string; 
   );
 }
 
+/** A night that's on: a live dot and "Happening now", wherever the night shows */
+export function OnNow({ className }: { className?: string }) {
+  return (
+    <span className={clsx("inline-flex items-center gap-1.5 rounded-full bg-meeple-red/15 px-2 py-0.5 text-xs font-semibold whitespace-nowrap text-ink", className)}>
+      <span className="relative flex size-2" aria-hidden>
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-meeple-red opacity-75 motion-reduce:animate-none" />
+        <span className="relative inline-flex size-2 rounded-full bg-meeple-red" />
+      </span>
+      Happening now
+    </span>
+  );
+}
+
+/** It's started and isn't over: what's played is logged as it goes */
+export const isOn = (n: { started: boolean; past: boolean }) => n.started && !n.past;
+
 /** Which kind of night, for a group that has two */
 export function NightTag({ night, className }: { night: Night; className?: string }) {
   if (!CASUAL_NIGHT && night === "core") return null;
@@ -62,8 +78,12 @@ export function NightTag({ night, className }: { night: Night; className?: strin
   );
 }
 
-/** Where a night's planning stands, in a line */
+/** Where a night's planning stands, in a line, or once it's on, what's been played so far */
 function nightStatus(n: NightDetail, names: Record<string, string>) {
+  if (isOn(n)) {
+    const games = [...new Set(n.plays.map((p) => p.name))];
+    return games.length ? { text: `Played so far: ${games.join(", ")}`, done: true } : { text: "Nothing logged yet", done: false };
+  }
   if (n.night === "core") {
     const chosen = n.games.find((g) => g.chosen);
     const goingMembers = new Set(n.going.flatMap((a) => (a.userId ? [a.userId] : [])));
@@ -88,6 +108,7 @@ export function NightRow({ n, colors, names }: { n: NightDetail; colors: Record<
   if (n.past) return <PastRow n={n} />;
   const when = nightWhen(n.startsAt, TIME_ZONE);
   const soon = soonLabel(n.startsAt, TIME_ZONE);
+  const on = isOn(n);
   const status = nightStatus(n, names);
   const members = n.going.filter((a) => a.userId);
   const others = n.going.length - members.length + n.guests;
@@ -96,7 +117,7 @@ export function NightRow({ n, colors, names }: { n: NightDetail; colors: Record<
       href={`/events/${n.id}`}
       className={clsx(
         "flex items-start gap-4 rounded-xl border bg-card p-3 hover:border-ink/40 hover:bg-felt-soft/40",
-        isToday(soon) ? "border-accent/70" : "border-line",
+        on ? "border-meeple-red/60 ring-1 ring-meeple-red/30" : isToday(soon) ? "border-accent/70" : "border-line",
       )}
     >
       <DateBadge iso={n.startsAt} night={n.night} />
@@ -106,7 +127,14 @@ export function NightRow({ n, colors, names }: { n: NightDetail; colors: Record<
           <NightTag night={n.night} />
         </span>
         <span className="block text-sm text-slate">
-          <NightWhen iso={n.startsAt} soon={soon} date={when.weekday} />
+          {on ? (
+            <>
+              <OnNow className="mr-1.5" />
+              since {when.time}
+            </>
+          ) : (
+            <NightWhen iso={n.startsAt} soon={soon} date={when.weekday} />
+          )}
           {n.location && ` · ${n.location}`}
         </span>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">

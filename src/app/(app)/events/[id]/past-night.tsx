@@ -72,9 +72,9 @@ export function PastNight({ n, members, log }: { n: NightDetail; members: Member
  * What's been played on a night, logged with `log` (live-log.tsx): on its page once it starts, and
  * once it's over. Without one (a night with no date), what's logged is only listed.
  */
-export function PlayedSection({ n, log }: { n: NightDetail; log: ReactNode }) {
+export function PlayedSection({ n, log, title = "What was played" }: { n: NightDetail; log: ReactNode; title?: string }) {
   return (
-    <Section title="What was played">
+    <Section title={title}>
       {log ??
         (n.plays.length ? (
           <ul className="space-y-2">

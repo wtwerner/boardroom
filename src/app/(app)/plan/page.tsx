@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { Empty, PageHeader, Section, Skeleton, buttonClass } from "@/components/ui";
-import { NightRow } from "@/components/night-row";
+import { NightRow, isOn } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
 import { requireUser } from "@/lib/session";
 import { getMembers } from "@/lib/queries";
@@ -83,14 +83,29 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
     </Section>
   );
 
+  // A night that's on goes first, above the polls and what's coming up
+  const on = nights.filter(isOn);
+  const upcoming = nights.filter((n) => !isOn(n));
+
   return (
     <div className="space-y-12">
       <LiveRefresh />
+      {on.length > 0 && (
+        <Section title="Happening now">
+          <ul className="space-y-3">
+            {on.map((n) => (
+              <li key={n.id}>
+                <NightRow n={n} colors={colors} names={names} />
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
       {pollViews.length > 0 && pollSection}
       <Section title="Coming up">
-        {nights.length ? (
+        {upcoming.length ? (
           <ul className="space-y-3">
-            {nights.map((n) => (
+            {upcoming.map((n) => (
               <li key={n.id}>
                 <NightRow n={n} colors={colors} names={names} />
               </li>
