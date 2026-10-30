@@ -50,6 +50,7 @@ describe("action ids", () => {
       { kind: "pollVote", optionId: 88 },
       { kind: "pollAdd", pollId: 3 },
       { kind: "pollPick", pollId: 3 },
+      { kind: "pollNone", pollId: 3 },
       { kind: "pollOff", pollId: 3 },
       { kind: "pollOff", pollId: 3, sure: true },
       { kind: "pollReopen", pollId: 3 },

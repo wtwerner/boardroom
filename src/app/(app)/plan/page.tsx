@@ -1,19 +1,18 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
-import { GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
+import { GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES } from "@/config";
 import { Empty, PageHeader, Section, Skeleton, buttonClass } from "@/components/ui";
 import { NightRow, isOn } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
 import { requireUser } from "@/lib/session";
 import { getMembers } from "@/lib/queries";
 import { commandName, postsNights } from "@/lib/discord";
-import { getPastNights, getUpcomingNights } from "@/lib/events";
+import { getPastNights, getUpcomingNights, loadNight } from "@/lib/events";
 import { NightForm } from "../events/night-form";
-import { calledOffPolls, openPolls } from "@/lib/poll-store";
-import { pollTitle } from "@/lib/poll-post";
-import { localDate, nightTitle, nightWhen, soonLabel } from "@/lib/nights";
-import { CalledOffPoll, PollCard, PollForm, type PollView } from "./polls";
+import { findingPolls } from "@/lib/poll-store";
+import { CalledOffPoll, PollCard, PollForm } from "./polls";
+import { pollView } from "./poll-view";
 
 export const metadata: Metadata = { title: "Plan" };
 
@@ -35,47 +34,28 @@ export default function PlanPage(props: PageProps<"/plan">) {
 async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["searchParams"] }) {
   const me = await requireUser();
   const shown = Math.max(PAST_STEP, Math.min(500, Number((await searchParams).past) || PAST_STEP));
-  const [nights, past, members, polls, calledOff] = await Promise.all([getUpcomingNights(), getPastNights(shown), getMembers(), openPolls(), calledOffPolls()]);
+  const [nights, past, members, polls, calledOff] = await Promise.all([getUpcomingNights(), getPastNights(shown), getMembers(), findingPolls(), findingPolls({ cancelled: true })]);
   const colors = Object.fromEntries(members.map((m) => [m.id, m.color]));
   const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
 
-  const pollViews: (PollView & { hasTitle: boolean })[] = polls.map((p) => ({
-    id: p.id,
-    title: pollTitle(p),
-    hasTitle: Boolean(p.title),
-    // Untitled, it's named for its kind already
-    kindName: GROUP_NIGHTS.length > 1 && p.title ? NIGHT_NAMES[p.night] : null,
-    location: p.location,
-    url: p.posted ? p.url : null,
-    usualTime: p.dates[0] ? nightWhen(p.dates[0].startsAt, TIME_ZONE).clock : "19:00",
-    dates: p.dates.map((d) => {
-      const when = nightWhen(d.startsAt, TIME_ZONE);
-      return {
-        id: d.id,
-        startsAt: d.startsAt,
-        label: when.label,
-        time: when.time,
-        soon: soonLabel(d.startsAt, TIME_ZONE),
-        past: d.past,
-        voters: d.voters.map((v) => ({ playerId: v.playerId, name: v.name, userId: v.userId })),
-        defaultTitle: nightTitle(p.night, localDate(new Date(d.startsAt))),
-      };
-    }),
-  }));
+  // Nights still finding their date, each with the dates on offer
+  const finding = await Promise.all(polls.map(async (p) => ({ poll: p, night: await loadNight(p.nightId) })));
+  const pollViews = finding.flatMap(({ poll, night }) => (night ? [pollView(poll, night)] : []));
+  const offNights = await Promise.all(calledOff.map((p) => loadNight(p.nightId)));
   const pollSection = (
     <Section title="Picking a date" id="polls">
       {pollViews.length === 0 && <p className="mb-3 text-sm text-slate">Not sure when the next one is? Offer a few dates and see which work.</p>}
       {pollViews.length > 0 && (
         <div className="mb-4 space-y-3">
-          {pollViews.map(({ hasTitle, ...p }) => (
-            <PollCard key={p.id} poll={p} hasTitle={hasTitle} myPlayerId={me.playerId} colors={colors} />
+          {pollViews.map((p) => (
+            <PollCard key={p.id} poll={p} myPlayerId={me.playerId} colors={colors} link />
           ))}
         </div>
       )}
       {calledOff.length > 0 && (
         <ul className="mb-4 space-y-1.5">
-          {calledOff.map((p) => (
-            <CalledOffPoll key={p.id} id={p.id} title={pollTitle(p)} />
+          {calledOff.map((p, i) => (
+            <CalledOffPoll key={p.id} id={p.id} nightId={p.nightId} title={offNights[i]?.title ?? NIGHT_NAMES[p.night]} />
           ))}
         </ul>
       )}

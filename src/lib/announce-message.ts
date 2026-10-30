@@ -1,5 +1,5 @@
 /**
- * A night's (or a poll's) announcement in the group's chat channel, for groups whose posts live
+ * A night's announcement in the group's chat channel, for groups whose posts live
  * somewhere people don't read as they chat, like a forum (announceChannel in discord.ts). It
  * shows the details and links to the post, which has the buttons, so it has none of its own.
  * Pure so it can be tested; announce-post.ts sends it.
@@ -35,17 +35,17 @@ export function buildPollAnnouncement(p: PollCard, postUrl: string | null, ping?
   const e = p.emoji ?? {};
   const open = p.status === "open";
   const title = p.status === "cancelled" ? `### ~~${escape(p.title)}~~\n${icon(e, "cancelled")} **Called off**` : `### ${escape(p.title)}`;
-  const sub = ["Picking a date", p.kindName && escape(p.kindName)].filter(Boolean).join(" · ");
+  const sub = ["Date TBD", p.kindName && escape(p.kindName)].filter(Boolean).join(" · ");
   const dates = open
-    ? p.dates.filter((d) => !d.past).map((d) => `${icon(e, "date")} <t:${unix(d.startsAt)}:F> · ${d.voters.length}`)
+    ? p.dates.filter((d) => !d.past && !d.fellThrough).map((d) => `${icon(e, "date")} <t:${unix(d.startsAt)}:F> · ${d.yes.length + d.maybe.length} can come`)
     : p.status === "closed"
-      ? ["-# Every date has gone by."]
+      ? ["-# Every date's gone by."]
       : [];
   const card: Component[] = [
     { type: TEXT, content: `${title}\n-# ${sub}` },
     ...(dates.length ? [{ type: TEXT, content: dates.join("\n") }] : []),
   ];
-  return message(card, open ? NIGHT_ACCENT[p.kind] : CANCELLED_ACCENT, postUrl ? { label: open ? "Vote in the post" : "Open the poll", url: postUrl } : null, ping);
+  return message(card, p.status === "cancelled" ? CANCELLED_ACCENT : NIGHT_ACCENT[p.kind], postUrl ? { label: open ? "Say which dates work" : "Open the event", url: postUrl } : null, ping);
 }
 
 function message(card: Component[], accent: number, button: { label: string; url: string } | null, ping?: NightPing | null) {

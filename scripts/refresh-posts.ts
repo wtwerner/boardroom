@@ -1,7 +1,7 @@
 /**
  * Brings every post that's up in Discord in step with the current code: each coming night's
- * post and its thread's copy are edited, and its thread renamed for its title, and each open
- * poll's post and copy are edited. Announcements are edited, or posted (without a ping) for
+ * post and its thread's copy are edited, and its thread renamed for its title (a night finding
+ * its date included, whose post shows the dates on offer). Announcements are edited, or posted (without a ping) for
  * posts that have none since an announce channel was set. Run it after a change to how posts
  * look, so the ones already up don't wait for their next change. Safe to run again.
  *
@@ -18,7 +18,6 @@ async function main() {
   // Imported after the env file is loaded — the db client reads it on import
   const { db, schema } = await import("@/db");
   const { renameNightThread, syncNightPost } = await import("@/lib/night-post");
-  const { syncPollPost } = await import("@/lib/poll-post");
 
   const n = schema.gameNight;
   const nights = await db
@@ -28,12 +27,8 @@ async function main() {
   for (const night of nights) {
     const result = await syncNightPost(night.id);
     if (result) await renameNightThread(night.id);
-    console.log(`Night ${night.id} (${night.title}): ${result ?? "skipped"}`);
+    console.log(`Night ${night.id} (${night.title || "no name yet"}): ${result ?? "skipped"}`);
   }
-
-  const p = schema.datePoll;
-  const polls = await db.select({ id: p.id, title: p.title }).from(p).where(and(isNotNull(p.messageId), eq(p.status, "open")));
-  for (const poll of polls) console.log(`Poll ${poll.id} (${poll.title || "untitled"}): ${(await syncPollPost(poll.id)) ?? "skipped"}`);
 }
 
 main().then(

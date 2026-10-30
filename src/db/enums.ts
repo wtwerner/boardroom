@@ -22,11 +22,11 @@ export const RSVP_STATUSES = ["going", "maybe", "declined", "waitlist"] as const
 export type RsvpStatus = (typeof RSVP_STATUSES)[number];
 
 /**
- * Where a poll to find a night's date stands: open for votes, picked (it became a night, and
- * its post became the night's), called off, or closed because every date went by.
+ * Someone's answer to one of the dates a night might be on: it works, it works if they have to,
+ * or they can't. Once someone's answered any date, a date they left alone counts as can't.
  */
-export const POLL_STATUSES = ["open", "picked", "cancelled", "closed"] as const;
-export type PollStatus = (typeof POLL_STATUSES)[number];
+export const DATE_ANSWERS = ["yes", "maybe", "no"] as const;
+export type DateAnswer = (typeof DATE_ANSWERS)[number];
 
 /** The most dates a poll can offer: each is a row with a button on its post, and Discord caps a message's parts */
 export const POLL_MAX_DATES = 8;

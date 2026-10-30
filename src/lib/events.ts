@@ -1,6 +1,6 @@
 import "server-only";
 import { and, asc, desc, eq, exists, gte, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
-import { DEMO } from "@/config";
+import { DEMO, NIGHT_NAMES } from "@/config";
 import { db, schema } from "@/db";
 import type { Night } from "@/db/enums";
 import { type Attendee, fillSeats, groupAnswers } from "./rsvp";
@@ -84,7 +84,13 @@ async function loadNights(nights: (typeof schema.gameNight.$inferSelect)[]) {
     return {
       id: n.id,
       night: n.night,
-      title: n.title,
+      /** Still finding its date, with only a name given by hand: it's called its kind of night until it has one */
+      title: n.title || NIGHT_NAMES[n.night],
+      /** Its name was given by hand, not left for the template to make once it has a date */
+      named: n.title !== "",
+      /** Its date isn't set yet: people say which of its poll's dates work (poll-store.ts) */
+      findingDate: n.findingDate,
+      /** Its date; while it's finding one, only the first on offer */
       startsAt: n.startsAt.toISOString(),
       location: n.location,
       /** Its post in Discord */
@@ -106,9 +112,9 @@ async function loadNights(nights: (typeof schema.gameNight.$inferSelect)[]) {
       waitlist: [...seats.waitlist, ...answers.waitlist.map(attendee)],
       date: n.date,
       /** It's begun, so its page can log what's played */
-      started: n.startsAt.getTime() <= Date.now(),
+      started: !n.findingDate && n.startsAt.getTime() <= Date.now(),
       /** Over: someone said that's everything, or it's long enough since it started */
-      past: n.endedAt !== null || n.startsAt.getTime() < Date.now() - nightGraceMs(),
+      past: !n.findingDate && (n.endedAt !== null || n.startsAt.getTime() < Date.now() - nightGraceMs()),
       plays: played.filter((p) => p.night === n.night && p.playedOn === n.date),
       games: plans
         .filter((p) => p.gameNightId === n.id)
@@ -135,12 +141,19 @@ export function getKnownPlayers() {
     .leftJoin(schema.user, eq(schema.user.id, schema.player.userId));
 }
 
-/** Every night that hasn't happened yet, both kinds, soonest first */
+/** Every night that hasn't happened yet, both kinds, soonest first. Nights still finding their date are poll-store.ts's. */
 export async function getUpcomingNights() {
   const rows = await db
     .select()
     .from(schema.gameNight)
-    .where(and(eq(schema.gameNight.cancelled, false), isNull(schema.gameNight.endedAt), gte(schema.gameNight.startsAt, new Date(Date.now() - nightGraceMs()))))
+    .where(
+      and(
+        eq(schema.gameNight.cancelled, false),
+        eq(schema.gameNight.findingDate, false),
+        isNull(schema.gameNight.endedAt),
+        gte(schema.gameNight.startsAt, new Date(Date.now() - nightGraceMs())),
+      ),
+    )
     .orderBy(asc(schema.gameNight.startsAt));
   return loadNights(rows);
 }
@@ -184,6 +197,7 @@ export async function getPastNights(limit: number) {
     .where(
       and(
         eq(n.cancelled, false),
+        eq(n.findingDate, false),
         or(isNotNull(n.endedAt), lt(n.startsAt, new Date(Date.now() - nightGraceMs()))),
         or(
           exists(db.select({ x: sql`1` }).from(schema.nightRsvp).where(eq(schema.nightRsvp.gameNightId, n.id))),
@@ -226,7 +240,7 @@ export async function nightsVersion(nightId?: number) {
       (select coalesce(max(updated_at), 0) || ':' || count(*) || ':' || coalesce(sum(chosen), 0) from game_plan ${only(sql`game_night_id`)}) || '|' ||
       (select count(*) from plan_vote v join game_plan p on p.id = v.plan_id ${only(sql`p.game_night_id`)}) || '|' ||
       (select count(*) from plan_ready r join game_plan p on p.id = r.plan_id ${only(sql`p.game_night_id`)}) ||
-      ${nightId ? sql`'|' || (select coalesce(max(p.updated_at), 0) || ':' || count(*) || ':' || coalesce(sum(p.position), 0) || ':' || (select count(*) from play_player pp join play q on q.id = pp.play_id join ${n} m on q.night = m.night and q.played_on = m.date where m.id = ${nightId}) from play p join ${n} g on p.night = g.night and p.played_on = g.date where g.id = ${nightId})` : sql`'|' || (select coalesce(max(updated_at), 0) || ':' || count(*) from date_poll) || ':' || (select count(*) from date_poll_option) || ':' || (select count(*) from date_poll_vote)`} as v
+      ${nightId ? sql`'|' || (select coalesce(max(updated_at), 0) || ':' || count(*) from date_poll where game_night_id = ${nightId}) || ':' || (select count(*) || ':' || coalesce(max(o.fell_through_at), 0) from date_poll_option o join date_poll d on d.id = o.poll_id where d.game_night_id = ${nightId})` : sql``}${nightId ? sql`'|' || (select coalesce(max(p.updated_at), 0) || ':' || count(*) || ':' || coalesce(sum(p.position), 0) || ':' || (select count(*) from play_player pp join play q on q.id = pp.play_id join ${n} m on q.night = m.night and q.played_on = m.date where m.id = ${nightId}) from play p join ${n} g on p.night = g.night and p.played_on = g.date where g.id = ${nightId})` : sql`'|' || (select coalesce(max(updated_at), 0) || ':' || count(*) from date_poll) || ':' || (select count(*) || ':' || coalesce(max(fell_through_at), 0) from date_poll_option) || ':' || (select count(*) from date_poll_vote)`} as v
   `);
   return row?.v ?? "";
 }

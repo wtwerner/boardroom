@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, lt } from "drizzle-orm";
 import { CASUAL_NIGHT, CLAUDE, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import type { RsvpStatus } from "@/db/enums";
+import type { DateAnswer, RsvpStatus } from "@/db/enums";
 import { DEMO_PEOPLE, demoCalendar, demoRefusal } from "./demo";
 import { nightTitle, zonedToUtc } from "./nights";
 import { parsePlayMessage } from "./play-parser";
@@ -353,16 +353,28 @@ export async function seedGroup(now = new Date()) {
     .returning();
   await rsvp(after.id, { "u-sam": "going", "u-alex": "going", "u-jordan": "going", "u-casey": "maybe" });
 
-  // A poll finding a date for the night after those, with a few votes in
-  const [poll] = await db.insert(schema.datePoll).values({ night: "core", title: "Brass all-nighter", location: "Alex's", createdBy: "u-alex" }).returning();
+  // A night after those still finding its date, with a few answers in: Sam and Jordan each
+  // answered one date, so the other counts as can't for them
+  const days = cal.pollDays.map((day, i) => zonedToUtc(day, i === 1 ? "14:00" : "19:00", TIME_ZONE));
+  const [finding] = await db
+    .insert(schema.gameNight)
+    .values({ night: "core", title: "Brass all-nighter", startsAt: days[0], location: "Alex's", findingDate: true, createdBy: "u-alex" })
+    .returning();
+  const [poll] = await db.insert(schema.datePoll).values({ night: "core", gameNightId: finding.id, createdBy: "u-alex" }).returning();
   const offered = await db
     .insert(schema.datePollOption)
-    .values(cal.pollDays.map((day, i) => ({ pollId: poll.id, startsAt: zonedToUtc(day, i === 1 ? "14:00" : "19:00", TIME_ZONE) })))
+    .values(days.map((startsAt) => ({ pollId: poll.id, startsAt, createdAt: new Date(now.getTime() - HOUR) })))
     .returning();
   const playerOf = async (userId: string) => (await db.select({ id: schema.player.id }).from(schema.player).where(eq(schema.player.userId, userId)))[0].id;
-  for (const [option, userIds] of [[offered[0], ["u-alex", "u-jordan"]], [offered[1], ["u-alex", "u-sam", "u-casey"]]] as const) {
-    for (const userId of userIds) await db.insert(schema.datePollVote).values({ optionId: option.id, playerId: await playerOf(userId), votedAt: new Date() });
-  }
+  const answers: [number, string, DateAnswer][] = [
+    [0, "u-alex", "yes"],
+    [0, "u-jordan", "yes"],
+    [0, "u-casey", "maybe"],
+    [1, "u-alex", "yes"],
+    [1, "u-sam", "yes"],
+    [1, "u-casey", "yes"],
+  ];
+  for (const [i, userId, answer] of answers) await db.insert(schema.datePollVote).values({ optionId: offered[i].id, playerId: await playerOf(userId), answer, votedAt: now });
 
   // A night that's on: it started an hour before the reset and stays on until the next one
   // (events.ts), so the demo can be logged as it happens. The warm-up is logged; the game

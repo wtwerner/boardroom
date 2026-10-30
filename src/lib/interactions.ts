@@ -106,9 +106,11 @@ export type Action =
   | { kind: "newPoll" }
   /** Works for me, on one of a poll's dates */
   | { kind: "pollVote"; optionId: number }
-  /** Suggest another date and Pick the date on a poll's post, and the forms they open */
+  /** Suggest a date and Set the date on a poll's post, and the forms they open */
   | { kind: "pollAdd"; pollId: number }
   | { kind: "pollPick"; pollId: number }
+  /** None work, on a poll's post: can't, on every date on offer */
+  | { kind: "pollNone"; pollId: number }
   /** Call it off on a poll's post, and `sure` on the button that confirms it */
   | { kind: "pollOff"; pollId: number; sure?: boolean }
   /** Reopen, on the post of a poll that was called off */
@@ -117,7 +119,7 @@ export type Action =
 const RSVP_CODES: Record<string, RsvpStatus> = { y: "going", m: "maybe", n: "declined" };
 
 /** A poll's actions in custom_ids, kept short */
-const POLL_CODES = { pollVote: "pv", pollAdd: "padd", pollPick: "ppick", pollOff: "poff", pollReopen: "preo" } as const;
+const POLL_CODES = { pollVote: "pv", pollAdd: "padd", pollPick: "ppick", pollNone: "pnone", pollOff: "poff", pollReopen: "preo" } as const;
 
 export function actionId(a: Action): string {
   switch (a.kind) {
@@ -135,6 +137,7 @@ export function actionId(a: Action): string {
       return `v1:${POLL_CODES.pollVote}:${a.optionId}`;
     case "pollAdd":
     case "pollPick":
+    case "pollNone":
     case "pollReopen":
       return `v1:${POLL_CODES[a.kind]}:${a.pollId}`;
     case "pollOff":

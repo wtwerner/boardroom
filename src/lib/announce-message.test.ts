@@ -34,8 +34,9 @@ const poll: PollCard = {
   kind: "core",
   kindName: null,
   dates: [
-    { id: 20, startsAt: "2026-11-01T01:00:00.000Z", past: true, voters: [] },
-    { id: 21, startsAt: "2026-11-06T01:00:00.000Z", past: false, voters: [sam, alex] },
+    { id: 20, startsAt: "2026-11-01T01:00:00.000Z", past: true, yes: [], maybe: [] },
+    { id: 21, startsAt: "2026-11-06T01:00:00.000Z", past: false, yes: [sam], maybe: [alex] },
+    { id: 22, startsAt: "2026-11-07T01:00:00.000Z", past: false, fellThrough: true, yes: [sam], maybe: [] },
   ],
   pollUrl: null,
   siteName: "Boardroom",
@@ -87,15 +88,15 @@ describe("buildNightAnnouncement", () => {
 });
 
 describe("buildPollAnnouncement", () => {
-  it("lists the dates still to come with how many each works for, and links to the post to vote", () => {
+  it("lists the dates on offer with how many can come, and links to the post to answer", () => {
     const m = buildPollAnnouncement(poll, post);
-    expect(componentText(m.components)).toBe("### November heavy\n-# Picking a date\n📅 <t:1793926800:F> · 2");
-    expect(buttons(m)).toEqual([{ type: 2, style: 5, label: "Vote in the post", url: post }]);
+    expect(componentText(m.components)).toBe("### November heavy\n-# Date TBD\n📅 <t:1793926800:F> · 2 can come");
+    expect(buttons(m)).toEqual([{ type: 2, style: 5, label: "Say which dates work", url: post }]);
   });
 
   it("says when it's called off", () => {
     const m = buildPollAnnouncement({ ...poll, status: "cancelled" }, post);
-    expect(componentText(m.components)).toBe("### ~~November heavy~~\n🚫 **Called off**\n-# Picking a date");
-    expect(buttons(m).map((b) => b.label)).toEqual(["Open the poll"]);
+    expect(componentText(m.components)).toBe("### ~~November heavy~~\n🚫 **Called off**\n-# Date TBD");
+    expect(buttons(m).map((b) => b.label)).toEqual(["Open the event"]);
   });
 });

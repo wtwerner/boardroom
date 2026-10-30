@@ -22,7 +22,7 @@ export async function sendReminders(now = new Date()) {
   const rows = await db
     .select()
     .from(n)
-    .where(and(eq(n.cancelled, false), isNull(n.remindedAt), isNotNull(n.messageId), gt(n.startsAt, now), lte(n.startsAt, new Date(now.getTime() + REMINDER_HOURS * HOUR))));
+    .where(and(eq(n.cancelled, false), eq(n.findingDate, false), isNull(n.remindedAt), isNotNull(n.messageId), gt(n.startsAt, now), lte(n.startsAt, new Date(now.getTime() + REMINDER_HOURS * HOUR))));
   const reminded: number[] = [];
   for (const row of rows) {
     if (!reminderDue(row, now, REMINDER_HOURS) || !postsNights(row.night) || isClaim(row.messageId)) continue;
@@ -67,7 +67,7 @@ export async function sendLogNudges(now = new Date()) {
   const rows = await db
     .select()
     .from(n)
-    .where(and(isNotNull(n.createdBy), eq(n.cancelled, false), isNull(n.logNudgedAt), gt(n.startsAt, new Date(now.getTime() - 4 * 24 * HOUR)), lte(n.startsAt, now)));
+    .where(and(isNotNull(n.createdBy), eq(n.cancelled, false), eq(n.findingDate, false), isNull(n.logNudgedAt), gt(n.startsAt, new Date(now.getTime() - 4 * 24 * HOUR)), lte(n.startsAt, now)));
   const due = rows.filter((row) => logNudgeDue(row, now, TIME_ZONE));
   if (due.length === 0) return [];
   // A night someone posted by hand in Discord is logged too: read those first

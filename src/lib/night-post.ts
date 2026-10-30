@@ -4,18 +4,21 @@ import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lt, or } from "dri
 import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { type MessageBody, addToThread, announceChannel, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
-import { buildNightAnnouncement } from "./announce-message";
+import { buildNightAnnouncement, buildPollAnnouncement } from "./announce-message";
 import { type Announcement, removeAnnouncement, syncAnnouncement } from "./announce-post";
 import { type NightDetail, loadNight } from "./events";
 import { type CardPerson, type NightCard, type NightPing, buildNightMessage, buildNightThreadCopy, changeNote, goneMessage, nightPing, seatOpenedNote, threadName } from "./night-message";
 import { waitingFor } from "./night-store";
+import { type PollCard, buildPollMessage, buildPollThreadCopy, pollThreadName } from "./poll-message";
+import { type PollDetail, pollForNight } from "./poll-store";
 
 /**
  * Each night Boardroom runs has a post in its events channel and a thread for talking it over,
  * and, when the group sets a chat channel to announce it in, an announcement there linking to
- * the post (announce-post.ts). Everything that changes what the post shows calls
- * syncNightPost, wherever the change came from: the site, a button on the post, or a slash
- * command.
+ * the post (announce-post.ts). While a night's finding its date, the post shows the dates on
+ * offer (poll-message.ts); once it's set, the same post is the night's card. Everything that
+ * changes what the post shows calls syncNightPost, wherever the change came from: the site, a
+ * button on the post, or a slash command.
  */
 
 const GRACE_MS = 12 * 3_600_000;
@@ -47,32 +50,31 @@ export async function syncNightPost(nightId: number, { quiet = false } = {}): Pr
     Object.assign(row, { messageId: null, announceChannelId: null, announceMessageId: null });
   }
 
-  const n = await loadNight(nightId);
-  if (!n) return null;
-  const c = await card(n);
-  const body = buildNightMessage(c);
+  const view = await postView(nightId);
+  if (!view) return null;
+  const body = view.message();
   const announceTo = announceChannel(row.night);
   // Nights coming up are announced; one whose post is in the chat channel itself needs none
-  const announce = (shown: NightCard, url: string | null, postedIn: string | null, first?: NightPing | null) =>
+  const announce = (shown: PostView, url: string | null, postedIn: string | null, first?: NightPing | null) =>
     syncAnnouncement(
       { channelId: row.announceChannelId, messageId: row.announceMessageId },
       announceTo,
-      buildNightAnnouncement(shown, url),
-      { post: !n.cancelled && !n.past && postedIn !== announceTo, first: first ? { body: buildNightAnnouncement(shown, url, first), allowedMentions: first.allowedMentions } : undefined },
+      shown.announcement(url),
+      { post: shown.live && postedIn !== announceTo, first: first ? { body: shown.announcement(url, first), allowedMentions: first.allowedMentions } : undefined },
       saveNightAnnouncement(row.id),
     );
 
   if (row.messageId && !isClaim(row.messageId)) {
     if (await editMessage(await postChannel(row), row.messageId, body)) {
-      await syncThreadCopy(row, buildNightThreadCopy(c), saveNightCopy(row.id));
-      await announce(c, row.url, row.channelId);
+      await syncThreadCopy(row, view.copy(), saveNightCopy(row.id));
+      await announce(view, row.url, row.channelId);
       return "edited";
     }
     // Someone deleted the post: post it again below
     await db.update(schema.gameNight).set({ messageId: null, threadId: null, threadCardId: null, url: null }).where(eq(schema.gameNight.id, row.id));
   }
-  if (n.cancelled || n.past) {
-    await announce(c, null, null);
+  if (!view.live) {
+    await announce(view, null, null);
     return null;
   }
 
@@ -95,16 +97,15 @@ export async function syncNightPost(nightId: number, { quiet = false } = {}): Pr
     // does when there is one, being where people read; edits never ping
     const ping = quiet ? null : nightPing(nightPingSetting(row.night));
     const pingPost = announceTo ? null : ping;
-    const first = pingPost ? buildNightMessage(c, pingPost) : body;
-    const posted = await postWithThread(channelId, threadName(n.title, n.startsAt, TIME_ZONE), first, pingPost?.allowedMentions);
+    const first = view.message(pingPost);
+    const posted = await postWithThread(channelId, view.threadName, first, pingPost?.allowedMentions);
     const where = posted.messageChannelId;
     const url = messageUrl(where, posted.messageId);
     await db.update(schema.gameNight).set({ channelId, messageId: posted.messageId, threadId: posted.threadId, url }).where(eq(schema.gameNight.id, row.id));
     // Anyone who answered while it was being posted was left off it; catch them up
-    const now = await loadNight(nightId);
-    const latest = now ? await card(now) : c;
-    if (now && JSON.stringify(buildNightMessage(latest)) !== JSON.stringify(first)) await editMessage(where, posted.messageId, buildNightMessage(latest));
-    await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, buildNightThreadCopy(latest), saveNightCopy(row.id));
+    const latest = (await postView(nightId)) ?? view;
+    if (JSON.stringify(latest.message()) !== JSON.stringify(first)) await editMessage(where, posted.messageId, latest.message());
+    await syncThreadCopy({ channelId, messageId: posted.messageId, threadId: posted.threadId, threadCardId: null }, latest.copy(), saveNightCopy(row.id));
     // A night that already had an announcement (its post was deleted) doesn't ping again
     await announce(latest, url, channelId, row.announceMessageId ? null : ping);
   } catch (err) {
@@ -112,6 +113,41 @@ export async function syncNightPost(nightId: number, { quiet = false } = {}): Pr
     throw err;
   }
   return "posted";
+}
+
+/** What a night's post, its thread's copy and its announcement show, and what its thread's called */
+type PostView = {
+  message: (ping?: NightPing | null) => MessageBody;
+  copy: () => MessageBody;
+  announcement: (url: string | null, ping?: NightPing | null) => MessageBody;
+  threadName: string;
+  /** Still to come and not called off, so it's posted and announced */
+  live: boolean;
+};
+
+/** The post as the night stands: the dates on offer while it's finding one, or its card */
+async function postView(nightId: number): Promise<PostView | null> {
+  const n = await loadNight(nightId);
+  if (!n) return null;
+  if (n.findingDate) {
+    const c = await pollCard(n, await pollForNight(n.id));
+    if (!c) return null;
+    return {
+      message: (ping) => buildPollMessage(c, ping),
+      copy: () => buildPollThreadCopy(c),
+      announcement: (url, ping) => buildPollAnnouncement(c, url, ping),
+      threadName: pollThreadName(n.title),
+      live: c.status === "open",
+    };
+  }
+  const c = await card(n);
+  return {
+    message: (ping) => buildNightMessage(c, ping),
+    copy: () => buildNightThreadCopy(c),
+    announcement: (url, ping) => buildNightAnnouncement(c, url, ping),
+    threadName: threadName(n.title, n.startsAt, TIME_ZONE),
+    live: !n.cancelled && !n.past,
+  };
 }
 
 const saveNightAnnouncement = (nightId: number) => async (next: Announcement, was: string | null) => {
@@ -165,20 +201,37 @@ const saveNightCopy = (nightId: number) => async (id: string, was: string | null
  * it aren't added otherwise, and nobody is taken out.
  */
 export async function joinThread(nightId: number, playerIds?: number[], alsoPlayerIds: number[] = []) {
-  const row = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { threadId: true, messageId: true } });
+  const row = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { threadId: true, messageId: true, findingDate: true } });
   if (!row?.threadId || isClaim(row.messageId)) return;
-  const people = await db
-    .select({ discordId: schema.player.discordId })
-    .from(schema.nightRsvp)
-    .innerJoin(schema.player, eq(schema.player.id, schema.nightRsvp.playerId))
-    .where(
-      and(
-        eq(schema.nightRsvp.gameNightId, nightId),
-        inArray(schema.nightRsvp.status, ["going", "maybe"]),
-        isNotNull(schema.player.discordId),
-        ...(playerIds ? [inArray(schema.nightRsvp.playerId, playerIds)] : []),
-      ),
-    );
+  // While it's finding its date, whoever said a date works (or does if they have to) is coming
+  const people = row.findingDate
+    ? await db
+        .selectDistinct({ discordId: schema.player.discordId })
+        .from(schema.datePollVote)
+        .innerJoin(schema.datePollOption, eq(schema.datePollOption.id, schema.datePollVote.optionId))
+        .innerJoin(schema.datePoll, eq(schema.datePoll.id, schema.datePollOption.pollId))
+        .innerJoin(schema.player, eq(schema.player.id, schema.datePollVote.playerId))
+        .where(
+          and(
+            eq(schema.datePoll.gameNightId, nightId),
+            isNull(schema.datePollOption.fellThroughAt),
+            inArray(schema.datePollVote.answer, ["yes", "maybe"]),
+            isNotNull(schema.player.discordId),
+            ...(playerIds ? [inArray(schema.datePollVote.playerId, playerIds)] : []),
+          ),
+        )
+    : await db
+        .select({ discordId: schema.player.discordId })
+        .from(schema.nightRsvp)
+        .innerJoin(schema.player, eq(schema.player.id, schema.nightRsvp.playerId))
+        .where(
+          and(
+            eq(schema.nightRsvp.gameNightId, nightId),
+            inArray(schema.nightRsvp.status, ["going", "maybe"]),
+            isNotNull(schema.player.discordId),
+            ...(playerIds ? [inArray(schema.nightRsvp.playerId, playerIds)] : []),
+          ),
+        );
   const also = alsoPlayerIds.length
     ? await db.select({ discordId: schema.player.discordId }).from(schema.player).where(and(inArray(schema.player.id, alsoPlayerIds), isNotNull(schema.player.discordId)))
     : [];
@@ -191,17 +244,19 @@ export async function joinThread(nightId: number, playerIds?: number[], alsoPlay
  * night, added once it's posted; `note` tells the thread what moved, and `renamed` renames the
  * thread for a title that changed without saying so (it follows the locked-in game). `waiting`
  * is who was waiting for a seat before the change (waitingFor): anyone who has one now is told
- * in the thread. A Discord hiccup is logged; the next change to the night posts it again.
+ * in the thread, and `say` is said there. A Discord hiccup is logged; the next change to the
+ * night posts it again.
  */
 export function syncNightPostLater(
   nightId: number,
-  opts: { join?: number; creator?: number; note?: { before: NoteFields; by: CardPerson }; renamed?: boolean; waiting?: number[] } = {},
+  opts: { join?: number; creator?: number; note?: { before: NoteFields; by: CardPerson }; renamed?: boolean; waiting?: number[]; say?: string } = {},
 ) {
   after(async () => {
     try {
       const result = await syncNightPost(nightId);
       if (result === "posted") await joinThread(nightId, undefined, opts.creator ? [opts.creator] : []);
       else if (result && opts.join) await joinThread(nightId, [opts.join]);
+      if (opts.say) await postInThread(nightId, opts.say);
       if (opts.note) await noteChange(nightId, opts.note.before, opts.note.by);
       if (opts.renamed && result === "edited") await renameNightThread(nightId);
       if (opts.waiting?.length && result) await noteSeated(nightId, opts.waiting);
@@ -236,11 +291,15 @@ async function noteSeated(nightId: number, waiting: number[]) {
   if (row?.threadId && !isClaim(row.messageId)) await postMessage(row.threadId, { content }, { parse: [], users });
 }
 
-/** Name the night's thread for its title. A forum post's name is the post's title, which works the same way. */
+/**
+ * Name the night's thread for its title, with its date or that it's finding one. A forum post's
+ * name is the post's title, which works the same way.
+ */
 export async function renameNightThread(nightId: number) {
-  const row = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { title: true, startsAt: true, threadId: true, messageId: true } });
+  const row = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { title: true, night: true, startsAt: true, findingDate: true, threadId: true, messageId: true } });
   if (!row?.threadId || isClaim(row.messageId)) return;
-  await renameThread(row.threadId, threadName(row.title, row.startsAt.toISOString(), TIME_ZONE)).catch((err) => console.error("Couldn't rename the night's thread", err));
+  const name = row.findingDate ? pollThreadName(row.title || NIGHT_NAMES[row.night]) : threadName(row.title, row.startsAt.toISOString(), TIME_ZONE);
+  await renameThread(row.threadId, name).catch((err) => console.error("Couldn't rename the night's thread", err));
 }
 
 /** Say something in a night's thread, if it has one */
@@ -321,12 +380,31 @@ async function card(n: NightDetail): Promise<NightCard> {
   };
 }
 
+/** What the post of a night finding its date shows */
+async function pollCard(n: NightDetail, poll: PollDetail | null): Promise<PollCard | null> {
+  if (!poll) return null;
+  const who = (x: { name: string; discordId: string | null }) => ({ name: x.name, discordId: x.discordId });
+  return {
+    id: poll.id,
+    title: n.title,
+    location: n.location,
+    status: n.cancelled ? "cancelled" : poll.closed ? "closed" : "open",
+    kind: n.night,
+    kindName: CASUAL_NIGHT ? NIGHT_NAMES[n.night] : null,
+    dates: poll.dates.map((d) => ({ id: d.id, startsAt: d.startsAt, past: d.past, fellThrough: d.fellThrough, yes: d.yes.map(who), maybe: d.maybe.map(who) })),
+    // Most of the casual night's channel can't open the site, as with its nights' posts
+    pollUrl: SITE_URL && n.night === "core" ? `${SITE_URL}/events/${n.id}` : null,
+    siteName: SITE_NAME,
+    emoji: await fetchAppEmoji(),
+  };
+}
+
 /** Nights Boardroom runs that are coming up, soonest first, for the slash commands' night picker */
 export function upcomingOwnNights() {
   const n = schema.gameNight;
   return db
     .select({ id: n.id, title: n.title, startsAt: n.startsAt, night: n.night })
     .from(n)
-    .where(and(eq(n.cancelled, false), gte(n.startsAt, new Date(Date.now() - GRACE_MS))))
+    .where(and(eq(n.cancelled, false), eq(n.findingDate, false), gte(n.startsAt, new Date(Date.now() - GRACE_MS))))
     .orderBy(asc(n.startsAt));
 }

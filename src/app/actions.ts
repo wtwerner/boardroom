@@ -7,7 +7,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { CLAUDE_IDEAS_PER_DAY, DEMO, GROUP_NIGHTS, SETTINGS, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
+import { DATE_ANSWERS, MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
 import { canPostToDiscord, discordCode, hasInteractions, holdsRole, registerCommands, sendDirectMessage } from "@/lib/discord";
@@ -25,13 +25,12 @@ import { requireAdmin, requireUser } from "@/lib/session";
 import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
 import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
-import { answerBringAsk as saveBringAnswer, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
+import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
-import { addPollDate, cancelPoll, createPoll, findNewDate as saveFindNewDate, ownPoll, pickPollDate as savePickedDate, reopenPoll as saveReopened, setPollVote as savePollVote } from "@/lib/poll-store";
-import { announcePickedLater, announceRefindLater, syncPollPostLater } from "@/lib/poll-post";
+import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, ownPoll, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
+import { announceDateSetLater, announceFellThroughLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
-import { nightTitle } from "@/lib/nights";
 import { welcomeSummary } from "@/lib/welcome-message";
 import { bringAskDm } from "@/lib/bring-message";
 import {
@@ -736,6 +735,23 @@ export async function updateNight(id: number, input: z.infer<typeof NightInput>)
   return { ok: true, message: "Saved." };
 }
 
+const DetailsInput = z.object({ title: z.string().trim().max(100), location: z.string().trim().max(200).nullable() });
+
+/** A night finding its date: its name (or none yet, for the template's once it has a date) and place */
+export async function updateNightDetails(id: number, input: z.infer<typeof DetailsInput>): Promise<ActionResult> {
+  await requireUser();
+  const parsed = DetailsInput.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "The name fits 100 characters, and the place 200." };
+  try {
+    const before = await editNight(id, parsed.data);
+    syncNightPostLater(id, { renamed: before.title !== parsed.data.title });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true, message: "Saved." };
+}
+
 export async function deleteNight(id: number): Promise<ActionResult> {
   await requireUser();
   try {
@@ -747,7 +763,7 @@ export async function deleteNight(id: number): Promise<ActionResult> {
   redirect("/plan");
 }
 
-// Polls to find a date for a night: they change here or in Discord, and their posts follow
+// Finding a night's date: it changes here or in Discord, and its post follows
 
 const DateTime = z.object({ date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), time: z.string().regex(/^\d{2}:\d{2}$/) });
 
@@ -764,14 +780,33 @@ async function mentionMe(me: { id: string; name: string }) {
   return discordId ? `<@${discordId}>` : `**${escape(me.name)}**`;
 }
 
+/** A night without a date yet, offering a few: its page opens, where everyone says which work */
 export async function startPoll(input: z.infer<typeof PollInput>): Promise<ActionResult> {
   const me = await requireUser();
   const parsed = PollInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: `Give between one and ${POLL_MAX_DATES} dates, each with a time.` };
   const { night, title, location, dates } = parsed.data;
+  let nightId: number;
   try {
-    const row = await createPoll({ night: GROUP_NIGHTS.includes(night) ? night : "core", title: title || null, location, dates: dates.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)) }, me.id);
-    syncPollPostLater(row.id, { creator: await playerForUser(me) });
+    ({ nightId } = await createPoll({ night: GROUP_NIGHTS.includes(night) ? night : "core", title: title || null, location, dates: dates.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)) }, me.id));
+    syncNightPostLater(nightId, { creator: await playerForUser(me) });
+  } catch (err) {
+    return fail(err);
+  }
+  redirect(`/events/${nightId}`);
+}
+
+const Answer = z.enum(DATE_ANSWERS).nullable();
+
+/** My answer to one of the dates on offer: it works, it does if I have to, I can't, or none (null) */
+export async function answerDate(optionId: number, answer: z.infer<typeof Answer>): Promise<ActionResult> {
+  const me = await requireUser();
+  const parsed = Answer.safeParse(answer);
+  if (!parsed.success) return { ok: false, error: "That isn't an answer." };
+  try {
+    const playerId = await playerForUser(me);
+    const { nightId } = await saveDateAnswer(optionId, playerId, parsed.data);
+    syncNightPostLater(nightId, parsed.data === "yes" || parsed.data === "maybe" ? { join: playerId } : {});
   } catch (err) {
     return fail(err);
   }
@@ -779,13 +814,12 @@ export async function startPoll(input: z.infer<typeof PollInput>): Promise<Actio
   return { ok: true };
 }
 
-/** Say one of a poll's dates works for me, or take it back */
-export async function setPollVote(optionId: number, on: boolean): Promise<ActionResult> {
+/** None of the dates on offer work for me */
+export async function noDatesWork(pollId: number): Promise<ActionResult> {
   const me = await requireUser();
   try {
-    const playerId = await playerForUser(me);
-    const { pollId } = await savePollVote(optionId, playerId, on);
-    syncPollPostLater(pollId, on ? { join: playerId } : {});
+    const { nightId } = await saveNoDates(pollId, await playerForUser(me));
+    syncNightPostLater(nightId);
   } catch (err) {
     return fail(err);
   }
@@ -799,8 +833,8 @@ export async function suggestPollDate(pollId: number, input: z.infer<typeof Date
   if (!parsed.success) return { ok: false, error: "It needs a date and a time." };
   try {
     const startsAt = zonedToUtc(parsed.data.date, parsed.data.time, TIME_ZONE);
-    await addPollDate(pollId, startsAt);
-    syncPollPostLater(pollId, { note: `📅 ${await mentionMe(me)} suggested <t:${Math.floor(startsAt.getTime() / 1000)}:F>.` });
+    const n = await addPollDate(pollId, startsAt);
+    syncNightPostLater(n.id, { say: `📅 ${await mentionMe(me)} suggested <t:${Math.floor(startsAt.getTime() / 1000)}:F>. Say if it works on the post.` });
   } catch (err) {
     return fail(err);
   }
@@ -810,45 +844,14 @@ export async function suggestPollDate(pollId: number, input: z.infer<typeof Date
 
 const NewDates = z.array(DateTime).max(POLL_MAX_DATES);
 
-/** A night whose date fell through goes back to a poll for a new one, keeping its games for the pick */
+/** A night whose date fell through goes back to finding one, with every answer and its games kept */
 export async function findNewDate(nightId: number, dates: z.infer<typeof NewDates>): Promise<ActionResult> {
   const me = await requireUser();
   const parsed = NewDates.safeParse(dates);
   if (!parsed.success) return { ok: false, error: `Give up to ${POLL_MAX_DATES} dates, each with a time.` };
-  let pollId: number;
   try {
-    const found = await saveFindNewDate(nightId, parsed.data.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)), me.id);
-    pollId = found.pollId;
-    announceRefindLater(pollId, { by: await mentionMe(me), was: found.was.toISOString(), going: found.going, games: found.games, night: found.night });
-  } catch (err) {
-    return fail(err);
-  }
-  redirect(`/plan#poll-${pollId}`);
-}
-
-/** Pick one of a poll's dates: the night's made (its post is the poll's, once it's posted) and its page opens */
-export async function pickPollDate(pollId: number, optionId: number, input: { title: string; location: string | null }): Promise<ActionResult> {
-  const me = await requireUser();
-  let id: number;
-  try {
-    const poll = await ownPoll(pollId);
-    const option = await db.query.datePollOption.findFirst({ where: and(eq(schema.datePollOption.id, optionId), eq(schema.datePollOption.pollId, pollId)) });
-    if (!option) return { ok: false, error: "Pick a date from the list." };
-    const title = input.title.trim().slice(0, 100) || nightTitle(poll.night, option.startsAt.toLocaleDateString("en-CA", { timeZone: TIME_ZONE }));
-    const location = input.location?.trim().slice(0, 200) || null;
-    ({ night: { id } } = await savePickedDate(pollId, optionId, { title, location }, me.id));
-    announcePickedLater(pollId, optionId, { playerId: await playerForUser(me) });
-  } catch (err) {
-    return fail(err);
-  }
-  redirect(`/events/${id}`);
-}
-
-export async function callOffPoll(pollId: number): Promise<ActionResult> {
-  const me = await requireUser();
-  try {
-    await cancelPoll(pollId);
-    syncPollPostLater(pollId, { note: `❌ ${await mentionMe(me)} called it off.` });
+    const found = await saveFellThrough(nightId, parsed.data.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)), me.id);
+    announceFellThroughLater(nightId, { by: await mentionMe(me), was: found.was.toISOString(), going: found.going });
   } catch (err) {
     return fail(err);
   }
@@ -856,12 +859,40 @@ export async function callOffPoll(pollId: number): Promise<ActionResult> {
   return { ok: true };
 }
 
-/** Open a poll that was called off again, votes and all */
+/** Set the night's date to one on offer: everyone's down as they answered it */
+export async function setNightDate(pollId: number, optionId: number): Promise<ActionResult> {
+  const me = await requireUser();
+  try {
+    const { night, going, maybe } = await saveDate(pollId, optionId);
+    const card = (x: { name: string; discordId: string | null }) => ({ name: x.name, discordId: x.discordId });
+    announceDateSetLater(night.id, { going: going.map(card), maybe: maybe.map(card) }, { playerId: await playerForUser(me) });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
+}
+
+/** Call off a night that's finding its date */
+export async function callOffPoll(pollId: number): Promise<ActionResult> {
+  const me = await requireUser();
+  try {
+    const poll = await ownPoll(pollId);
+    await cancelNight(poll.gameNightId);
+    syncNightPostLater(poll.gameNightId, { say: `❌ ${await mentionMe(me)} called it off.` });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
+}
+
+/** Back on after being called off, answers and all */
 export async function reopenPoll(pollId: number): Promise<ActionResult> {
   const me = await requireUser();
   try {
-    await saveReopened(pollId);
-    syncPollPostLater(pollId, { note: `↩️ ${await mentionMe(me)} reopened it.` });
+    const n = await saveReopened(pollId);
+    syncNightPostLater(n.id, { say: `↩️ ${await mentionMe(me)} reopened it.` });
   } catch (err) {
     return fail(err);
   }

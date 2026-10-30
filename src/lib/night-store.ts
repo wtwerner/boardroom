@@ -50,6 +50,8 @@ const isPast = (n: { startsAt: Date }) => n.startsAt.getTime() < Date.now() - ni
 export async function editNight(id: number, fields: Partial<NightFields>) {
   const n = await ownNight(id);
   if (n.cancelled) throw new Error("That was cancelled.");
+  // Its date's set from its poll (poll-store.ts), so only its other details change here
+  if (n.findingDate && fields.startsAt) throw new Error("Its date isn't set yet. Set it from the dates on offer, or suggest another.");
   const next = {
     ...fields,
     // A night that moves gets its reminder and morning-after nudge again, for the new time
@@ -71,8 +73,9 @@ export async function editNight(id: number, fields: Partial<NightFields>) {
  * by hand stays. Returns whether it changed.
  */
 export async function titleForGame(nightId: number) {
-  const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { title: true, startsAt: true, night: true } });
-  if (!n) return false;
+  const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { title: true, startsAt: true, night: true, findingDate: true } });
+  // Without a date, the template has nothing to make a title from yet
+  if (!n || n.findingDate) return false;
   const [chosen] = await db
     .select({ name: schema.game.name })
     .from(schema.gamePlan)
@@ -82,22 +85,6 @@ export async function titleForGame(nightId: number) {
   if (title === n.title) return false;
   await db.update(schema.gameNight).set({ title }).where(eq(schema.gameNight.id, nightId));
   return true;
-}
-
-/**
- * A night that went back to finding a date (poll-store.ts), back on the date picked for it.
- * Its games, votes and prep were kept for this; its reminder and morning-after nudge start over.
- */
-export async function reviveNight(id: number, fields: { title: string; startsAt: Date; location: string | null }) {
-  const [row] = await db
-    .update(schema.gameNight)
-    .set({ ...fields, location: fields.location || null, date: dateOf(fields.startsAt), cancelled: false, remindedAt: null, logNudgedAt: null })
-    .where(eq(schema.gameNight.id, id))
-    .returning();
-  if (!row) throw new Error("That's gone: it was deleted.");
-  // Named by the template, its title follows the game locked in for it
-  await titleForGame(row.id);
-  return ownNight(row.id);
 }
 
 /**
@@ -132,6 +119,8 @@ export async function deleteNight(id: number) {
     await tx.delete(schema.planReady).where(inArray(schema.planReady.planId, plans));
     await tx.delete(schema.gamePlan).where(eq(schema.gamePlan.gameNightId, n.id));
     await tx.delete(schema.nightRsvp).where(eq(schema.nightRsvp.gameNightId, n.id));
+    // Its dates and their answers go with its poll
+    await tx.delete(schema.datePoll).where(eq(schema.datePoll.gameNightId, n.id));
     await tx.delete(schema.gameNight).where(eq(schema.gameNight.id, n.id));
   });
   return n;
@@ -144,6 +133,7 @@ export async function deleteNight(id: number) {
 export async function setRsvp(input: { nightId: number; playerId: number; status: RsvpStatus | null; guests?: number; via: "site" | "discord" }) {
   const n = await ownNight(input.nightId);
   if (n.cancelled) throw new Error("That was cancelled.");
+  if (n.findingDate) throw new Error("Its date isn't set yet. Say which dates work instead.");
   if (isPast(n)) throw new Error("That's been and gone.");
   const key = and(eq(schema.nightRsvp.gameNightId, n.id), eq(schema.nightRsvp.playerId, input.playerId));
   if (!input.status) {

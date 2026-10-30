@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import clsx from "clsx";
 import { ArrowLeft, ExternalLink } from "lucide-react";
 import { DEMO, GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
@@ -15,8 +16,10 @@ import { canPostToDiscord, postsNights } from "@/lib/discord";
 import { isLegacy } from "@/lib/night";
 import { getTasteChances } from "@/lib/recommend";
 import { type NightDetail, loadNight } from "@/lib/events";
-import { datesStaying, findingDateFor } from "@/lib/poll-store";
+import { datesStaying, pollForNight } from "@/lib/poll-store";
 import { dateChoiceLabel } from "@/lib/poll-message";
+import { PollCard } from "../../plan/polls";
+import { pollView } from "../../plan/poll-view";
 import { nightWhen, soonLabel, tableFor } from "@/lib/nights";
 import { GamePicker, GameSearch } from "../game-picker";
 import { CasualGames } from "./casual-games";
@@ -42,11 +45,6 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   const id = Number((await params).id);
   const n = Number.isInteger(id) ? await loadNight(id) : null;
   if (!n) notFound();
-  // Back to finding a date: its poll is where it is now
-  if (n.cancelled) {
-    const poll = await findingDateFor(n.id);
-    if (poll) redirect(`/plan#poll-${poll.id}`);
-  }
 
   if (n.past) {
     const [members, log] = await Promise.all([getMembers(), nightLog(n)]);
@@ -78,7 +76,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     );
   }
 
-  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates] = await Promise.all([
+  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates, poll] = await Promise.all([
     // Recency and "never played" come from this kind of night's plays only
     getShelf({ night: n.night }).then(async (all) => {
       const s = all.filter((g) => !isLegacy(g));
@@ -90,6 +88,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     getPlayedBy(),
     db.select({ id: schema.player.id, name: schema.player.name }).from(schema.player).orderBy(schema.player.name),
     datesStaying(n.id),
+    n.findingDate ? pollForNight(n.id) : null,
   ]);
   // What Find a new date keeps: the other dates on the poll it was picked from
   const staying = stayingDates.map((d) => dateChoiceLabel(d.startsAt, d.votes, TIME_ZONE));
@@ -114,21 +113,26 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
       <div className="space-y-4">
         <BackLink />
         <NightHeader n={n} staying={staying} />
-        <Panel className="p-4">
-          <People
-            nightId={n.id}
-            going={n.going}
-            maybe={n.maybe}
-            declined={n.declined}
-            waitlist={n.waitlist}
-            guests={n.guests}
-            othersComing={n.othersComing}
-            capacity={n.capacity}
-            myPlayerId={me.playerId}
-            members={members.map((m) => ({ id: m.id, name: m.name, color: m.color, playerName: players.find((p) => p.id === m.playerId)?.name ?? null }))}
-            players={players}
-          />
-        </Panel>
+        {poll ? (
+          // Finding its date: everyone says which dates work, and their answers are who's coming once one's set
+          <PollCard poll={pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} />
+        ) : (
+          <Panel className="p-4">
+            <People
+              nightId={n.id}
+              going={n.going}
+              maybe={n.maybe}
+              declined={n.declined}
+              waitlist={n.waitlist}
+              guests={n.guests}
+              othersComing={n.othersComing}
+              capacity={n.capacity}
+              myPlayerId={me.playerId}
+              members={members.map((m) => ({ id: m.id, name: m.name, color: m.color, playerName: players.find((p) => p.id === m.playerId)?.name ?? null }))}
+              players={players}
+            />
+          </Panel>
+        )}
       </div>
 
       <Section title={n.night === "core" ? "The game" : "What's coming"}>
@@ -301,12 +305,27 @@ function BackLink() {
   );
 }
 
+/** Where the date badge goes, for a night whose date isn't set yet */
+function TbdBadge({ night }: { night: NightDetail["night"] }) {
+  return (
+    <span
+      className={clsx(
+        "grid size-18 shrink-0 place-items-center content-center rounded-lg border-t-4 bg-table text-center leading-none ring-1 ring-line",
+        night === "casual" ? "border-night-casual" : "border-night-core",
+      )}
+    >
+      <span className="text-[0.65rem] font-semibold tracking-wider text-slate">DATE</span>
+      <span className="font-display text-2xl">TBD</span>
+    </span>
+  );
+}
+
 /** When and where, its post in Discord, and edit and delete */
 function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }) {
   const when = nightWhen(n.startsAt, TIME_ZONE);
   return (
     <header className="flex flex-wrap items-start gap-4">
-      <DateBadge iso={n.startsAt} night={n.night} size="lg" />
+      {n.findingDate ? <TbdBadge night={n.night} /> : <DateBadge iso={n.startsAt} night={n.night} size="lg" />}
       <div className="min-w-48 flex-1 basis-0 space-y-1">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="font-display text-2xl leading-tight sm:text-3xl">{n.title}</h1>
@@ -314,7 +333,9 @@ function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }
           {n.cancelled && <span className="rounded-full bg-meeple-red/12 px-2 py-0.5 text-xs font-medium">Cancelled</span>}
         </div>
         <p className="text-slate">
-          {n.fromPlays ? (
+          {n.findingDate ? (
+            "Date TBD"
+          ) : n.fromPlays ? (
             when.label
           ) : isOn(n) ? (
             <>
@@ -333,12 +354,13 @@ function NightHeader({ n, staying = [] }: { n: NightDetail; staying?: string[] }
             <ExternalLink className="size-3.5" /> Open in Discord
           </a>
         )}
-        {!n.cancelled && (
+        {(!n.cancelled || n.findingDate) && (
           <NightActions
             id={n.id}
             initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "", capacity: n.capacity }}
+            findingDate={n.findingDate ? { named: n.named } : null}
             canDelete={n.plays.length === 0}
-            canFindNewDate={!n.started}
+            canFindNewDate={!n.started && !n.findingDate}
             staying={staying}
             posted={n.posted}
             setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: postsNights(n.night) }}

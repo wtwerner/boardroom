@@ -21,6 +21,7 @@ const SECTIONS = [
   ["replay", "Replay this or that"],
   ["discover", "Discover's percentages"],
   ["plan", "The planner"],
+  ["dates", "Picking a date"],
   ["online", "Playing online"],
   ["data", "Where the data comes from"],
 ] as const;
@@ -200,6 +201,19 @@ export default async function AboutPage() {
                 Plans belong to their event: a play at {casual} doesn&apos;t tick off a plan for {core}.
               </p>
             )}
+          </Part>
+
+          <Part id="dates" title="Picking a date">
+            <p>
+              An event can start with its date TBD and a few dates on offer. For each one you say <strong>Works</strong>, <strong>If I have to</strong> or{" "}
+              <strong>Can&apos;t</strong>. Once you&apos;ve answered any date, the ones you left count as can&apos;t, except a date added since your last
+              answer: that one waits for you.
+            </p>
+            <p>
+              <strong>Set the date</strong> lists the dates best first: the most people who can come (works or if they have to), then the fewest who&apos;d
+              only come if they have to, then the soonest. Setting one puts everyone down as they answered: works is going, if I have to is a maybe, can&apos;t
+              is can&apos;t make it. If that date falls through, it stays on the list crossed out, with those answers, and every other answer stays as it was.
+            </p>
           </Part>
 
           {CASUAL_NIGHT && (
