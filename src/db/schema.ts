@@ -436,6 +436,10 @@ export const datePoll = sqliteTable("date_poll", {
   gameNightId: integer("game_night_id").references(() => gameNight.id, { onDelete: "set null" }),
   /** When the tick found every date had gone by without one set; cleared when a date's added */
   closedAt: integer("closed_at", { mode: "timestamp_ms" }),
+  /** When every member had answered, and whoever started it was told; cleared when there's something new to answer */
+  everyoneAnsweredAt: integer("everyone_answered_at", { mode: "timestamp_ms" }),
+  /** When the members who hadn't answered were last nudged in its thread */
+  nudgedAt: integer("nudged_at", { mode: "timestamp_ms" }),
   createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
   /**
    * Unused since 0007, when the night took over a poll's name, place and post. Kept so the

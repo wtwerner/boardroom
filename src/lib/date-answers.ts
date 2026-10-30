@@ -58,3 +58,32 @@ export function rankDates<T extends { startsAt: string; past: boolean; fellThrou
     .filter((d) => !d.past && !d.fellThrough)
     .sort((a, b) => b.yes.length + b.maybe.length - (a.yes.length + a.maybe.length) || a.maybe.length - b.maybe.length || Date.parse(a.startsAt) - Date.parse(b.startsAt));
 }
+
+/** How a date on offer stands: everyone it waits on can come, it's the best so far, or too few can */
+export type Verdict = "everyone" | "best" | "few";
+
+/**
+ * Each date on offer's standing, by id. `members` are who it waits on (the group's members);
+ * anyone else who can come counts toward `min` too. Only the top-ranked date that has enough is
+ * the best; one where every member can come says so instead. A date nobody can come to has none.
+ */
+export function dateVerdicts<T extends { id: number; startsAt: string; past: boolean; fellThrough?: boolean; yes: { playerId: number }[]; maybe: { playerId: number }[] }>(
+  dates: T[],
+  members: number[],
+  min: number,
+): Map<number, Verdict> {
+  const out = new Map<number, Verdict>();
+  const ranked = rankDates(dates);
+  for (const d of ranked) {
+    const coming = new Set([...d.yes, ...d.maybe].map((x) => x.playerId));
+    if (coming.size === 0) continue;
+    if (coming.size < min) out.set(d.id, "few");
+    else if (members.length && members.every((m) => coming.has(m))) out.set(d.id, "everyone");
+  }
+  const best = ranked.find((d) => d.yes.length + d.maybe.length >= min);
+  if (best && !out.has(best.id)) out.set(best.id, "best");
+  return out;
+}
+
+/** The members who haven't answered yet, in the order given */
+export const waitingOn = <P extends { playerId: number | null }>(members: P[], answered: Set<number>) => members.filter((m) => m.playerId === null || !answered.has(m.playerId));

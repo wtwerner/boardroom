@@ -28,8 +28,8 @@ import { zonedToUtc } from "@/lib/nights";
 import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
-import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, ownPoll, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
-import { announceDateSetLater, announceFellThroughLater } from "@/lib/poll-post";
+import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
+import { announceDateSetLater, announceFellThroughLater, answeredLater, nudgeLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
 import { welcomeSummary } from "@/lib/welcome-message";
 import { bringAskDm } from "@/lib/bring-message";
@@ -805,8 +805,8 @@ export async function answerDate(optionId: number, answer: z.infer<typeof Answer
   if (!parsed.success) return { ok: false, error: "That isn't an answer." };
   try {
     const playerId = await playerForUser(me);
-    const { nightId } = await saveDateAnswer(optionId, playerId, parsed.data);
-    syncNightPostLater(nightId, parsed.data === "yes" || parsed.data === "maybe" ? { join: playerId } : {});
+    const { nightId, pollId } = await saveDateAnswer(optionId, playerId, parsed.data);
+    answeredLater(nightId, pollId, parsed.data === "yes" || parsed.data === "maybe" ? playerId : undefined);
   } catch (err) {
     return fail(err);
   }
@@ -819,7 +819,7 @@ export async function noDatesWork(pollId: number): Promise<ActionResult> {
   const me = await requireUser();
   try {
     const { nightId } = await saveNoDates(pollId, await playerForUser(me));
-    syncNightPostLater(nightId);
+    answeredLater(nightId, pollId);
   } catch (err) {
     return fail(err);
   }
@@ -871,6 +871,22 @@ export async function setNightDate(pollId: number, optionId: number): Promise<Ac
   }
   refresh();
   return { ok: true };
+}
+
+/** Ping the members who haven't said which dates work, in the night's thread */
+export async function nudgeForDates(pollId: number): Promise<ActionResult> {
+  const me = await requireUser();
+  try {
+    const poll = await ownPoll(pollId);
+    const n = await ownNight(poll.gameNightId);
+    if (!n.threadId) return { ok: false, error: "It isn't posted in Discord, so there's nowhere to nudge them." };
+    const { nightId, waiting } = await nudgeWaiting(pollId);
+    nudgeLater(nightId, waiting, await mentionMe(me));
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true, message: "Nudged them in the event's thread." };
 }
 
 /** Call off a night that's finding its date */

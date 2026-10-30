@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { CASUAL_NIGHT, CLAUDE, CLAUDE_IDEAS_PER_DAY, NIGHT_NAMES } from "@/config";
+import { CASUAL_NIGHT, CLAUDE, CLAUDE_IDEAS_PER_DAY, MIN_PEOPLE, NIGHT_NAMES } from "@/config";
 import { MUST_PLAY_LIMIT, SENTIMENTS } from "@/db/enums";
 import { PageHeader, Panel, TextLink } from "@/components/ui";
 import { MIN_EVIDENCE } from "@/lib/recommend";
@@ -213,6 +213,12 @@ export default async function AboutPage() {
               <strong>Set the date</strong> lists the dates best first: the most people who can come (works or if they have to), then the fewest who&apos;d
               only come if they have to, then the soonest. Setting one puts everyone down as they answered: works is going, if I have to is a maybe, can&apos;t
               is can&apos;t make it. If that date falls through, it stays on the list crossed out, with those answers, and every other answer stays as it was.
+            </p>
+            <p>
+              It waits on the members. A date where every member can come says so; otherwise the best date is marked, as long as enough can come (
+              {MIN_PEOPLE.core}
+              {CASUAL_NIGHT && MIN_PEOPLE.casual !== MIN_PEOPLE.core ? ` for ${core}, ${MIN_PEOPLE.casual} for ${casual}` : ""}, counting guests too), and a date
+              with fewer says too few. Once the last member answers, whoever started it is pinged in its thread to set the date.
             </p>
           </Part>
 

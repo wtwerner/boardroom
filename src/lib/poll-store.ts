@@ -1,9 +1,9 @@
 import "server-only";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
-import { NIGHT_TITLES } from "@/config";
+import { and, asc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { MIN_PEOPLE, NIGHT_TITLES } from "@/config";
 import { db, schema } from "@/db";
 import { type DateAnswer, type Night, POLL_MAX_DATES } from "@/db/enums";
-import { answeredBy, answerFor, resolveAnswers, rsvpFor } from "./date-answers";
+import { type Verdict, answeredBy, answerFor, dateVerdicts, resolveAnswers, rsvpFor, waitingOn } from "./date-answers";
 import { ownNight, titleForGame } from "./night-store";
 import { localDate, nightTitle } from "./nights";
 import { handTitle } from "./night-title";
@@ -23,6 +23,9 @@ const g = schema.gameNight;
 
 export type PollPerson = { playerId: number; name: string; discordId: string | null; userId: string | null };
 
+/** A member, who a poll waits on: of either kind of night, since the casual night's answers that matter are theirs. No player yet for one who's never played or answered. */
+export type PollMember = { playerId: number | null; name: string; discordId: string | null; userId: string };
+
 export type PollDate = {
   id: number;
   /** ISO */
@@ -34,6 +37,8 @@ export type PollDate = {
   maybe: PollPerson[];
   /** Can't, said or (`assumed`) left alone once they'd answered another date */
   no: (PollPerson & { assumed: boolean })[];
+  /** Every member can come, it's the best so far, or too few can (date-answers.ts) */
+  verdict: Verdict | null;
 };
 
 export type PollDetail = {
@@ -45,7 +50,27 @@ export type PollDetail = {
   dates: PollDate[];
   /** Everyone who has answered a date still on offer */
   answered: PollPerson[];
+  /** The members it waits on */
+  members: PollMember[];
+  /** Members yet to answer a date still to come: they haven't answered, or a date was added since */
+  waiting: PollMember[];
+  /** The fewest who need to be able to come, for its kind of night */
+  min: number;
+  /** Whoever started it, who's told once everyone's answered */
+  createdBy: string | null;
+  /** When the members still waiting were last nudged (ISO) */
+  nudgedAt: string | null;
 };
+
+/** The group's members, by name */
+async function members(): Promise<PollMember[]> {
+  const rows = await db
+    .select({ userId: schema.user.id, userName: schema.user.name, userDiscordId: schema.user.discordId, playerId: schema.player.id, name: schema.player.name, discordId: schema.player.discordId })
+    .from(schema.user)
+    .leftJoin(schema.player, eq(schema.player.userId, schema.user.id))
+    .orderBy(asc(schema.user.name));
+  return rows.map((r) => ({ playerId: r.playerId, name: r.name ?? r.userName, discordId: r.discordId ?? r.userDiscordId, userId: r.userId }));
+}
 
 /** A poll, as stored */
 export async function ownPoll(id: number) {
@@ -72,7 +97,7 @@ async function findingNight(nightId: number) {
 /** Polls with their dates and everyone's answers, soonest date first */
 async function loadPolls(ids: number[]): Promise<PollDetail[]> {
   if (!ids.length) return [];
-  const [polls, dates, given] = await Promise.all([
+  const [polls, dates, given, group] = await Promise.all([
     db.select().from(p).where(inArray(p.id, ids)),
     db.select().from(o).where(inArray(o.pollId, ids)).orderBy(asc(o.startsAt)),
     db
@@ -81,6 +106,7 @@ async function loadPolls(ids: number[]): Promise<PollDetail[]> {
       .innerJoin(o, eq(o.id, v.optionId))
       .innerJoin(schema.player, eq(schema.player.id, v.playerId))
       .where(inArray(o.pollId, ids)),
+    members(),
   ]);
   const people = new Map(given.map((a) => [a.playerId, { playerId: a.playerId, name: a.name, discordId: a.discordId, userId: a.userId }]));
   const now = Date.now();
@@ -91,25 +117,36 @@ async function loadPolls(ids: number[]): Promise<PollDetail[]> {
     const facts = mine.map((d) => ({ id: d.id, createdAt: d.createdAt.toISOString(), fellThrough: d.fellThroughAt !== null }));
     const answers = given.filter((a) => mine.some((d) => d.id === a.optionId)).map((a) => ({ optionId: a.optionId, playerId: a.playerId, answer: a.answer, at: a.at.toISOString() }));
     const resolved = resolveAnswers(facts, answers);
+    // Waiting on whoever hasn't answered every date still to come
+    const open = mine.flatMap((d, i) => (d.fellThroughAt || d.startsAt.getTime() < now ? [] : [new Set(resolved[i].answers.map((a) => a.playerId))]));
+    const seenAll = new Set(group.flatMap((m) => (m.playerId !== null && open.length && open.every((who) => who.has(m.playerId!)) ? [m.playerId] : [])));
+    const min = MIN_PEOPLE[row.night];
+    const shaped = mine.map((d, i) => {
+      const said = (answer: DateAnswer) => resolved[i].answers.filter((a) => a.answer === answer);
+      return {
+        id: d.id,
+        startsAt: d.startsAt.toISOString(),
+        past: d.startsAt.getTime() < now,
+        fellThrough: d.fellThroughAt !== null,
+        yes: said("yes").map((a) => people.get(a.playerId)!),
+        maybe: said("maybe").map((a) => people.get(a.playerId)!),
+        no: said("no").map((a) => ({ ...people.get(a.playerId)!, assumed: a.assumed })),
+      };
+    });
+    const verdicts = dateVerdicts(shaped, group.flatMap((m) => (m.playerId === null ? [] : [m.playerId])), min);
     return [
       {
         id: row.id,
         nightId: row.gameNightId,
         night: row.night,
         closed: row.closedAt !== null,
-        dates: mine.map((d, i) => {
-          const said = (answer: DateAnswer) => resolved[i].answers.filter((a) => a.answer === answer);
-          return {
-            id: d.id,
-            startsAt: d.startsAt.toISOString(),
-            past: d.startsAt.getTime() < now,
-            fellThrough: d.fellThroughAt !== null,
-            yes: said("yes").map((a) => people.get(a.playerId)!),
-            maybe: said("maybe").map((a) => people.get(a.playerId)!),
-            no: said("no").map((a) => ({ ...people.get(a.playerId)!, assumed: a.assumed })),
-          };
-        }),
+        dates: shaped.map((d) => ({ ...d, verdict: verdicts.get(d.id) ?? null })),
         answered: [...answeredBy(facts, answers)].map((playerId) => people.get(playerId)!),
+        members: group,
+        waiting: open.length ? waitingOn(group, seenAll) : [],
+        min,
+        createdBy: row.createdBy,
+        nudgedAt: row.nudgedAt?.toISOString() ?? null,
       },
     ];
   });
@@ -228,7 +265,7 @@ export async function addPollDate(pollId: number, startsAt: Date) {
   await db.transaction(async (tx) => {
     // To the millisecond (the column's default is to the second), so answers given just before it don't count for it
     await tx.insert(o).values({ pollId, startsAt, createdAt: new Date() });
-    await tx.update(p).set({ closedAt: null, updatedAt: new Date() }).where(eq(p.id, pollId));
+    await tx.update(p).set({ closedAt: null, everyoneAnsweredAt: null, updatedAt: new Date() }).where(eq(p.id, pollId));
     await placeNight(tx, pollId, n.id);
   });
   return n;
@@ -319,7 +356,7 @@ export async function dateFellThrough(nightId: number, dates: Date[], userId: st
     // A title the template made is made again once there's a date; one named by hand stays
     const title = handTitle(n.title, NIGHT_TITLES[n.night], n.date ?? localDate(n.startsAt)) ?? "";
     await tx.update(g).set({ findingDate: true, date: null, title, remindedAt: null, logNudgedAt: null }).where(eq(g.id, n.id));
-    await tx.update(p).set({ closedAt: null, updatedAt: now }).where(eq(p.id, pollId));
+    await tx.update(p).set({ closedAt: null, everyoneAnsweredAt: null, updatedAt: now }).where(eq(p.id, pollId));
     await placeNight(tx, pollId, n.id);
 
     const games = await tx.select({ id: schema.gamePlan.id }).from(schema.gamePlan).where(eq(schema.gamePlan.gameNightId, n.id));
@@ -371,4 +408,36 @@ export async function closeFinishedPolls(now = new Date()) {
   if (!done.length) return [];
   const closed = await db.update(p).set({ closedAt: now }).where(and(inArray(p.id, done), isNull(p.closedAt))).returning({ nightId: p.gameNightId });
   return closed.map((r) => r.nightId!);
+}
+
+/**
+ * Once the last member answers, the first time since there was anything new to answer: the poll,
+ * with its best date, for telling whoever started it. Null otherwise, or once they've been told.
+ */
+export async function everyoneJustAnswered(pollId: number) {
+  const poll = await loadPoll(pollId);
+  if (!poll || poll.waiting.length || !poll.members.length || !poll.dates.some((d) => !d.past && !d.fellThrough)) return null;
+  const claimed = await db.update(p).set({ everyoneAnsweredAt: new Date() }).where(and(eq(p.id, pollId), isNull(p.everyoneAnsweredAt))).returning({ id: p.id });
+  if (!claimed.length) return null;
+  const starter = poll.createdBy ? poll.members.find((m) => m.userId === poll.createdBy) ?? null : null;
+  return { poll, starter };
+}
+
+/** How long a nudge lasts before the members still waiting can be nudged again */
+export const NUDGE_EVERY_MS = 12 * 3_600_000;
+
+/** Nudge the members who haven't answered, at most every 12 hours. Returns who to ping. */
+export async function nudgeWaiting(pollId: number) {
+  const poll = await loadPoll(pollId);
+  if (!poll) throw new Error("That's gone: it was deleted.");
+  await findingNight(poll.nightId);
+  if (!poll.waiting.length) throw new Error("Everyone's answered already.");
+  const since = new Date(Date.now() - NUDGE_EVERY_MS);
+  const claimed = await db
+    .update(p)
+    .set({ nudgedAt: new Date() })
+    .where(and(eq(p.id, pollId), or(isNull(p.nudgedAt), lt(p.nudgedAt, since))))
+    .returning({ id: p.id });
+  if (!claimed.length) throw new Error("They were nudged in the last 12 hours. Give them a little longer.");
+  return { nightId: poll.nightId, waiting: poll.waiting };
 }

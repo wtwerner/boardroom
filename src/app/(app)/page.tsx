@@ -5,7 +5,8 @@ import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
 import { AttendanceBars, MonthColumns } from "@/components/charts";
 import type { MeepleColor, Tier } from "@/db/enums";
 import { NightRow, isOn } from "@/components/night-row";
-import { type NightDetail, getNightsByDate, getUpcomingNights } from "@/lib/events";
+import { type NightDetail, getNightsByDate, getUpcomingNights, loadNight } from "@/lib/events";
+import { findingPolls } from "@/lib/poll-store";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { Avatar, Empty, GameCover, Meeple, PlayerChip, Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass, formatDate } from "@/components/ui";
 import { dayWord, localDate } from "@/lib/nights";
@@ -43,7 +44,7 @@ export default function HomePage() {
 async function Home() {
   const me = await requireUser();
   const upcoming = getUpcomingNights();
-  const [stats, lastNight, mostPlayed, attendance, months, group, shame, wanted, review, setup, members, plans, newMembers, taste, toRank] = await Promise.all([
+  const [stats, lastNight, mostPlayed, attendance, months, group, shame, wanted, review, setup, members, plans, newMembers, taste, toRank, toAnswer] = await Promise.all([
     getHeadlineStats(),
     // The last event is the last one that's over, not one that's still on
     upcoming.then((nights) => getLastNight(nights.filter(isOn))),
@@ -60,6 +61,7 @@ async function Home() {
     getNewMembers(),
     getTasteInsights(),
     getNewToRank(me.id, me.playerId),
+    datesToAnswer(me.id),
   ]);
   const nameOf = new Map(members.map((m) => [m.id, m.name]));
   const lastNightId = lastNight && (await getNightsByDate([{ night: lastNight.night, date: lastNight.date }])).get(`${lastNight.night}:${lastNight.date}`)?.id;
@@ -77,6 +79,7 @@ async function Home() {
       <SetupNudge name={me.name} status={setup} toRank={toRank} />
       <NewMembers members={newMembers.filter((m) => m.id !== me.id)} />
       {onNow.length > 0 && <HappeningNow nights={onNow} members={members} />}
+      {toAnswer.length > 0 && <DatesToAnswer events={toAnswer} />}
       {comingUp.length > 0 && <UpNext nights={comingUp.slice(0, 3)} members={members} />}
 
       {lastNight && (
@@ -338,6 +341,41 @@ function HappeningNow({ nights, members }: { nights: NightDetail[]; members: { i
         {nights.map((n) => (
           <li key={n.id}>
             <NightRow n={n} colors={colors} names={names} />
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
+/** Events picking a date that are waiting on me: I haven't answered, or a date was added since I did */
+async function datesToAnswer(userId: string) {
+  const polls = (await findingPolls()).filter((p) => p.waiting.some((m) => m.userId === userId));
+  const nights = await Promise.all(polls.map((p) => loadNight(p.nightId)));
+  return polls.flatMap((p, i) => {
+    const n = nights[i];
+    if (!n) return [];
+    const offered = p.dates.filter((d) => !d.past && !d.fellThrough).length;
+    return [{ id: n.id, title: n.title, offered, answered: p.members.length - p.waiting.length, of: p.members.length }];
+  });
+}
+
+/** Events picking a date, each a tap from saying which dates work */
+function DatesToAnswer({ events }: { events: Awaited<ReturnType<typeof datesToAnswer>> }) {
+  return (
+    <Section title="Which dates work for you?">
+      <ul className="grid gap-3 lg:grid-cols-2">
+        {events.map((e) => (
+          <li key={e.id}>
+            <Link href={`/events/${e.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/60">
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{e.title}</span>
+                <span className="block text-sm text-slate">
+                  Date TBD · {e.offered} {e.offered === 1 ? "date" : "dates"} on offer · {e.answered} of {e.of} answered
+                </span>
+              </span>
+              <span className={buttonClass("primary", "px-2.5 py-1.5 text-xs")}>Answer</span>
+            </Link>
           </li>
         ))}
       </ul>

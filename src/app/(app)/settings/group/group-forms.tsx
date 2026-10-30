@@ -59,7 +59,7 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
 
       <Section title="Nights">
         <Panel className="space-y-4 p-4">
-          <NightFields night="core" names={names} setNames={setNames} title={s.coreNightTitle} errors={errors} />
+          <NightFields night="core" names={names} setNames={setNames} title={s.coreNightTitle} minPeople={s.coreMinPeople} errors={errors} />
           <Field label="Reminder" hint="Hours before an event starts that its channel gets a ping for whoever's going or a maybe. 0 turns it off." {...field("reminderHours")}>
             <input id="reminderHours" name="reminderHours" type="number" min={0} max={72} step={1} defaultValue={s.reminderHours} className={clsx(input, "max-w-28")} />
           </Field>
@@ -68,7 +68,7 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
               A second, lighter night with guests, with its own channels and picks.
             </Toggle>
           </div>
-          {casual && <NightFields night="casual" names={names} setNames={setNames} title={s.casualNightTitle} errors={errors} />}
+          {casual && <NightFields night="casual" names={names} setNames={setNames} title={s.casualNightTitle} minPeople={s.casualMinPeople} errors={errors} />}
         </Panel>
       </Section>
 
@@ -115,9 +115,24 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
 
 type Names = { core: string; casual: string };
 
-function NightFields({ night, names, setNames, title, errors }: { night: "core" | "casual"; names: Names; setNames: (n: Names) => void; title: string | null; errors: Partial<Record<SettingKey, string>> }) {
+function NightFields({
+  night,
+  names,
+  setNames,
+  title,
+  minPeople,
+  errors,
+}: {
+  night: "core" | "casual";
+  names: Names;
+  setNames: (n: Names) => void;
+  title: string | null;
+  minPeople: number;
+  errors: Partial<Record<SettingKey, string>>;
+}) {
   const nameKey = night === "core" ? "coreNightName" : "casualNightName";
   const titleKey = night === "core" ? "coreNightTitle" : "casualNightTitle";
+  const minKey = night === "core" ? "coreMinPeople" : "casualMinPeople";
   const fallback = night === "core" ? "Game night" : "Casual night";
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -126,6 +141,9 @@ function NightFields({ night, names, setNames, title, errors }: { night: "core" 
       </Field>
       <Field label="New events' title" hint="{date} is its date and {game} the game locked in." id={titleKey} error={errors[titleKey]}>
         <input id={titleKey} name={titleKey} defaultValue={title ?? ""} placeholder={`{date} ${titleCase(names[night])}`} maxLength={80} className={input} />
+      </Field>
+      <Field label="Fewest to set a date" hint="Picking a date, a date with fewer who can come shows as too few." id={minKey} error={errors[minKey]}>
+        <input id={minKey} name={minKey} type="number" min={1} max={50} step={1} defaultValue={minPeople} className={clsx(input, "max-w-28")} />
       </Field>
     </div>
   );

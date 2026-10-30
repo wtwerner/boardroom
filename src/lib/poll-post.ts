@@ -3,15 +3,56 @@ import { after } from "next/server";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { nightPingSetting, postMessage, replyToMessage } from "./discord";
-import { isClaim, joinThread, postChannel, renameNightThread, syncNightPost } from "./night-post";
+import { isClaim, joinThread, postChannel, postInThread, renameNightThread, syncNightPost } from "./night-post";
 import type { CardPerson } from "./night-message";
 import { nightPing } from "./night-message";
-import { pickedMessage, refindMessage } from "./poll-message";
+import { everyoneAnsweredMessage, nudgeMessage, pickedMessage, refindMessage } from "./poll-message";
+import { everyoneJustAnswered } from "./poll-store";
+import { rankDates } from "./date-answers";
 
 /**
- * What's said in Discord when a night finding its date gets one, or its date falls through. The
- * post itself follows the night either way (syncNightPost): it's the same post throughout.
+ * What's said in Discord about a night finding its date: when someone answers (and so everyone
+ * has), when it's nudged, when it gets its date, and when that date falls through. The post
+ * itself follows the night throughout (syncNightPost): it's the same post the whole time.
  */
+
+/**
+ * Once someone's answered: the post shows it, they're added to the thread if they can come
+ * (`join`), and once the last member has answered, the thread says which date's best and pings
+ * whoever started it to set it
+ */
+export function answeredLater(nightId: number, pollId: number, join?: number) {
+  after(async () => {
+    try {
+      const result = await syncNightPost(nightId);
+      if (result === "posted") await joinThread(nightId);
+      else if (result && join) await joinThread(nightId, [join]);
+      const done = await everyoneJustAnswered(pollId);
+      if (!done) return;
+      const best = rankDates(done.poll.dates).find((d) => d.verdict === "everyone" || d.verdict === "best");
+      const { body, allowedMentions } = everyoneAnsweredMessage({
+        starter: done.starter,
+        best: best ? { startsAt: best.startsAt, coming: best.yes.length + best.maybe.length, everyone: best.verdict === "everyone" } : null,
+        min: done.poll.min,
+      });
+      await postInThread(nightId, body, allowedMentions);
+    } catch (err) {
+      console.error(`Couldn't update night ${nightId}'s post in Discord`, err);
+    }
+  });
+}
+
+/** Ping the members who haven't answered in the thread */
+export function nudgeLater(nightId: number, waiting: CardPerson[], by: string) {
+  after(async () => {
+    try {
+      const { body, allowedMentions } = nudgeMessage(waiting, by);
+      await postInThread(nightId, body, allowedMentions);
+    } catch (err) {
+      console.error(`Couldn't nudge night ${nightId}'s thread`, err);
+    }
+  });
+}
 
 /**
  * Once its date's set: the post becomes the night's card, its thread is renamed with the date,

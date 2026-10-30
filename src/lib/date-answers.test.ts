@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerFor, answeredBy, rankDates, resolveAnswers, rsvpFor, toggleWorks } from "./date-answers";
+import { answerFor, answeredBy, dateVerdicts, rankDates, resolveAnswers, rsvpFor, toggleWorks, waitingOn } from "./date-answers";
 
 const at = (h: number) => new Date(Date.UTC(2026, 10, 1, h)).toISOString();
 const thu = { id: 1, createdAt: at(0), fellThrough: false };
@@ -78,5 +78,39 @@ describe("rankDates", () => {
 
   it("leaves out dates gone by or fallen through", () => {
     expect(rankDates([d(1, at(1), 5, 0, { past: true }), d(2, at(2), 5, 0, { fellThrough: true }), d(3, at(3), 0)]).map((x) => x.id)).toEqual([3]);
+  });
+});
+
+describe("dateVerdicts", () => {
+  const p = (...ids: number[]) => ids.map((playerId) => ({ playerId }));
+  const date = (id: number, h: number, yes: number[], maybe: number[] = [], more: { past?: boolean } = {}) => ({ id, startsAt: at(h), past: more.past ?? false, yes: p(...yes), maybe: p(...maybe) });
+
+  it("says everyone when every member can come, if only if they have to", () => {
+    const v = dateVerdicts([date(1, 1, [1, 2], [3]), date(2, 2, [1])], [1, 2, 3], 2);
+    expect(v.get(1)).toBe("everyone");
+    expect(v.get(2)).toBe("few");
+  });
+
+  it("marks the best date that has enough, once", () => {
+    const v = dateVerdicts([date(1, 1, [1, 2]), date(2, 2, [1, 2, 3]), date(3, 3, [2, 3, 9])], [1, 2, 3, 4], 2);
+    expect([...v]).toEqual([[2, "best"]]);
+  });
+
+  it("counts people who aren't members toward the fewest, and leaves dates nobody can come to alone", () => {
+    const v = dateVerdicts([date(1, 1, [1, 9, 8]), date(2, 2, [])], [1, 2], 3);
+    expect(v.get(1)).toBe("best");
+    expect(v.has(2)).toBe(false);
+  });
+
+  it("gives no best when no date has enough", () => {
+    const v = dateVerdicts([date(1, 1, [1]), date(2, 2, [2], [], { past: true })], [1, 2], 2);
+    expect([...v]).toEqual([[1, "few"]]);
+  });
+});
+
+describe("waitingOn", () => {
+  it("is the members who haven't answered, and members with no player yet", () => {
+    const members = [{ playerId: 1 }, { playerId: null }, { playerId: 3 }];
+    expect(waitingOn(members, new Set([1]))).toEqual([{ playerId: null }, { playerId: 3 }]);
   });
 });

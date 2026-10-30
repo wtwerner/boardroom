@@ -57,6 +57,13 @@
       "when": 1793377183823,
       "tag": "0007_date_tbd_nights",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793378414725,
+      "tag": "0008_poll_progress",
+      "breakpoints": true
     }
   ]
 }

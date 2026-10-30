@@ -11,6 +11,7 @@ import { type AppEmoji, buttonEmoji, icon } from "./icons";
 import { type Action, actionId } from "./interactions";
 import { type CardPerson, type NightPing, person } from "./night-message";
 import { andList } from "./text";
+import type { Verdict } from "./date-answers";
 import { ACTION_ROW, BUTTON, COMPONENTS_V2, CONTAINER, type Component, LINK_BUTTON_STYLE, NIGHT_ACCENT, SECONDARY, SECTION, SEPARATOR, TEXT, escape } from "./discord-components";
 
 /** Grey for a night called off before it had a date */
@@ -27,6 +28,8 @@ export type PollDate = {
   yes: CardPerson[];
   /** It works if they have to */
   maybe: CardPerson[];
+  /** Every member can come, it's the best so far, or too few can */
+  verdict?: Verdict | null;
 };
 
 export type PollCard = {
@@ -40,6 +43,10 @@ export type PollCard = {
   /** What the kind of night is called, when the group has more than one kind */
   kindName: string | null;
   dates: PollDate[];
+  /** How many members have answered, of how many, and who it's waiting on; null with no members to wait on */
+  progress?: { answered: number; of: number; waiting: CardPerson[] } | null;
+  /** The fewest who need to be able to come, for "too few" */
+  min?: number;
   /** The night's page, where the dates can be answered too */
   pollUrl: string | null;
   siteName: string;
@@ -57,6 +64,7 @@ export function buildPollMessage(p: PollCard, ping?: NightPing | null): { flags:
   const intro = [
     p.location && `${icon(e, "place")} ${escape(p.location)}`,
     open && "Tap **Works for me** on each date you could make. The rest count as can't.",
+    open && progressLine(p),
     p.status === "closed" && "-# Every date's gone by. Suggest another, or call it off.",
   ].filter(Boolean);
   const done = doneLines(p.dates);
@@ -65,7 +73,7 @@ export function buildPollMessage(p: PollCard, ping?: NightPing | null): { flags:
     { type: TEXT, content: `${title}\n-# ${sub}` },
     ...(intro.length ? [{ type: TEXT, content: intro.join("\n") }] : []),
     { type: SEPARATOR, divider: true, spacing: 2 },
-    ...p.dates.filter(onOffer).map((d) => dateRow(d, open, e)),
+    ...p.dates.filter(onOffer).map((d) => dateRow(d, open, e, p.min)),
     ...(done ? [{ type: TEXT, content: done }] : []),
   ];
 
@@ -79,6 +87,22 @@ export function buildPollMessage(p: PollCard, ping?: NightPing | null): { flags:
       ...(row.length ? [{ type: ACTION_ROW, components: row }] : []),
     ],
   };
+}
+
+/** "-# 4 of 6 answered · waiting on @Alex and @Casey", or that everyone has. Mentions in a post don't ping once it's up. */
+function progressLine(p: PollCard) {
+  if (!p.progress?.of) return null;
+  const { answered, of, waiting } = p.progress;
+  if (!waiting.length) return "-# Everyone's answered";
+  return `-# ${answered} of ${of} answered · waiting on ${andList(waiting.map(person))}`;
+}
+
+/** What a verdict adds after a date's count */
+export function verdictLabel(v: Verdict | null | undefined, min = 1) {
+  if (v === "everyone") return "everyone can come";
+  if (v === "best") return "best so far";
+  if (v === "few") return `too few (needs ${min})`;
+  return null;
 }
 
 /** Dates no longer on offer, a line each and small, so a long poll still fits a message */
@@ -105,7 +129,7 @@ export function buildPollThreadCopy(p: PollCard): { flags: number; components: C
     p.status === "open"
       ? p.dates.filter(onOffer).map((d) => ({
           type: SECTION,
-          components: [{ type: TEXT, content: `${icon(e, "date")} <t:${unix(d.startsAt)}:F> · ${d.yes.length + d.maybe.length}` }],
+          components: [{ type: TEXT, content: [`${icon(e, "date")} <t:${unix(d.startsAt)}:F> · ${d.yes.length + d.maybe.length}`, verdictLabel(d.verdict, p.min)].filter(Boolean).join(" · ") }],
           accessory: button({ kind: "pollVote", optionId: d.id }, "Works for me", buttonEmoji(e, "going")),
         }))
       : [{ type: TEXT, content: p.status === "cancelled" ? `-# ${icon(e, "cancelled")} Called off` : "-# Every date's gone by" }];
@@ -132,11 +156,12 @@ function pollRow(p: PollCard, e: AppEmoji): Component[] {
 }
 
 /** One date on offer: when, how many can come and who, with the button beside it while it's open */
-function dateRow(d: PollDate, open: boolean, e: AppEmoji): Component {
+function dateRow(d: PollDate, open: boolean, e: AppEmoji, min?: number): Component {
   const at = `<t:${unix(d.startsAt)}:F>`;
-  const count = d.yes.length + d.maybe.length;
+  const verdict = verdictLabel(d.verdict, min);
+  const count = `${d.yes.length + d.maybe.length} can come${verdict ? ` · ${verdict}` : ""}`;
   const who = [d.yes.length && `> ${d.yes.map(person).join(", ")}`, d.maybe.length && `-# If they have to: ${d.maybe.map(person).join(", ")}`].filter(Boolean);
-  const content = `${icon(e, "date")} **${at}** · ${count} can come\n${who.length ? who.join("\n") : "-# Nobody yet"}`;
+  const content = `${icon(e, "date")} **${at}** · ${count}\n${who.length ? who.join("\n") : "-# Nobody yet"}`;
   if (!open) return { type: TEXT, content };
   return {
     type: SECTION,
@@ -209,4 +234,29 @@ export function pickedMessage(p: { title: string; startsAt: string; going: CardP
       users: [...new Set([...going, ...maybe].map((v) => v.discordId!))],
     },
   };
+}
+
+/**
+ * Said in the thread once every member has answered: the best date (and whether everyone can
+ * come), or that none has enough, pinging whoever started it to set it or offer more
+ */
+export function everyoneAnsweredMessage(m: { starter: CardPerson | null; best: { startsAt: string; coming: number; everyone: boolean } | null; min: number }) {
+  const who = m.starter?.discordId ? `<@${m.starter.discordId}>, ` : "";
+  const next = (rest: string) => (who ? `${who}${rest}` : rest.charAt(0).toUpperCase() + rest.slice(1));
+  const lines = m.best
+    ? [
+        m.best.everyone
+          ? `✅ Everyone's answered, and <t:${unix(m.best.startsAt)}:F> works for all of them.`
+          : `✅ Everyone's answered. <t:${unix(m.best.startsAt)}:F> works best: ${m.best.coming} can come.`,
+        next("set the date on the post when you're ready."),
+      ]
+    : [`✅ Everyone's answered, but no date has ${m.min} who can come.`, next("suggest another date on the post, or call it off.")];
+  return { body: { content: lines.join("\n") }, allowedMentions: { parse: [], users: m.starter?.discordId ? [m.starter.discordId] : [] } };
+}
+
+/** Said in the thread to nudge the members who haven't answered, pinging them */
+export function nudgeMessage(waiting: CardPerson[], by: string) {
+  const pinged = waiting.filter((w) => w.discordId);
+  const content = `👋 ${by} is waiting on ${andList(waiting.map(person))}: say which dates work on the post.`;
+  return { body: { content }, allowedMentions: { parse: [], users: [...new Set(pinged.map((w) => w.discordId!))] } };
 }

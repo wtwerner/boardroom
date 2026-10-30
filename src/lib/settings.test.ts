@@ -4,7 +4,7 @@ import { checkSettings, resolveSettings, settingRows } from "./settings";
 describe("resolveSettings", () => {
   it("uses the defaults with nothing stored or set", () => {
     const s = resolveSettings({}, {});
-    expect(s).toMatchObject({ siteName: "Boardroom", timeZone: "UTC", casualNight: false, coreNightName: "Game night", heavyWeight: 2.75, reminderHours: 3, claude: false, claudeIdeasPerDay: 5 });
+    expect(s).toMatchObject({ siteName: "Boardroom", timeZone: "UTC", casualNight: false, coreNightName: "Game night", heavyWeight: 2.75, reminderHours: 3, coreMinPeople: 2, casualMinPeople: 3, claude: false, claudeIdeasPerDay: 5 });
     expect(s.playsChannel).toBeNull();
     expect(s.coreNightTitle).toBeNull();
   });

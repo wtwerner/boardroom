@@ -3,7 +3,7 @@ import { after } from "next/server";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lt, or } from "drizzle-orm";
 import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { type MessageBody, addToThread, announceChannel, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
+import { type AllowedMentions, type MessageBody, addToThread, announceChannel, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
 import { buildNightAnnouncement, buildPollAnnouncement } from "./announce-message";
 import { type Announcement, removeAnnouncement, syncAnnouncement } from "./announce-post";
 import { type NightDetail, loadNight } from "./events";
@@ -249,14 +249,22 @@ export async function joinThread(nightId: number, playerIds?: number[], alsoPlay
  */
 export function syncNightPostLater(
   nightId: number,
-  opts: { join?: number; creator?: number; note?: { before: NoteFields; by: CardPerson }; renamed?: boolean; waiting?: number[]; say?: string } = {},
+  opts: {
+    join?: number;
+    creator?: number;
+    note?: { before: NoteFields; by: CardPerson };
+    renamed?: boolean;
+    waiting?: number[];
+    say?: string | { body: MessageBody; allowedMentions: AllowedMentions };
+  } = {},
 ) {
   after(async () => {
     try {
       const result = await syncNightPost(nightId);
       if (result === "posted") await joinThread(nightId, undefined, opts.creator ? [opts.creator] : []);
       else if (result && opts.join) await joinThread(nightId, [opts.join]);
-      if (opts.say) await postInThread(nightId, opts.say);
+      if (typeof opts.say === "string") await postInThread(nightId, opts.say);
+      else if (opts.say) await postInThread(nightId, opts.say.body, opts.say.allowedMentions);
       if (opts.note) await noteChange(nightId, opts.note.before, opts.note.by);
       if (opts.renamed && result === "edited") await renameNightThread(nightId);
       if (opts.waiting?.length && result) await noteSeated(nightId, opts.waiting);
@@ -302,10 +310,10 @@ export async function renameNightThread(nightId: number) {
   await renameThread(row.threadId, name).catch((err) => console.error("Couldn't rename the night's thread", err));
 }
 
-/** Say something in a night's thread, if it has one */
-export async function postInThread(nightId: number, content: string) {
+/** Say something in a night's thread, if it has one: words, or a message with whoever it pings */
+export async function postInThread(nightId: number, said: string | MessageBody, allowedMentions?: AllowedMentions) {
   const row = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { threadId: true, messageId: true } });
-  if (row?.threadId && !isClaim(row.messageId)) await postMessage(row.threadId, { content });
+  if (row?.threadId && !isClaim(row.messageId)) await postMessage(row.threadId, typeof said === "string" ? { content: said } : said, allowedMentions);
 }
 
 /**
@@ -391,7 +399,9 @@ async function pollCard(n: NightDetail, poll: PollDetail | null): Promise<PollCa
     status: n.cancelled ? "cancelled" : poll.closed ? "closed" : "open",
     kind: n.night,
     kindName: CASUAL_NIGHT ? NIGHT_NAMES[n.night] : null,
-    dates: poll.dates.map((d) => ({ id: d.id, startsAt: d.startsAt, past: d.past, fellThrough: d.fellThrough, yes: d.yes.map(who), maybe: d.maybe.map(who) })),
+    dates: poll.dates.map((d) => ({ id: d.id, startsAt: d.startsAt, past: d.past, fellThrough: d.fellThrough, yes: d.yes.map(who), maybe: d.maybe.map(who), verdict: d.verdict })),
+    progress: poll.members.length ? { answered: poll.members.length - poll.waiting.length, of: poll.members.length, waiting: poll.waiting.map(who) } : null,
+    min: poll.min,
     // Most of the casual night's channel can't open the site, as with its nights' posts
     pollUrl: SITE_URL && n.night === "core" ? `${SITE_URL}/events/${n.id}` : null,
     siteName: SITE_NAME,

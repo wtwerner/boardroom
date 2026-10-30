@@ -5,11 +5,12 @@ import Link from "next/link";
 import { CalendarPlus, Check, ExternalLink, Undo2 } from "lucide-react";
 import clsx from "clsx";
 import { type DateAnswer, type MeepleColor, type Night, POLL_MAX_DATES } from "@/db/enums";
-import { answerDate, callOffPoll, noDatesWork, reopenPoll, setNightDate, startPoll, suggestPollDate } from "@/app/actions";
+import { answerDate, callOffPoll, noDatesWork, nudgeForDates, reopenPoll, setNightDate, startPoll, suggestPollDate } from "@/app/actions";
 import { DateInput } from "@/components/date-input";
 import { PlayerChip, buttonClass } from "@/components/ui";
 import { discordAppUrl } from "@/lib/discord-components";
-import { rankDates } from "@/lib/date-answers";
+import { type Verdict, rankDates } from "@/lib/date-answers";
+import { andList } from "@/lib/text";
 import { titleCase } from "@/lib/text";
 import type { NightSetup } from "../events/night-form";
 import { DateRows, readDates } from "./date-rows";
@@ -30,6 +31,12 @@ export type PollView = {
   status: "open" | "cancelled" | "closed";
   /** The time its dates start at, for suggesting another */
   usualTime: string;
+  /** How many members have answered every date still to come, of how many, and the names of the rest */
+  progress: { answered: number; of: number; waiting: string[] } | null;
+  /** The fewest who need to be able to come */
+  min: number;
+  /** The members still waiting can be pinged in its thread now */
+  canNudge: boolean;
   dates: {
     id: number;
     startsAt: string;
@@ -44,6 +51,10 @@ export type PollView = {
     maybe: Voter[];
     /** Can't: said, or `assumed` once they'd answered another date and left this one */
     no: (Voter & { assumed: boolean })[];
+    /** Every member can come, it's the best so far, or too few can */
+    verdict: Verdict | null;
+    /** Members who haven't answered it, by name */
+    waiting: string[];
   }[];
 };
 
@@ -99,12 +110,25 @@ export function PollCard({ poll, myPlayerId, colors, link = false }: { poll: Pol
         )}
       </header>
 
+      {poll.status === "open" && poll.progress && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+          <span className={clsx("font-medium", !poll.progress.waiting.length && "text-felt-ink")}>
+            {poll.progress.waiting.length ? `${poll.progress.answered} of ${poll.progress.of} answered` : "Everyone's answered"}
+          </span>
+          {poll.progress.waiting.length > 0 && <span className="text-slate">Waiting on {andList(poll.progress.waiting)}</span>}
+          {poll.canNudge && (
+            <button type="button" disabled={pending} onClick={() => run(() => nudgeForDates(poll.id))} className={buttonClass("ghost", "px-2 py-1 text-xs")}>
+              Nudge {poll.progress.waiting.length === 1 ? "them" : "them all"} in Discord
+            </button>
+          )}
+        </div>
+      )}
       {poll.status === "open" && !answered && <p className="text-sm text-slate">Say which dates work. Any you leave count as can&apos;t.</p>}
       {poll.status === "closed" && <p className="text-sm text-slate">Every date&apos;s gone by. Suggest another, or call it off.</p>}
 
       <ul className="space-y-2">
         {onOffer.map((d) => (
-          <DateRow key={d.id} date={d} myPlayerId={myPlayerId} colors={colors} canAnswer={poll.status === "open"} onError={setError} />
+          <DateRow key={d.id} date={d} min={poll.min} myPlayerId={myPlayerId} colors={colors} canAnswer={poll.status === "open"} onError={setError} />
         ))}
       </ul>
       {done.length > 0 && (
@@ -208,14 +232,23 @@ function myAnswer(d: DateView, me: number | null): { answer: DateAnswer | null; 
   return no ? { answer: "no", assumed: no.assumed } : { answer: null, assumed: false };
 }
 
+/** What a date's verdict says on the site, and how it's shown */
+const VERDICT: Record<Verdict, { label: (min: number) => string; className: string }> = {
+  everyone: { label: () => "Everyone can come", className: "bg-felt text-felt-ink" },
+  best: { label: () => "Best so far", className: "bg-accent/15 text-ink" },
+  few: { label: (min) => `Too few (needs ${min})`, className: "bg-ink/10 text-slate" },
+};
+
 function DateRow({
   date,
+  min,
   myPlayerId,
   colors,
   canAnswer,
   onError,
 }: {
   date: DateView;
+  min: number;
   myPlayerId: number | null;
   colors: Record<string, MeepleColor | null>;
   canAnswer: boolean;
@@ -240,6 +273,7 @@ function DateRow({
           <span className="block text-xs text-slate">
             {date.soon && <span className="font-medium text-ink">{date.soon} · </span>}
             {date.time} · {coming ? `${coming} can come` : "nobody yet"}
+            {date.verdict && <span className={clsx("ml-1.5 rounded-full px-1.5 py-0.5 font-medium", VERDICT[date.verdict].className)}>{VERDICT[date.verdict].label(min)}</span>}
           </span>
         </span>
         {canAnswer && myPlayerId !== null && (
@@ -286,6 +320,7 @@ function DateRow({
           )}
         </div>
       )}
+      {date.waiting.length > 0 && <p className="text-xs text-slate">Waiting on {andList(date.waiting)}</p>}
     </li>
   );
 }

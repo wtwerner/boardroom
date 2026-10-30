@@ -3,7 +3,7 @@ import { componentText } from "./discord-message";
 import { NIGHT_ACCENT } from "./discord-components";
 import { parseActionId } from "./interactions";
 import { nightPing } from "./night-message";
-import { type PollCard, buildPollMessage, buildPollThreadCopy, dateChoiceLabel, pickedMessage, pollThreadName, refindMessage, stayingLine } from "./poll-message";
+import { type PollCard, buildPollMessage, buildPollThreadCopy, dateChoiceLabel, everyoneAnsweredMessage, nudgeMessage, pickedMessage, pollThreadName, refindMessage, stayingLine } from "./poll-message";
 
 const sam = { name: "Sam", discordId: "10000000000000001" };
 const alex = { name: "Alex", discordId: "10000000000000002" };
@@ -191,5 +191,51 @@ describe("pollThreadName", () => {
   it("says the date's to be decided, within Discord's 100 characters", () => {
     expect(pollThreadName("November heavy")).toBe("Date TBD · November heavy");
     expect(pollThreadName("x".repeat(200))).toHaveLength(100);
+  });
+});
+
+describe("who's answered, on the post", () => {
+  it("says how many members have answered and who it's waiting on, and each date's standing", () => {
+    const m = buildPollMessage({
+      ...base,
+      min: 3,
+      progress: { answered: 2, of: 4, waiting: [{ name: "Jordan", discordId: "10000000000000003" }, { name: "Casey" }] },
+      dates: [
+        { ...base.dates[0], verdict: "best" },
+        { ...base.dates[1], yes: [sam], verdict: "few" },
+      ],
+    });
+    const text = componentText(m.components);
+    expect(text).toContain("-# 2 of 4 answered · waiting on <@10000000000000003> and Casey");
+    expect(text).toContain("📅 **<t:1793926800:F>** · 2 can come · best so far");
+    expect(text).toContain("📅 **<t:1794081600:F>** · 1 can come · too few (needs 3)");
+    expect(componentText(buildPollThreadCopy({ ...base, dates: [{ ...base.dates[0], verdict: "everyone" }] }).components)).toBe("📅 <t:1793926800:F> · 2 · everyone can come");
+  });
+
+  it("says when everyone's answered", () => {
+    expect(componentText(buildPollMessage({ ...base, progress: { answered: 4, of: 4, waiting: [] } }).components)).toContain("-# Everyone's answered");
+  });
+});
+
+describe("everyoneAnsweredMessage", () => {
+  it("names the best date and pings whoever started it to set it", () => {
+    const { body, allowedMentions } = everyoneAnsweredMessage({ starter: sam, best: { startsAt: "2026-11-06T01:00:00.000Z", coming: 5, everyone: false }, min: 2 });
+    expect(body.content).toBe("✅ Everyone's answered. <t:1793926800:F> works best: 5 can come.\n<@10000000000000001>, set the date on the post when you're ready.");
+    expect(allowedMentions).toEqual({ parse: [], users: ["10000000000000001"] });
+  });
+
+  it("says when a date works for everyone, and when none has enough", () => {
+    expect(everyoneAnsweredMessage({ starter: null, best: { startsAt: "2026-11-06T01:00:00.000Z", coming: 4, everyone: true }, min: 2 }).body.content).toBe(
+      "✅ Everyone's answered, and <t:1793926800:F> works for all of them.\nSet the date on the post when you're ready.",
+    );
+    expect(everyoneAnsweredMessage({ starter: alex, best: null, min: 3 }).body.content).toBe("✅ Everyone's answered, but no date has 3 who can come.\n<@10000000000000002>, suggest another date on the post, or call it off.");
+  });
+});
+
+describe("nudgeMessage", () => {
+  it("pings the members still waiting", () => {
+    const { body, allowedMentions } = nudgeMessage([alex, { name: "Casey" }], "**Sam**");
+    expect(body.content).toBe("👋 **Sam** is waiting on <@10000000000000002> and Casey: say which dates work on the post.");
+    expect(allowedMentions).toEqual({ parse: [], users: ["10000000000000002"] });
   });
 });

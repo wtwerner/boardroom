@@ -74,6 +74,9 @@ const SETTINGS = {
   casualNightTitle: { schema: optionalText(80), env: "CASUAL_NIGHT_TITLE" },
   heavyWeight: { schema: number(1, 5, 2.75), env: "HEAVY_GAME_WEIGHT" },
   reminderHours: { schema: number(0, 72, 3, "int"), env: "NIGHT_REMINDER_HOURS" },
+  // Newer than the settings page, so there's no environment variable to fall back to
+  coreMinPeople: { schema: number(1, 50, 2, "int"), env: () => null },
+  casualMinPeople: { schema: number(1, 50, 3, "int"), env: () => null },
   claude: { schema: flag, env: "CLAUDE" },
   claudeIdeasPerDay: { schema: number(1, 50, 5, "int"), env: "CLAUDE_IDEAS_PER_DAY" },
   playsChannel: { schema: discordId("channel"), env: "DISCORD_PLAYS_CHANNEL_ID" },

@@ -32,7 +32,7 @@ import { localDate, nightTitle, nightWhen, soonLabel } from "./nights";
 import { inSentence } from "./text";
 import { formatForForm, parseDateList, parseTime, parseWhen } from "./when";
 import { addPollDate, answerOf, createPoll, dateFellThrough, datesStaying, loadPoll, noDatesWork, ownPoll, pollOfDate, reopenPoll, setDateAnswer, setPollDate } from "./poll-store";
-import { announceDateSetLater, announceFellThroughLater } from "./poll-post";
+import { announceDateSetLater, announceFellThroughLater, answeredLater } from "./poll-post";
 import { dateChoiceLabel, stayingLine } from "./poll-message";
 import { rankDates, toggleWorks } from "./date-answers";
 import { kindOfChannel } from "./discord-commands";
@@ -476,14 +476,14 @@ async function pollButton(i: Interaction, action: PollAction) {
     const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
     const answer = toggleWorks(await answerOf(action.optionId, player.id));
     await setDateAnswer(action.optionId, player.id, answer);
-    syncNightPostLater(nightId, answer === "yes" ? { join: player.id } : {});
+    answeredLater(nightId, row.id, answer === "yes" ? player.id : undefined);
     return deferUpdate();
   }
 
   if (action.kind === "pollNone") {
     const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
     await noDatesWork(row.id, player.id);
-    syncNightPostLater(nightId);
+    answeredLater(nightId, row.id);
     return reply("Got it: none of those work for you. If one does after all, tap **Works for me** beside it.");
   }
 
