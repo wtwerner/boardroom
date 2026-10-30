@@ -398,7 +398,8 @@ async function pollCard(n: NightDetail, poll: PollDetail | null): Promise<PollCa
     location: n.location,
     status: n.cancelled ? "cancelled" : poll.closed ? "closed" : "open",
     kind: n.night,
-    kindName: CASUAL_NIGHT ? NIGHT_NAMES[n.night] : null,
+    // Unnamed, it's called its kind of night already
+    kindName: CASUAL_NIGHT && n.named ? NIGHT_NAMES[n.night] : null,
     dates: poll.dates.map((d) => ({ id: d.id, startsAt: d.startsAt, past: d.past, fellThrough: d.fellThrough, yes: d.yes.map(who), maybe: d.maybe.map(who), verdict: d.verdict })),
     progress: poll.members.length ? { answered: poll.members.length - poll.waiting.length, of: poll.members.length, waiting: poll.waiting.map(who) } : null,
     min: poll.min,

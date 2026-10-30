@@ -105,6 +105,17 @@ export function verdictLabel(v: Verdict | null | undefined, min = 1) {
   return null;
 }
 
+/**
+ * How many can come to a date and how it stands, without saying it twice: "3 can come · best so
+ * far", "everyone can come (4)", or in the thread's copy just the number before the standing
+ */
+function comingLine(d: PollDate, min?: number, words = true) {
+  const n = d.yes.length + d.maybe.length;
+  if (d.verdict === "everyone") return `everyone can come (${n})`;
+  const verdict = verdictLabel(d.verdict, min);
+  return [words ? `${n} can come` : `${n}`, verdict].filter(Boolean).join(" · ");
+}
+
 /** Dates no longer on offer, a line each and small, so a long poll still fits a message */
 function doneLines(dates: PollDate[]) {
   const fell = dates.filter((d) => d.fellThrough);
@@ -129,7 +140,7 @@ export function buildPollThreadCopy(p: PollCard): { flags: number; components: C
     p.status === "open"
       ? p.dates.filter(onOffer).map((d) => ({
           type: SECTION,
-          components: [{ type: TEXT, content: [`${icon(e, "date")} <t:${unix(d.startsAt)}:F> · ${d.yes.length + d.maybe.length}`, verdictLabel(d.verdict, p.min)].filter(Boolean).join(" · ") }],
+          components: [{ type: TEXT, content: `${icon(e, "date")} <t:${unix(d.startsAt)}:F> · ${comingLine(d, p.min, false)}` }],
           accessory: button({ kind: "pollVote", optionId: d.id }, "Works for me", buttonEmoji(e, "going")),
         }))
       : [{ type: TEXT, content: p.status === "cancelled" ? `-# ${icon(e, "cancelled")} Called off` : "-# Every date's gone by" }];
@@ -158,8 +169,7 @@ function pollRow(p: PollCard, e: AppEmoji): Component[] {
 /** One date on offer: when, how many can come and who, with the button beside it while it's open */
 function dateRow(d: PollDate, open: boolean, e: AppEmoji, min?: number): Component {
   const at = `<t:${unix(d.startsAt)}:F>`;
-  const verdict = verdictLabel(d.verdict, min);
-  const count = `${d.yes.length + d.maybe.length} can come${verdict ? ` · ${verdict}` : ""}`;
+  const count = comingLine(d, min);
   const who = [d.yes.length && `> ${d.yes.map(person).join(", ")}`, d.maybe.length && `-# If they have to: ${d.maybe.map(person).join(", ")}`].filter(Boolean);
   const content = `${icon(e, "date")} **${at}** · ${count}\n${who.length ? who.join("\n") : "-# Nobody yet"}`;
   if (!open) return { type: TEXT, content };

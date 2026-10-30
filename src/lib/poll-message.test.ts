@@ -209,7 +209,8 @@ describe("who's answered, on the post", () => {
     expect(text).toContain("-# 2 of 4 answered · waiting on <@10000000000000003> and Casey");
     expect(text).toContain("📅 **<t:1793926800:F>** · 2 can come · best so far");
     expect(text).toContain("📅 **<t:1794081600:F>** · 1 can come · too few (needs 3)");
-    expect(componentText(buildPollThreadCopy({ ...base, dates: [{ ...base.dates[0], verdict: "everyone" }] }).components)).toBe("📅 <t:1793926800:F> · 2 · everyone can come");
+    expect(componentText(buildPollThreadCopy({ ...base, dates: [{ ...base.dates[0], verdict: "everyone" }] }).components)).toBe("📅 <t:1793926800:F> · everyone can come (2)");
+    expect(componentText(buildPollMessage({ ...base, dates: [{ ...base.dates[0], verdict: "everyone" }] }).components)).toContain("📅 **<t:1793926800:F>** · everyone can come (2)\n");
   });
 
   it("says when everyone's answered", () => {
