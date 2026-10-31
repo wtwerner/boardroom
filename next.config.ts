@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
     // Box art never changes; resize each image once a month at most
     minimumCacheTTL: 60 * 60 * 24 * 31,
   },
+  // Vercel resizes images itself and next/og doesn't use sharp, so leave its ~18 MB of native libs out of every function
+  outputFileTracingExcludes: {
+    "*": ["node_modules/sharp/**", "node_modules/@img/**", "node_modules/.pnpm/sharp@*/**", "node_modules/.pnpm/@img+*/**"],
+  },
   turbopack: {
     rules: {
       "*.css": {
