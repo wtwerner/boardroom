@@ -73,6 +73,8 @@ async function Home() {
   if (stats.all.plays === 0) return <FirstRun name={me.name} />;
 
   const reviewCount = review.reduce((n, r) => n + r.count, 0);
+  // A game played twice that night gets one cover
+  const games = lastNight ? [...new Map(lastNight.plays.map((p) => [p.gameId ?? `p${p.id}`, p])).values()] : [];
 
   return (
     <div className="space-y-10">
@@ -94,24 +96,34 @@ async function Home() {
               </>
             )}
           </p>
-          <div className="mt-3 grid gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
-            <div className="flex -space-x-6">
-              {lastNight.plays.slice(0, 4).map((p, i) => (
-                <GameCover key={p.id} src={p.thumbnail} image={p.image} name={p.name} size="lg" className={i > 0 ? "hidden sm:block" : undefined} />
-              ))}
-            </div>
-            <div className="min-w-0">
-              <h1 className="font-display text-3xl leading-tight sm:text-4xl">
-                {lastNight.plays.map((p) => p.name).join(", ")}
-              </h1>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {uniqueSeats(lastNight.plays).map((s) => (
-                  <PlayerChip key={s.playerId} name={s.name} color={s.color} size="md" />
-                ))}
-              </div>
-              {lastNight.plays[0]?.location && <p className="mt-2 text-sm text-slate">at {lastNight.plays[0].location}</p>}
-            </div>
+          <h1 className="mt-1 font-display text-3xl leading-tight sm:text-4xl">
+            {games.length === 1 ? games[0].name : `${games.length} games`}
+            {lastNight.plays[0]?.location && <span className="text-slate"> at {lastNight.plays[0].location}</span>}
+          </h1>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {uniqueSeats(lastNight.plays).map((s) => (
+              <PlayerChip key={s.playerId} name={s.name} color={s.color} size="md" />
+            ))}
           </div>
+          <ul className="mt-5 grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-6">
+            {games.slice(0, 6).map((p) => (
+              <li key={p.gameId ?? `p${p.id}`}>
+                <GameCover src={p.thumbnail} image={p.image} name={p.name} size="fluid" sizes="(min-width: 640px) 15vw, 30vw" />
+                {p.gameId ? (
+                  <Link href={`/games/${p.gameId}`} className="mt-1.5 block truncate text-xs font-medium hover:underline">
+                    {p.name}
+                  </Link>
+                ) : (
+                  <span className="mt-1.5 block truncate text-xs font-medium">{p.name}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+          {games.length > 6 && lastNightId && (
+            <p className="mt-3 text-sm">
+              <TextLink href={`/events/${lastNightId}`}>{games.length - 6} more</TextLink>
+            </p>
+          )}
         </section>
       )}
 
