@@ -80,7 +80,7 @@ export function soonLabel(iso: string, timeZone: string, now = new Date()) {
 /** Whether a night is today's, to highlight it */
 export const isToday = (soon: string | null) => soon === "Tonight" || soon === "Today";
 
-/** What a night on `date` is called unless someone names it, from the group's template: "10/18 Game Night" */
+/** What a night on `date` is called unless someone names it, from the group's template: "10/18/26 Game Night" */
 export function nightTitle(night: Night, date: string, game: string | null = null) {
   return fillTitle(NIGHT_TITLES[night], date, game);
 }

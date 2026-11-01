@@ -41,8 +41,8 @@ describe("nightWhen", () => {
 
 describe("nightTitle", () => {
   it("names a night by its date and kind when the group hasn't set a template", () => {
-    expect(nightTitle("core", "2026-10-18")).toBe("10/18 Game Night");
-    expect(nightTitle("casual", "2025-09-03", "Root")).toBe("9/3 Casual Night");
+    expect(nightTitle("core", "2026-10-18")).toBe("10/18/26 Game Night");
+    expect(nightTitle("casual", "2025-09-03", "Root")).toBe("9/3/25 Casual Night");
   });
 });
 

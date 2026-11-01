@@ -1,14 +1,20 @@
 /**
  * Night titles made from the group's template ("{date} Game Night — {game}"): the date as
- * "10/29", and the locked-in game or TBD. Pure and safe in client components, so the site's
+ * "10/29/26", and the locked-in game or TBD. Pure and safe in client components, so the site's
  * form can fill the name in as the date changes.
  */
 
 /** What {game} says before a game is locked in */
 const NO_GAME = "TBD";
 
-/** "2026-10-29" as "10/29" */
+/** "2026-10-29" as "10/29/26" */
 function titleDate(date: string) {
+  const [y, m, d] = date.split("-").map(Number);
+  return `${m}/${d}/${String(y).slice(-2)}`;
+}
+
+/** The year-less "10/29" that titles used to be made with, so those still follow their game */
+function oldTitleDate(date: string) {
   const [, m, d] = date.split("-").map(Number);
   return `${m}/${d}`;
 }
@@ -23,7 +29,11 @@ export function fillTitle(template: string, date: string, game: string | null = 
  * game part when it is ("" when the template has no game), null when it was named by hand
  */
 export function titleGame(title: string, template: string, date: string): string | null {
-  const [before, ...rest] = template.replaceAll("{date}", titleDate(date)).split("{game}");
+  return gameIn(title, template, titleDate(date)) ?? gameIn(title, template, oldTitleDate(date));
+}
+
+function gameIn(title: string, template: string, shownDate: string): string | null {
+  const [before, ...rest] = template.replaceAll("{date}", shownDate).split("{game}");
   if (!rest.length) return title === before.trim() ? "" : null;
   const after = rest.join("{game}");
   if (title.length <= before.length + after.length || !title.startsWith(before) || !title.endsWith(after)) return null;
