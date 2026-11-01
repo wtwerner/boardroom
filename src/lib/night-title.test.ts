@@ -6,9 +6,9 @@ const casual = "{date} Casual Night";
 
 describe("fillTitle", () => {
   it("puts in the date as month and day, and TBD before a game is locked in", () => {
-    expect(fillTitle(core, "2026-10-29")).toBe("10/29 Game Night — TBD");
-    expect(fillTitle(core, "2026-11-05", "Brass: Birmingham")).toBe("11/5 Game Night — Brass: Birmingham");
-    expect(fillTitle(casual, "2026-10-29", "Brass: Birmingham")).toBe("10/29 Casual Night");
+    expect(fillTitle(core, "2026-10-29")).toBe("10/29/26 Game Night — TBD");
+    expect(fillTitle(core, "2026-11-05", "Brass: Birmingham")).toBe("11/5/26 Game Night — Brass: Birmingham");
+    expect(fillTitle(casual, "2026-10-29", "Brass: Birmingham")).toBe("10/29/26 Casual Night");
   });
 
   it("keeps to 100 characters", () => {
@@ -34,14 +34,22 @@ describe("titleGame", () => {
   });
 });
 
+describe("titles made before the year was added", () => {
+  it("still follow their game", () => {
+    expect(titleGame("10/29 Game Night — Root", core, "2026-10-29")).toBe("Root");
+    expect(retitle("10/29 Game Night — TBD", core, "2026-10-29", "Root")).toBe("10/29/26 Game Night — Root");
+    expect(handTitle("11/4 Casual Night", casual, "2026-11-04")).toBeNull();
+  });
+});
+
 describe("retitle", () => {
   it("swaps in the locked-in game, typed in by hand or not", () => {
-    expect(retitle("10/29 Game Night — TBD", core, "2026-10-29", "Root")).toBe("10/29 Game Night — Root");
-    expect(retitle("10/29 Game Night — Brass", core, "2026-10-29", "Root")).toBe("10/29 Game Night — Root");
+    expect(retitle("10/29 Game Night — TBD", core, "2026-10-29", "Root")).toBe("10/29/26 Game Night — Root");
+    expect(retitle("10/29 Game Night — Brass", core, "2026-10-29", "Root")).toBe("10/29/26 Game Night — Root");
   });
 
   it("goes back to TBD when the game is unlocked", () => {
-    expect(retitle("10/29 Game Night — Root", core, "2026-10-29", null)).toBe("10/29 Game Night — TBD");
+    expect(retitle("10/29 Game Night — Root", core, "2026-10-29", null)).toBe("10/29/26 Game Night — TBD");
   });
 
   it("leaves a title named by hand alone", () => {

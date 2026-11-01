@@ -43,7 +43,7 @@ export let SITE_NAME: string;
 export let NIGHT_NAMES: Record<Night, string>;
 
 /**
- * What a new night is called unless someone names it: {date} is its date ("10/29"), and {game}
+ * What a new night is called unless someone names it: {date} is its date ("10/29/26"), and {game}
  * the game locked in for it, or TBD. A title made this way follows the game as it's locked in.
  */
 export let NIGHT_TITLES: Record<Night, string>;
