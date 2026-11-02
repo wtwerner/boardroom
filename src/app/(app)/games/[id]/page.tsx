@@ -2,11 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { DEMO } from "@/config";
 import { NightTag } from "@/components/night-row";
+import { PrepLinks } from "@/components/prep-links";
 import { Empty, GameCover, Meeple, Panel, PlayerChip, Section, Skeleton, formatDate, playerRange, playtime } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { getBgaGame, getGame, getMembers, getMustPlayLeft } from "@/lib/queries";
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
+import { bggUrl } from "@/lib/bgg-links";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { HEAVY_WEIGHT, TIER_LABEL, gameTier } from "@/lib/tier";
 import { OnlineToggle } from "../../online/online-controls";
@@ -58,7 +61,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
           <h1 className="font-display text-3xl leading-tight sm:text-4xl">{g.name}</h1>
           <p className="mt-2 text-sm text-slate">{facts.join(", ")}</p>
           <p className="mt-1 text-sm">
-            <a className="text-accent underline-offset-4 hover:underline" href={`https://boardgamegeek.com/boardgame/${g.id}`} target="_blank" rel="noreferrer">
+            <a className="text-accent underline-offset-4 hover:underline" href={bggUrl(g.id, g.name)} target="_blank" rel="noreferrer">
               View on BoardGameGeek
             </a>
             {bga && (
@@ -169,6 +172,12 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
           )}
         </Section>
       </div>
+
+      <Section title="Rules and teach">
+        <Panel className="max-w-xl px-3 py-2.5">
+          <PrepLinks game={g} links={g.prepLinks} lockLinks={DEMO} />
+        </Panel>
+      </Section>
 
       {g.description && (
         <Section title="About">

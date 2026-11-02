@@ -333,10 +333,10 @@ export async function seedGroup(now = new Date()) {
         gameNightId: next.id,
         chosen,
         createdBy: by,
-        links: chosen ? [{ label: "Learn to play in 30 minutes", url: "https://www.youtube.com/results?search_query=spirit+island+how+to+play" }] : [],
       })
       .returning();
     await db.insert(schema.planVote).values(votes.map((userId) => ({ planId: plan.id, userId })));
+    if (chosen) await db.update(schema.game).set({ prepLinks: [{ label: "Learn to play in 30 minutes", url: "https://www.youtube.com/results?search_query=spirit+island+how+to+play" }] }).where(eq(schema.game.id, ids[game]));
     if (chosen) await db.insert(schema.planReady).values([{ planId: plan.id, userId: "u-jordan" }, { planId: plan.id, userId: "u-alex" }]);
   }
   const later = cal.nightAfter;

@@ -8,6 +8,7 @@ import { db, schema } from "@/db";
 import { DateBadge, NightTag, NightWhen, OnNow, isOn } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
 import { discordAppUrl } from "@/lib/discord-components";
+import { bggPrepLinks } from "@/lib/bgg-links";
 import { Empty, Panel, Section, Skeleton, TextLink } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { getAllGamesForPicker, getMembers, getPlayedBy, getPlayers, getShelf, getTieredRankingLists } from "@/lib/queries";
@@ -280,8 +281,7 @@ function RulesAndTeach({ n }: { n: NightDetail }) {
     <Section title="Rules and teach">
       <ul className="space-y-2">
         {games.map((g) => {
-          const bgg = `https://boardgamegeek.com/boardgame/${g.game.id}`;
-          const links = [{ label: "Rules and player aids", url: `${bgg}/files` }, { label: "How-to-play videos", url: `${bgg}/videos/instructional` }, ...g.links];
+          const links = [...bggPrepLinks(g.game.id, g.game.name), ...g.links];
           return (
             <li key={g.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
               <span className="font-semibold">{g.game.name}</span>

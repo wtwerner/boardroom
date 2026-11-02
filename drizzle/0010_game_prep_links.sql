@@ -1,0 +1,2 @@
+ALTER TABLE `game` ADD `prep_links` text DEFAULT '[]' NOT NULL;--> statement-breakpoint
+UPDATE `game` SET `prep_links` = (SELECT json_group_array(json(`link`)) FROM (SELECT j.value AS `link`, min(p.id * 1000 + j.key) AS `pos` FROM `game_plan` p, json_each(p.links) j WHERE p.game_id = `game`.`id` GROUP BY json_extract(j.value, '$.url') ORDER BY `pos`)) WHERE `id` IN (SELECT `game_id` FROM `game_plan` WHERE `links` <> '[]');

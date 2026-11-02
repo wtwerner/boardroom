@@ -34,7 +34,8 @@ async function loadNights(nights: (typeof schema.gameNight.$inferSelect)[]) {
         bringerId: schema.gamePlan.bringerId,
         askedId: schema.gamePlan.askedId,
         createdBy: schema.gamePlan.createdBy,
-        links: schema.gamePlan.links,
+        /** The game's prep links, added on any night it was locked in or on its page */
+        links: game.prepLinks,
         playedAt: schema.gamePlan.playedAt,
         game: {
           id: game.id,

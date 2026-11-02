@@ -105,6 +105,8 @@ export const game = sqliteTable("game", {
   description: text("description"),
   /** Set by hand to rank it with the other tier's games; null means its BGG weight decides (see tier.ts) */
   tier: text("tier", { enum: TIERS }),
+  /** Rules, teach videos, player aids the group added for learning it, kept for every night it's played */
+  prepLinks: text("prep_links", { mode: "json" }).$type<PrepLink[]>().notNull().default([]),
   /** When we last pulled full details from /thing */
   detailsFetchedAt: integer("details_fetched_at", { mode: "timestamp_ms" }),
   ...timestamps,
@@ -385,7 +387,7 @@ export const gamePlan = sqliteTable(
     bringerId: text("bringer_id").references(() => user.id, { onDelete: "set null" }),
     /** Casual nights: someone who owns it was asked to bring it and hasn't answered */
     askedId: text("asked_id").references(() => user.id, { onDelete: "set null" }),
-    /** Rules, teach videos, player aids people should look at beforehand */
+    /** No longer used: prep links are the game's (game.prep_links), and were copied there */
     links: text("links", { mode: "json" }).$type<PrepLink[]>().notNull().default([]),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     /** Set when a play of the game is logged */

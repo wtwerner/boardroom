@@ -1108,7 +1108,8 @@ async function dropPlanRows(ids: number[]) {
 /** On a demo, a link one visitor adds is one every visitor sees until the reset, so prep links stay as seeded */
 const DEMO_LINKS = "You can't add or remove prep links on the demo.";
 
-export async function addPrepLink(id: number, rawUrl: string, rawLabel: string): Promise<ActionResult> {
+/** A prep link is the game's, so it's there on the game's page and for every night it's locked in */
+export async function addPrepLink(gameId: number, rawUrl: string, rawLabel: string): Promise<ActionResult> {
   await requireUser();
   if (DEMO) return { ok: false, error: DEMO_LINKS };
   let url: URL;
@@ -1118,20 +1119,21 @@ export async function addPrepLink(id: number, rawUrl: string, rawLabel: string):
   } catch {
     return { ok: false, error: "That doesn't look like a link." };
   }
-  const plan = await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, id) });
-  if (!plan) return { ok: false, error: "That plan is gone." };
+  const game = await db.query.game.findFirst({ where: eq(schema.game.id, gameId), columns: { prepLinks: true } });
+  if (!game) return { ok: false, error: "That game is gone." };
+  if (game.prepLinks.some((l) => l.url === url.toString())) return { ok: false, error: "That link's already there." };
   const label = rawLabel.trim().slice(0, 80) || url.hostname.replace(/^www\./, "");
-  await db.update(schema.gamePlan).set({ links: [...plan.links, { label, url: url.toString() }] }).where(eq(schema.gamePlan.id, id));
+  await db.update(schema.game).set({ prepLinks: [...game.prepLinks, { label, url: url.toString() }] }).where(eq(schema.game.id, gameId));
   refresh();
   return { ok: true };
 }
 
-export async function removePrepLink(id: number, url: string) {
+export async function removePrepLink(gameId: number, url: string) {
   await requireUser();
   if (DEMO) throw new Error(DEMO_LINKS);
-  const plan = await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, id) });
-  if (!plan) return;
-  await db.update(schema.gamePlan).set({ links: plan.links.filter((l) => l.url !== url) }).where(eq(schema.gamePlan.id, id));
+  const game = await db.query.game.findFirst({ where: eq(schema.game.id, gameId), columns: { prepLinks: true } });
+  if (!game) return;
+  await db.update(schema.game).set({ prepLinks: game.prepLinks.filter((l) => l.url !== url) }).where(eq(schema.game.id, gameId));
   refresh();
 }
 
