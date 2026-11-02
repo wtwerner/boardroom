@@ -225,6 +225,11 @@ describe("everyoneAnsweredMessage", () => {
     expect(allowedMentions).toEqual({ parse: [], users: ["10000000000000001"] });
   });
 
+  it("names no best date when the top dates tie", () => {
+    const { body } = everyoneAnsweredMessage({ starter: sam, best: null, tie: { coming: 3, dates: ["2026-11-06T01:00:00.000Z", "2026-11-13T01:00:00.000Z"], everyone: false }, min: 2 });
+    expect(body.content).toBe("✅ Everyone's answered. <t:1793926800:F> and <t:1794531600:F> tie: 3 can come to each.\n<@10000000000000001>, set the date on the post when you're ready.");
+  });
+
   it("says when a date works for everyone, and when none has enough", () => {
     expect(everyoneAnsweredMessage({ starter: null, best: { startsAt: "2026-11-06T01:00:00.000Z", coming: 4, everyone: true }, min: 2 }).body.content).toBe(
       "✅ Everyone's answered, and <t:1793926800:F> works for all of them.\nSet the date on the post when you're ready.",

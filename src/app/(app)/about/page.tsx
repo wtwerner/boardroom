@@ -215,7 +215,7 @@ export default async function AboutPage() {
               is can&apos;t make it. If that date falls through, it stays on the list crossed out, with those answers, and every other answer stays as it was.
             </p>
             <p>
-              It waits on the members. A date where every member can come says so; otherwise the best date is marked, as long as enough can come (
+              It waits on the members. A date where every member can come says so; otherwise the best date is marked, as long as enough can come and no other date is level with it (
               {MIN_PEOPLE.core}
               {CASUAL_NIGHT && MIN_PEOPLE.casual !== MIN_PEOPLE.core ? ` for ${core}, ${MIN_PEOPLE.casual} for ${casual}` : ""}, counting guests too), and a date
               with fewer says too few. Once the last member answers, whoever started it is pinged in its thread to set the date.

@@ -80,9 +80,20 @@ export function dateVerdicts<T extends { id: number; startsAt: string; past: boo
     if (coming.size < min) out.set(d.id, "few");
     else if (members.length && members.every((m) => coming.has(m))) out.set(d.id, "everyone");
   }
-  const best = ranked.find((d) => d.yes.length + d.maybe.length >= min);
-  if (best && !out.has(best.id)) out.set(best.id, "best");
+  const top = topDates(dates, min);
+  if (top.length === 1 && !out.has(top[0].id)) out.set(top[0].id, "best");
   return out;
+}
+
+/**
+ * The dates at the top of the ranking that have at least `min` who can come: one when it's ahead,
+ * several when they're level (the same who can come and the same maybes), none when too few can.
+ * A tie names no best date; the soonest only breaks it for the order they're listed in.
+ */
+export function topDates<T extends { startsAt: string; past: boolean; fellThrough?: boolean; yes: unknown[]; maybe: unknown[] }>(dates: T[], min: number): T[] {
+  const [first, ...rest] = rankDates(dates).filter((d) => d.yes.length + d.maybe.length >= min);
+  if (!first) return [];
+  return [first, ...rest.filter((d) => d.yes.length === first.yes.length && d.maybe.length === first.maybe.length)];
 }
 
 /** The members who haven't answered yet, in the order given */

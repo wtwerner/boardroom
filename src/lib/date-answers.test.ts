@@ -92,8 +92,19 @@ describe("dateVerdicts", () => {
   });
 
   it("marks the best date that has enough, once", () => {
-    const v = dateVerdicts([date(1, 1, [1, 2]), date(2, 2, [1, 2, 3]), date(3, 3, [2, 3, 9])], [1, 2, 3, 4], 2);
-    expect([...v]).toEqual([[2, "best"]]);
+    const v = dateVerdicts([date(1, 1, [1, 2]), date(2, 2, [1, 2, 3]), date(3, 3, [2, 3, 9, 4])], [1, 2, 3, 4], 2);
+    expect([...v]).toEqual([[3, "best"]]);
+  });
+
+  it("names no best date when the top dates are level, even if the soonest ranks first", () => {
+    const v = dateVerdicts([date(1, 1, [1, 2, 3]), date(2, 2, [2, 3, 9]), date(3, 3, [1])], [1, 2, 3, 4], 2);
+    expect([...v]).toEqual([[3, "few"]]);
+  });
+
+  it("still picks one when the same count has fewer maybes", () => {
+    const v = dateVerdicts([date(1, 1, [1, 2], [3]), date(2, 2, [1, 2, 3])], [1, 2, 3, 4], 2);
+    expect(v.get(2)).toBe("best");
+    expect(v.has(1)).toBe(false);
   });
 
   it("counts people who aren't members toward the fewest, and leaves dates nobody can come to alone", () => {

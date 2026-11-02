@@ -249,11 +249,17 @@ export function pickedMessage(p: { title: string; startsAt: string; going: CardP
   };
 }
 
+/** Dates level at the top: no best one, just who can come to each */
+function tieLine(t: { coming: number; dates: string[]; everyone: boolean }) {
+  const list = andList(t.dates.map((d) => `<t:${unix(d)}:F>`));
+  return t.everyone ? `${list} all work for everyone.` : `${list} tie: ${t.coming} can come to each.`;
+}
+
 /**
  * Said in the thread once every member has answered: the best date (and whether everyone can
  * come), or that none has enough, pinging whoever started it to set it or offer more
  */
-export function everyoneAnsweredMessage(m: { starter: CardPerson | null; best: { startsAt: string; coming: number; everyone: boolean } | null; min: number }) {
+export function everyoneAnsweredMessage(m: { starter: CardPerson | null; best: { startsAt: string; coming: number; everyone: boolean } | null; tie?: { coming: number; dates: string[]; everyone: boolean } | null; min: number }) {
   const who = m.starter?.discordId ? `<@${m.starter.discordId}>, ` : "";
   const next = (rest: string) => (who ? `${who}${rest}` : rest.charAt(0).toUpperCase() + rest.slice(1));
   const lines = m.best
@@ -263,7 +269,9 @@ export function everyoneAnsweredMessage(m: { starter: CardPerson | null; best: {
           : `✅ Everyone's answered. <t:${unix(m.best.startsAt)}:F> works best: ${m.best.coming} can come.`,
         next("set the date on the post when you're ready."),
       ]
-    : [`✅ Everyone's answered, but no date has ${m.min} who can come.`, next("suggest another date on the post, or call it off.")];
+    : m.tie
+      ? [`✅ Everyone's answered. ${tieLine(m.tie)}`, next("set the date on the post when you're ready.")]
+      : [`✅ Everyone's answered, but no date has ${m.min} who can come.`, next("suggest another date on the post, or call it off.")];
   return { body: { content: lines.join("\n") }, allowedMentions: { parse: [], users: m.starter?.discordId ? [m.starter.discordId] : [] } };
 }
 
@@ -316,7 +324,7 @@ export function buildAnswersPanel(p: { pollId: number; title: string; dates: { i
  * Said in the thread on the day it should be decided by, pinging whoever started it: the best
  * date so far (or that none has enough), and who never answered
  */
-export function decideByMessage(m: { starter: CardPerson | null; best: { startsAt: string; coming: number; everyone: boolean } | null; min: number; waiting: CardPerson[] }) {
+export function decideByMessage(m: { starter: CardPerson | null; best: { startsAt: string; coming: number; everyone: boolean } | null; tie?: { coming: number; dates: string[]; everyone: boolean } | null; min: number; waiting: CardPerson[] }) {
   const who = m.starter?.discordId ? `<@${m.starter.discordId}>, it` : "It";
   const lines = [
     `⏰ ${who}'s time to pick a date.`,
@@ -324,7 +332,9 @@ export function decideByMessage(m: { starter: CardPerson | null; best: { startsA
       ? m.best.everyone
         ? `<t:${unix(m.best.startsAt)}:F> works for everyone.`
         : `<t:${unix(m.best.startsAt)}:F> works best so far: ${m.best.coming} can come.`
-      : `No date has ${m.min} who can come yet. Suggest another, or call it off.`,
+      : m.tie
+        ? tieLine(m.tie)
+        : `No date has ${m.min} who can come yet. Suggest another, or call it off.`,
     ...(m.waiting.length ? [`-# Still waiting on ${andList(m.waiting.map((w) => escape(w.name)))}.`] : []),
   ];
   return { body: { content: lines.join("\n") }, allowedMentions: { parse: [], users: m.starter?.discordId ? [m.starter.discordId] : [] } };

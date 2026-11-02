@@ -8,7 +8,7 @@ import type { CardPerson } from "./night-message";
 import { nightPing } from "./night-message";
 import { decideByMessage, everyoneAnsweredMessage, nudgeMessage, pickedMessage, refindMessage } from "./poll-message";
 import { type PollDetail, everyoneJustAnswered } from "./poll-store";
-import { rankDates } from "./date-answers";
+import { topDates } from "./date-answers";
 
 /**
  * What's said in Discord about a night finding its date: when someone answers (and so everyone
@@ -29,7 +29,7 @@ export function answeredLater(nightId: number, pollId: number, join?: number) {
       else if (result && join) await joinThread(nightId, [join]);
       const done = await everyoneJustAnswered(pollId);
       if (!done) return;
-      const { body, allowedMentions } = everyoneAnsweredMessage({ starter: done.starter, best: bestSoFar(done.poll), min: done.poll.min });
+      const { body, allowedMentions } = everyoneAnsweredMessage({ starter: done.starter, ...bestSoFar(done.poll), min: done.poll.min });
       await postInThread(nightId, body, allowedMentions);
     } catch (err) {
       console.error(`Couldn't update night ${nightId}'s post in Discord`, err);
@@ -37,16 +37,20 @@ export function answeredLater(nightId: number, pollId: number, join?: number) {
   });
 }
 
-/** The date that's best so far, as the thread's messages put it */
+/** The date that's best so far, or the dates level at the top, as the thread's messages put it */
 function bestSoFar(poll: PollDetail) {
-  const best = rankDates(poll.dates).find((d) => d.verdict === "everyone" || d.verdict === "best");
-  return best ? { startsAt: best.startsAt, coming: best.yes.length + best.maybe.length, everyone: best.verdict === "everyone" } : null;
+  const top = topDates(poll.dates, poll.min);
+  const first = top[0];
+  if (!first) return { best: null, tie: null };
+  const coming = first.yes.length + first.maybe.length;
+  if (top.length > 1) return { best: null, tie: { coming, dates: top.map((d) => d.startsAt), everyone: top.every((d) => d.verdict === "everyone") } };
+  return { best: { startsAt: first.startsAt, coming, everyone: first.verdict === "everyone" }, tie: null };
 }
 
 /** On the day it should be decided by (from the tick): ping whoever started it in the thread to pick a date */
 export async function sayDecideBy(poll: PollDetail) {
   const starter = poll.createdBy ? (poll.members.find((m) => m.userId === poll.createdBy) ?? null) : null;
-  const { body, allowedMentions } = decideByMessage({ starter, best: bestSoFar(poll), min: poll.min, waiting: poll.waiting });
+  const { body, allowedMentions } = decideByMessage({ starter, ...bestSoFar(poll), min: poll.min, waiting: poll.waiting });
   await postInThread(poll.nightId, body, allowedMentions);
 }
 
