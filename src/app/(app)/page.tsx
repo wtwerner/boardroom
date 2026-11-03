@@ -75,6 +75,24 @@ async function Home() {
   const reviewCount = review.reduce((n, r) => n + r.count, 0);
   // A game played twice that night gets one cover
   const games = lastNight ? [...new Map(lastNight.plays.map((p) => [p.gameId ?? `p${p.id}`, p])).values()] : [];
+  const lastNightTitle = lastNight && (
+    <>
+      <p className="text-sm text-slate">
+        Last event was {dayWord(lastNight.date, localDate(new Date()))?.toLowerCase() ?? formatDate(lastNight.date, { weekday: "long", month: "long", day: "numeric" })}
+        {CASUAL_NIGHT && ` · ${NIGHT_NAMES[lastNight.night]}`}
+        {lastNightId && (
+          <>
+            {" · "}
+            <span className="font-medium text-accent underline-offset-4 group-hover:underline">See the event</span>
+          </>
+        )}
+      </p>
+      <h1 className="mt-1 font-display text-3xl leading-tight underline-offset-4 group-hover:underline sm:text-4xl">
+        {games.length === 1 ? games[0].name : `${games.length} games`}
+        {lastNight.plays[0]?.location && <span className="text-slate"> at {lastNight.plays[0].location}</span>}
+      </h1>
+    </>
+  );
 
   return (
     <div className="space-y-10">
@@ -86,20 +104,13 @@ async function Home() {
 
       {lastNight && (
         <section>
-          <p className="text-sm text-slate">
-            Last event was {dayWord(lastNight.date, localDate(new Date()))?.toLowerCase() ?? formatDate(lastNight.date, { weekday: "long", month: "long", day: "numeric" })}
-            {CASUAL_NIGHT && ` · ${NIGHT_NAMES[lastNight.night]}`}
-            {lastNightId && (
-              <>
-                {" · "}
-                <TextLink href={`/events/${lastNightId}`}>See the event</TextLink>
-              </>
-            )}
-          </p>
-          <h1 className="mt-1 font-display text-3xl leading-tight sm:text-4xl">
-            {games.length === 1 ? games[0].name : `${games.length} games`}
-            {lastNight.plays[0]?.location && <span className="text-slate"> at {lastNight.plays[0].location}</span>}
-          </h1>
+          {lastNightId ? (
+            <Link href={`/events/${lastNightId}`} className="group block">
+              {lastNightTitle}
+            </Link>
+          ) : (
+            lastNightTitle
+          )}
           <div className="mt-3 flex flex-wrap gap-1.5">
             {uniqueSeats(lastNight.plays).map((s) => (
               <PlayerChip key={s.playerId} name={s.name} color={s.color} size="md" />
@@ -108,13 +119,16 @@ async function Home() {
           <ul className="mt-5 grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-6">
             {games.slice(0, 6).map((p) => (
               <li key={p.gameId ?? `p${p.id}`}>
-                <GameCover src={p.thumbnail} image={p.image} name={p.name} size="fluid" sizes="(min-width: 640px) 15vw, 30vw" />
                 {p.gameId ? (
-                  <Link href={`/games/${p.gameId}`} className="mt-1.5 block truncate text-xs font-medium hover:underline">
-                    {p.name}
+                  <Link href={`/games/${p.gameId}`} className="group block">
+                    <GameCover src={p.thumbnail} image={p.image} name={p.name} size="fluid" sizes="(min-width: 640px) 15vw, 30vw" />
+                    <span className="mt-1.5 block truncate text-xs font-medium group-hover:underline">{p.name}</span>
                   </Link>
                 ) : (
-                  <span className="mt-1.5 block truncate text-xs font-medium">{p.name}</span>
+                  <>
+                    <GameCover src={p.thumbnail} image={p.image} name={p.name} size="fluid" sizes="(min-width: 640px) 15vw, 30vw" />
+                    <span className="mt-1.5 block truncate text-xs font-medium">{p.name}</span>
+                  </>
                 )}
               </li>
             ))}
