@@ -1,0 +1,14 @@
+# Actions are pinned to commit SHAs, which don't pick up fixes on their own. Dependabot opens one
+# PR a week to move them, and keeps the version comment next to each SHA right. It leaves out
+# releases less than a week old, so a bad one has time to be caught.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]

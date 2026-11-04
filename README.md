@@ -173,7 +173,7 @@ Without the three secrets the workflow does nothing, so a project that stays con
 
 ## Developing
 
-With Node 24 (what CI runs) and pnpm:
+With Node 24 (`.tool-versions` has the exact version CI runs) and pnpm:
 
 ```sh
 pnpm install
