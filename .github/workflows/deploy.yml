@@ -21,7 +21,7 @@ jobs:
   deploy:
     # Pushes to main that passed ci (not pull requests), or a run started by hand
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -36,11 +36,15 @@ jobs:
           else
             echo "VERCEL_TOKEN, VERCEL_ORG_ID or VERCEL_PROJECT_ID isn't set, so there's nothing to deploy."
           fi
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.setup.outputs.ready == 'true'
         with:
           # The commit ci passed on, not whatever main is by now
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.setup.outputs.ready == 'true'
+        with:
+          node-version-file: .tool-versions
       - name: Deploy to Vercel
         if: steps.setup.outputs.ready == 'true'
         run: |
