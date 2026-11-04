@@ -10,11 +10,13 @@ import { Empty, GameCover, Meeple, PageHeader, Section, Skeleton, TextLink, play
 import { requireUser } from "@/lib/session";
 import { hasAnthropicKey } from "@/lib/ai";
 import { hasBggToken } from "@/lib/bgg";
+import { bggUrl } from "@/lib/bgg-links";
 import { bgaGameUrl } from "@/lib/bga";
 import { getBgaByBggId } from "@/lib/queries";
 import { type Candidate, MIN_EVIDENCE, type MemberFit, getRecommendations } from "@/lib/recommend";
 import { describeReason } from "@/lib/taste";
 import { inSentence } from "@/lib/text";
+import { PRELAUNCH_LIST_URL, UPCOMING_GROUPS } from "@/lib/upcoming";
 import { HEAVY_WEIGHT, TIER_LABEL } from "@/lib/tier";
 import { Sparkles } from "lucide-react";
 import { AddSuggestionForm, CollapsiblePicks, DiscoverTabs, FindIdeasButton, LoadCatalogButton, PickActions, TakeOffBuyList } from "./discover-controls";
@@ -116,14 +118,42 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
     );
   };
 
-  // Everything comes from the same recommendations, so both views and both nights are sent and switch in the browser
+  const upcomingFor = (night: Night) => {
+    const groups = UPCOMING_GROUPS.filter((u) => rec.nights[night].upcoming[u.kind].length > 0);
+    return (
+      <>
+        <p className="max-w-2xl text-sm text-slate">
+          Campaigns on{" "}
+          <a href={PRELAUNCH_LIST_URL} target="_blank" rel="noreferrer" className="text-accent underline-offset-4 hover:underline">
+            a list BGG members keep
+          </a>
+          , recent Kickstarter and Gamefound games, and new games trending on BGG or on someone&apos;s wishlist, that nobody owns. BGG&apos;s rating doesn&apos;t count toward these percentages, since it
+          comes mostly from fans this early. BGG doesn&apos;t say whether a campaign is funding now or a game is already out, so check its page.
+        </p>
+        {groups.length ? (
+          groups.map((u) => (
+            <Section key={u.kind} title={u.title}>
+              <PickGrid picks={rec.nights[night].upcoming[u.kind]} {...cardProps} mode="group" />
+            </Section>
+          ))
+        ) : (
+          <Empty>Nothing coming up suits this kind of event yet.</Empty>
+        )}
+      </>
+    );
+  };
+  const nights: Night[] = CASUAL_NIGHT ? ["core", "casual"] : ["core"];
+  const hasUpcoming = nights.some((night) => UPCOMING_GROUPS.some((u) => rec.nights[night].upcoming[u.kind].length > 0));
+
+  // Everything comes from the same recommendations, so all the views and both nights are sent and switch in the browser
   return (
     <DiscoverTabs
-      initial={params.view === "you" ? "you" : "group"}
+      initial={params.view === "you" ? "you" : params.view === "upcoming" && hasUpcoming ? "upcoming" : "group"}
       initialNight={(CASUAL_NIGHT && nightParam(params.night)) || "core"}
       twoPlayer={twoPlayer}
       nightNames={NIGHT_NAMES}
       group={CASUAL_NIGHT ? { core: forNight("core"), casual: forNight("casual") } : { core: forNight("core") }}
+      upcoming={hasUpcoming ? Object.fromEntries(nights.map((night) => [night, upcomingFor(night)])) : null}
       you={
         !rec.me.enoughData ? (
           <Empty>
@@ -254,10 +284,12 @@ function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga }: Ca
         return "Trending on BGG";
       case "top":
         return g.bggRank ? `BGG #${g.bggRank}` : "Well loved on BGG";
+      case "upcoming":
+        return null; // Has its own line, with a link
     }
-  });
+  }).filter((s) => s !== null);
   if (owned && c.ownerIds.length) sources.unshift(`On the shelf: ${names(c.ownerIds)}${c.unplayed ? ", never played together" : ""}`);
-  const facts = [playerRange(g.minPlayers, g.maxPlayers), playtime(g.minPlaytime, g.maxPlaytime), g.weight ? `weight ${g.weight.toFixed(1)}` : null, g.bggRating ? `BGG ${g.bggRating.toFixed(1)}` : null];
+  const facts = [playerRange(g.minPlayers, g.maxPlayers), playtime(g.minPlaytime, g.maxPlaytime), g.weight ? `weight ${g.weight.toFixed(1)}` : null, g.bggRating && !c.upcoming ? `BGG ${g.bggRating.toFixed(1)}` : null];
 
   return (
     <li className="flex gap-3 rounded-xl border border-line bg-card p-3">
@@ -281,13 +313,13 @@ function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga }: Ca
               )}
             </p>
           </div>
-          {mode === "group" && c.group.of > 0 && (
+          {mode === "group" && c.group.of > 0 && !c.unscored && (
             <div className="shrink-0 text-right" title="The average of everyone's chances, shown under the card">
               <div className="font-display tabular text-2xl leading-none">{percent(c.group.chance)}</div>
               <div className="text-[0.7rem] text-slate">{c.group.of > 1 ? "average chance" : "chance of a hit"}</div>
             </div>
           )}
-          {mode === "me" && mine && scoredIds.includes(meId) && (
+          {mode === "me" && mine && scoredIds.includes(meId) && !c.unscored && (
             <div className="shrink-0 text-right" title={mine.known ? undefined : "Chance you'd rank it above your usual game"}>
               {mine.known ? (
                 <div className="text-xs text-slate">You rate it {said(mine, "your")}</div>
@@ -302,7 +334,16 @@ function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga }: Ca
         </div>
 
         {sources.length > 0 && <p className="mt-1 text-xs text-accent">{[...new Set(sources)].join(", ")}</p>}
+        {c.upcoming && (
+          <p className="mt-1 text-xs text-slate">
+            {c.upcoming.line},{" "}
+            <a href={bggUrl(g.id, g.name)} target="_blank" rel="noreferrer" className="text-accent underline underline-offset-4">
+              check its page on BGG
+            </a>
+          </p>
+        )}
         {c.suggestion?.reason && <p className="mt-1.5 text-sm">{c.suggestion.reason}</p>}
+        {c.unscored && <p className="mt-1 text-xs text-slate">BGG doesn&apos;t list its mechanics yet, so there&apos;s no percentage.</p>}
 
         {reasons.length > 0 && (
           <ul className="mt-2 flex flex-wrap gap-1">
@@ -315,7 +356,7 @@ function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga }: Ca
         )}
 
         <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-2">
-          {mode === "group" && scoredIds.length > 1 ? (
+          {mode === "group" && scoredIds.length > 1 && !c.unscored ? (
             <ul aria-label="Fit for each member" className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
               {members.map((m) => {
                 const counted = scoredIds.includes(m.id);
@@ -341,7 +382,7 @@ function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga }: Ca
             <span />
           )}
           {!owned && (
-            <span className="flex items-center gap-2">
+            <span className="flex flex-wrap items-center justify-end gap-2">
               {c.suggestion && c.suggestion.score !== 0 && <span className="tabular text-xs text-slate">{c.suggestion.score} {Math.abs(c.suggestion.score) === 1 ? "vote" : "votes"}</span>}
               <PickActions gameId={g.id} wanted={c.suggestion?.myVote === 1} notForMe={c.vetoedBy.includes(meId)} />
               {buyList && c.suggestion && <TakeOffBuyList suggestionId={c.suggestion.id} name={g.name} />}

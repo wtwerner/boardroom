@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-const { parseThings } = await import("./bgg");
+const { parseFamilyGames, parseGeeklist, parseThings } = await import("./bgg");
 
 // Trimmed from a real /thing?stats=1 response
 const XML = `<?xml version="1.0" encoding="utf-8"?>
@@ -52,9 +52,60 @@ describe("parseThings", () => {
     expect(exp).toMatchObject({ expansion: true, bggRank: null });
   });
 
+  it("reads a game nobody has voted on yet, whose poll has no results", () => {
+    const [game] = parseThings(`<items><item type="boardgame" id="10000001">
+      <name type="primary" value="Not Out Yet" />
+      <poll name="suggested_numplayers" totalvotes="0"><results numplayers="1"></results><results numplayers="4+"></results></poll>
+    </item></items>`);
+    expect(game).toMatchObject({ id: 10000001, name: "Not Out Yet", bestPlayers: [] });
+  });
+
   it("decodes descriptions, which BGG escapes twice", () => {
     const [brass] = parseThings(XML);
     expect(brass.description).toBe("Build canals—then rails.\n\nUses the Überplay art, it’s “great” & more.\n\n—description from the publisher");
+  });
+});
+
+describe("parseFamilyGames", () => {
+  it("reads the games in a family, not the family's own links", () => {
+    const ids = parseFamilyGames(`<items><item type="boardgamefamily" id="1000">
+      <name type="primary" sortindex="1" value="Crowdfunding: Example" />
+      <link type="boardgamefamily" id="10000001" value="One Game" inbound="true"/>
+      <link type="boardgamefamily" id="10000002" value="Another Game" inbound="true"/>
+      <link type="boardgamefamily" id="2000" value="Some Other Family"/>
+    </item></items>`);
+    expect(ids).toEqual([10000001, 10000002]);
+  });
+
+  it("copes with a family with no games", () => {
+    expect(parseFamilyGames(`<items></items>`)).toEqual([]);
+  });
+});
+
+describe("parseGeeklist", () => {
+  const LIST = `<geeklist id="1"><title>Example</title>
+    <item id="1" objecttype="thing" subtype="boardgame" objectid="10000001" objectname="One &amp; Only" username="sam"
+      postdate="Mon, 26 Oct 2026 15:02:50 +0000" editdate="Tue, 27 Oct 2026 15:02:50 +0000" thumbs="0">
+      <body>[b]Kickstarter Date[/b] January 2027 &amp; on</body>
+    </item>
+    <item id="2" objecttype="thing" subtype="boardgameexpansion" objectid="10000002" objectname="An Expansion"
+      postdate="Mon, 26 Oct 2026 15:02:50 +0000" editdate="Mon, 26 Oct 2026 15:02:50 +0000"><body>Skip me</body></item>
+    <item id="3" objecttype="thing" subtype="boardgame" objectid="10000003" objectname="Number Body"
+      postdate="Mon, 26 Oct 2026 15:02:50 +0000" editdate="not a date"><body>2027</body></item>
+    <item id="4" objecttype="thing" subtype="boardgame" objectid="10000004" objectname="No Body"
+      postdate="Mon, 26 Oct 2026 15:02:50 +0000" editdate="Mon, 26 Oct 2026 15:02:50 +0000"></item>
+  </geeklist>`;
+
+  it("reads the games on a list, with when each was last touched", () => {
+    const [first] = parseGeeklist(LIST);
+    expect(first).toEqual({ id: 10000001, body: "[b]Kickstarter Date[/b] January 2027 & on", touchedAt: new Date("2026-10-27T15:02:50Z") });
+  });
+
+  it("leaves out expansions, and copes with odd entries", () => {
+    const got = parseGeeklist(LIST);
+    expect(got.map((e) => e.id)).toEqual([10000001, 10000003, 10000004]);
+    expect(got[1]).toMatchObject({ body: "2027", touchedAt: new Date("2026-10-26T15:02:50Z") });
+    expect(got[2].body).toBe("");
   });
 });
 

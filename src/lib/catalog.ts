@@ -1,7 +1,9 @@
 import "server-only";
 import { and, desc, eq, inArray, isNotNull, max } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { fetchGameDetails, fetchHotGames, hasBggToken } from "./bgg";
+import { fetchFamilyGames, fetchGameDetails, fetchGeeklist, fetchHotGames, hasBggToken } from "./bgg";
+import { localDate } from "./nights";
+import { CROWDFUNDING_FAMILIES, DETAILS_STALE_DAYS, PRELAUNCH_LIST_ID, collectUpcoming, parsePrelaunchBody } from "./upcoming";
 import { upsertGameDetails } from "./sync";
 
 /**
@@ -116,4 +118,57 @@ export async function refreshBgaDetails(limit = BGA_DETAILS_PER_RUN): Promise<nu
     await db.insert(schema.syncState).values({ key: BGA_SKIPPED_KEY, value }).onConflictDoUpdate({ target: schema.syncState.key, set: { value } });
   }
   return base.length;
+}
+
+/** BGG details fetched per run: 20 games a request, a couple of seconds apart. The list fills out over the first week or so. */
+const UPCOMING_DETAILS_PER_RUN = 200;
+/** Games BGG had no base game for (mostly expansions, which the families include), so they aren't asked about every night */
+const UPCOMING_SKIPPED_KEY = "upcoming:skipped_bgg_ids";
+
+/**
+ * Refresh what Discover's Coming up knows about crowdfunding: BGG's Kickstarter and Gamefound
+ * families and the members' list of campaigns yet to open, fetching a batch of details each run
+ * so they can be scored. A failed fetch leaves the list as it was.
+ */
+export async function refreshUpcoming(limit = UPCOMING_DETAILS_PER_RUN): Promise<{ games: number; fetched: number }> {
+  if (!hasBggToken()) return { games: 0, fetched: 0 };
+  const today = localDate(new Date());
+  const thisYear = Number(today.slice(0, 4));
+  const families = [];
+  for (const f of CROWDFUNDING_FAMILIES) families.push({ platform: f.platform, ids: await fetchFamilyGames(f.id) });
+  const prelaunch = (await fetchGeeklist(PRELAUNCH_LIST_ID)).map((e) => ({ id: e.id, touchedAt: e.touchedAt, ...parsePrelaunchBody(e.body) }));
+  const sources = collectUpcoming(families, prelaunch, today);
+  const ids = [...sources.keys()];
+
+  const known = new Map(
+    (await db.select({ id: schema.game.id, year: schema.game.year, fetched: schema.game.detailsFetchedAt }).from(schema.game).where(inArray(schema.game.id, ids))).map((g) => [g.id, g]),
+  );
+  const skippedRow = await db.query.syncState.findFirst({ where: eq(schema.syncState.key, UPCOMING_SKIPPED_KEY) });
+  const skipped = new Set<number>(skippedRow ? JSON.parse(skippedRow.value) : []);
+  // New games first, in the order they came. A game dated before this year isn't coming up, so it's left alone.
+  const staleBefore = Date.now() - DETAILS_STALE_DAYS * 86_400_000;
+  const missing = ids.filter((id) => !skipped.has(id) && !known.get(id)?.fetched);
+  const stale = ids.filter((id) => {
+    const g = known.get(id);
+    return g?.fetched && g.fetched.getTime() < staleBefore && (g.year === null || g.year >= thisYear);
+  });
+  const fresh = await fetchGameDetails([...missing, ...stale].slice(0, limit));
+  const base = fresh.filter((d) => !d.expansion);
+  await upsertGameDetails(base);
+  const got = new Set(base.map((d) => d.id));
+  const asked = new Set([...missing].slice(0, limit));
+  for (const id of asked) if (!got.has(id)) skipped.add(id);
+  // Only what's still in the running, so this doesn't grow forever
+  const value = JSON.stringify([...skipped].filter((id) => sources.has(id)));
+  await db.insert(schema.syncState).values({ key: UPCOMING_SKIPPED_KEY, value }).onConflictDoUpdate({ target: schema.syncState.key, set: { value } });
+
+  const stored = new Set(
+    (await db.select({ id: schema.game.id }).from(schema.game).where(inArray(schema.game.id, ids))).map((g) => g.id),
+  );
+  const rows = [...sources].filter(([id]) => stored.has(id) && !skipped.has(id)).map(([gameId, s]) => ({ gameId, ...s }));
+  await db.transaction(async (tx) => {
+    await tx.delete(schema.upcomingGame);
+    for (let i = 0; i < rows.length; i += 200) await tx.insert(schema.upcomingGame).values(rows.slice(i, i + 200));
+  });
+  return { games: rows.length, fetched: base.length };
 }

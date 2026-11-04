@@ -1,7 +1,7 @@
 import { revalidateTag } from "next/cache";
 import { DEMO } from "@/config";
 import { hasBggToken } from "@/lib/bgg";
-import { refreshBgaDetails, refreshCatalog } from "@/lib/catalog";
+import { refreshBgaDetails, refreshCatalog, refreshUpcoming } from "@/lib/catalog";
 import { resetDemo } from "@/lib/demo-seed";
 import { SETTINGS_TAG, loadSettings } from "@/lib/settings-store";
 import { syncBgaGames, syncBggCollections, syncDiscordPlays } from "@/lib/sync";
@@ -57,6 +57,11 @@ async function syncGroup(results: Record<string, unknown>) {
       results.catalog = await refreshCatalog();
     } catch (err) {
       results.catalog = { error: String(err) };
+    }
+    try {
+      results.upcoming = await refreshUpcoming();
+    } catch (err) {
+      results.upcoming = { error: String(err) };
     }
   }
 }

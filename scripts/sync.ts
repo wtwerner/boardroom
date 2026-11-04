@@ -15,9 +15,10 @@ async function main() {
 
   console.log("Discord:", await syncDiscordPlays());
   if (hasBggToken()) {
-    const { refreshCatalog } = await import("@/lib/catalog");
+    const { refreshCatalog, refreshUpcoming } = await import("@/lib/catalog");
     console.log("BGG:", await syncBggCollections());
     console.log("Catalog:", await refreshCatalog());
+    console.log("Coming up:", await refreshUpcoming());
   }
   else console.log("BGG: skipped (no BGG_API_TOKEN)");
   console.log("BGA:", await syncBgaGames());

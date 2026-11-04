@@ -8,15 +8,15 @@ import { type ActionResult, addSuggestion, askClaudeForPicks, loadCatalog, setOp
 import { buttonClass } from "@/components/ui";
 import type { Night } from "@/db/enums";
 
-type View = "group" | "you";
+type View = "group" | "you" | "upcoming";
 const discoverHref = (view: View, twoPlayer: boolean, night: Night) => {
-  const q = new URLSearchParams({ ...(view === "you" && { view }), ...(twoPlayer && { two: "1" }), ...(night === "casual" && { night }) }).toString();
+  const q = new URLSearchParams({ ...(view !== "group" && { view }), ...(twoPlayer && { two: "1" }), ...(night === "casual" && { night }) }).toString();
   return q ? `/discover?${q}` : "/discover";
 };
 
 /**
- * Discover's two views, and the group view for each night. All are rendered up front from
- * the same recommendations, so switching is instant; the URL follows along so a reload or a
+ * Discover's views, and the group view and Coming up for each night. All are rendered up front
+ * from the same recommendations, so switching is instant; the URL follows along so a reload or a
  * shared link opens the same tab. The 2-player switch changes the data, so it's a real navigation.
  */
 export function DiscoverTabs({
@@ -26,6 +26,7 @@ export function DiscoverTabs({
   group,
   nightNames,
   you,
+  upcoming,
 }: {
   initial: View;
   initialNight: Night;
@@ -35,6 +36,8 @@ export function DiscoverTabs({
   /** What each night is called, from the server's config */
   nightNames: Record<Night, string>;
   you: ReactNode;
+  /** Coming up for each night, or null to leave the tab out when there's nothing on it for any night */
+  upcoming: Partial<Record<Night, ReactNode>> | null;
 }) {
   const [view, setView] = useState<View>(initial);
   const [night, setNight] = useState<Night>(initialNight);
@@ -44,10 +47,12 @@ export function DiscoverTabs({
     setNight(n);
     window.history.replaceState(null, "", discoverHref(v, twoPlayer, n));
   };
-  const tabs = [
+  const tabs: [View, string][] = [
     ["group", "For the group"],
     ["you", "For you"],
-  ] as const;
+    ...(upcoming ? ([["upcoming", "Coming up"]] as [View, string][]) : []),
+  ];
+  const byNight = view === "upcoming" ? upcoming : group;
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -67,7 +72,7 @@ export function DiscoverTabs({
             </button>
           ))}
         </div>
-        {view === "group" && nights.length > 1 && (
+        {byNight && view !== "you" && nights.length > 1 && (
           <div role="group" aria-label="Which kind of event" className="flex w-fit gap-1 rounded-lg border border-line bg-table p-1">
             {nights.map((n) => (
               <button
@@ -96,13 +101,13 @@ export function DiscoverTabs({
       </div>
       {tabs.map(([v]) => (
         <div key={v} role="tabpanel" id={`discover-${v}`} aria-labelledby={`discover-tab-${v}`} hidden={view !== v} className="space-y-8">
-          {v === "group"
-            ? nights.map((n) => (
+          {v === "you"
+            ? you
+            : nights.map((n) => (
                 <div key={n} hidden={night !== n} className="space-y-8">
-                  {group[n]}
+                  {v === "group" ? group[n] : upcoming?.[n]}
                 </div>
-              ))
-            : you}
+              ))}
         </div>
       ))}
     </div>

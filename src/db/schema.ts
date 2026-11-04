@@ -510,6 +510,22 @@ export const catalogGame = sqliteTable("catalog_game", {
   ...timestamps,
 });
 
+/** Recent crowdfunded games and campaigns yet to open, for Discover's Coming up. Replaced nightly from BGG; see src/lib/upcoming.ts. */
+export const upcomingGame = sqliteTable("upcoming_game", {
+  gameId: integer("game_id")
+    .primaryKey()
+    .references(() => game.id, { onDelete: "cascade" }),
+  /** Where it's crowdfunded, as far as BGG says */
+  platform: text("platform"),
+  /** On the BGG members' list of campaigns that haven't opened yet */
+  prelaunch: integer("prelaunch", { mode: "boolean" }).notNull().default(false),
+  /** When it opens, as the list gives it: "January 2027", "Q1 2027" */
+  launch: text("launch"),
+  /** YYYY-MM: the last month that `launch` could mean, after which it must have opened */
+  launchUntil: text("launch_until"),
+  ...timestamps,
+});
+
 // ---------------------------------------------------------------------------
 // Board Game Arena: which games can be played there, refreshed nightly from its game list
 // ---------------------------------------------------------------------------

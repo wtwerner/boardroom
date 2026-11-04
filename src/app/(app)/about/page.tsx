@@ -8,6 +8,7 @@ import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { inSentence } from "@/lib/text";
 import { loadSettings } from "@/lib/settings-store";
 import { HEAVY_WEIGHT, TIER_LABEL } from "@/lib/tier";
+import { UPCOMING_PER_GROUP } from "@/lib/upcoming";
 
 export const metadata: Metadata = { title: "How it works" };
 
@@ -150,6 +151,11 @@ export default async function AboutPage() {
                 someone wants stays on the buy list. Each person can ask {CLAUDE_IDEAS_PER_DAY} times a day.
               </p>
             )}
+            <p>
+              <strong>Coming up</strong>, Discover&apos;s third tab, is games nobody owns, in three groups: campaigns yet to open, from a list BGG members keep; recent games from BGG&apos;s Kickstarter and Gamefound families, dated this
+              year or later; and new games trending on BGG or on someone&apos;s wishlist. Their percentages work the same way but leave out BGG&apos;s rating, which comes mostly from fans this early, and up to{" "}
+              {UPCOMING_PER_GROUP} at 50% or better show in each group for each kind of event. BGG doesn&apos;t say whether a campaign is funding now or a game is already out, so check its page.
+            </p>
           </Part>
 
           <Part id="plan" title="The planner">

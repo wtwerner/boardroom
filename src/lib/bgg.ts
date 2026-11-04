@@ -5,6 +5,8 @@ import Papa from "papaparse";
 
 // The token is ignored on www.boardgamegeek.com — must be the bare domain.
 const API = "https://boardgamegeek.com/xmlapi2";
+/** Geeklists are only on the older API */
+const OLD_API = "https://boardgamegeek.com/xmlapi";
 
 export type BggCollectionEntry = {
   id: number;
@@ -60,7 +62,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 let lastRequestAt = 0;
 
 /** BGG throttles aggressively; space requests out and retry "queued" (202) responses. */
-async function bggFetch(path: string): Promise<string> {
+async function bggFetch(path: string, api = API): Promise<string> {
   const token = process.env.BGG_API_TOKEN;
   if (!token) throw new Error("BGG_API_TOKEN is not set — use the CSV import until BGG approves your app");
 
@@ -69,7 +71,7 @@ async function bggFetch(path: string): Promise<string> {
     if (wait > 0) await sleep(wait);
     lastRequestAt = Date.now();
 
-    const res = await fetch(`${API}${path}`, {
+    const res = await fetch(`${api}${path}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
     });
@@ -191,12 +193,46 @@ export async function fetchHotGames(): Promise<number[]> {
   return items.map((it) => Number(it.id)).filter(Boolean);
 }
 
+/** Every game in a BGG family, such as the games crowdfunded on one platform. */
+export async function fetchFamilyGames(familyId: number): Promise<number[]> {
+  return parseFamilyGames(await bggFetch(`/family?id=${familyId}`));
+}
+
+export function parseFamilyGames(body: string): number[] {
+  const items: Node[] = xml.parse(body).items?.item ?? [];
+  const links: Node[] = items[0]?.link ?? [];
+  return links.filter((l) => l.inbound === "true").map((l) => Number(l.id)).filter(Boolean);
+}
+
+export type GeeklistEntry = { id: number; body: string; touchedAt: Date };
+
+/** The games on a BGG geeklist, with each entry's text. BGG queues a list it hasn't built yet, which bggFetch waits out. */
+export async function fetchGeeklist(listId: number): Promise<GeeklistEntry[]> {
+  return parseGeeklist(await bggFetch(`/geeklist/${listId}`, OLD_API));
+}
+
+export function parseGeeklist(body: string): GeeklistEntry[] {
+  const items: Node[] = xml.parse(body).geeklist?.item ?? [];
+  return items
+    .filter((it) => it.subtype === "boardgame")
+    .map((it) => {
+      const edited = new Date(it.editdate);
+      return {
+        id: Number(it.objectid),
+        body: it.body === undefined ? "" : bggText(String(it.body)),
+        touchedAt: Number.isNaN(edited.getTime()) ? new Date(it.postdate) : edited,
+      };
+    })
+    .filter((e) => e.id);
+}
+
 /** Player counts where "Best" got the most votes in BGG's suggested_numplayers poll. */
 function bestPlayerCounts(polls: Node[] | undefined): number[] {
   const poll = polls?.find((p) => p.name === "suggested_numplayers");
   const out: number[] = [];
   for (const r of (poll?.results as Node[] | undefined) ?? []) {
-    const votes = Object.fromEntries((r.result as Node[]).map((x) => [x.value, Number(x.numvotes)]));
+    // A game nobody has voted on yet has no results here, as with most games not out yet
+    const votes = Object.fromEntries(((r.result as Node[] | undefined) ?? []).map((x) => [x.value, Number(x.numvotes)]));
     const n = Number(String(r.numplayers).replace("+", ""));
     if (votes.Best > 0 && votes.Best >= (votes.Recommended ?? 0) && votes.Best >= (votes["Not Recommended"] ?? 0)) {
       if (!Number.isNaN(n)) out.push(n);

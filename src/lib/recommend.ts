@@ -4,6 +4,8 @@ import { db, schema } from "@/db";
 import type { Night, Tier } from "@/db/enums";
 import { type ChanceModel, type GroupChance, chanceOf, groupChance, saidChance, trainChances } from "./chance";
 import { isLegacy } from "./night";
+import { localDate } from "./nights";
+import { MIN_UPCOMING_CHANCE, UPCOMING_PER_GROUP, type UpcomingKind, upcomingStatus } from "./upcoming";
 import { type RankingLists, type ShelfGame, getMembers, getShelf, getSuggestions, getTieredRankingLists } from "./queries";
 import { isFromLatestAsk } from "./picks";
 import { rankShare } from "./ranking";
@@ -32,7 +34,7 @@ export type Source =
   | { kind: "claude"; forUserId: string | null; night: Night | null }
   | { kind: "member"; userId: string | null; name: string | null }
   | { kind: "wishlist"; userIds: string[] }
-  | { kind: "hot" | "top" };
+  | { kind: "hot" | "top" | "upcoming" };
 
 export type Candidate = {
   game: {
@@ -60,6 +62,10 @@ export type Candidate = {
   /** Members who marked it "not for me" */
   vetoedBy: string[];
   unplayed: boolean;
+  /** On Coming up: which group, and where it stands as far as BGG says */
+  upcoming: { kind: UpcomingKind; line: string } | null;
+  /** Coming up, with no mechanics or categories on BGG to score it on, so its numbers mean nothing */
+  unscored: boolean;
 };
 
 /** One member and one game: the chance they'd put it above their own average (chance.ts), or what they've already said. */
@@ -97,7 +103,7 @@ type NightGame = { minPlayers: number | null; maxPlayers: number | null; weight:
  * plays, for the casual night).
  */
 export async function getRecommendations(meId: string, myPlayerId: number | null, opts: { twoPlayer?: boolean; online?: boolean } = {}) {
-  const [members, lists, opinions, collection, allGames, shelf, suggestions, catalog, groupPlays, myPlayed, coreTables, casualTables, onBga, casualWeights] = await Promise.all([
+  const [members, lists, opinions, collection, allGames, shelf, suggestions, catalog, groupPlays, myPlayed, coreTables, casualTables, onBga, casualWeights, upcomingRows] = await Promise.all([
     getMembers(),
     getTieredRankingLists(),
     db.select().from(schema.opinion),
@@ -144,6 +150,7 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
       .from(schema.play)
       .innerJoin(schema.game, eq(schema.game.id, schema.play.gameId))
       .where(and(eq(schema.play.night, "casual"), isNotNull(schema.game.weight))),
+    db.select().from(schema.upcomingGame),
   ]);
 
   const games = new Map(allGames.map((g) => [g.id, g]));
@@ -164,6 +171,19 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
   const playedByMe = new Set(myPlayed.map((r) => r.id!));
   const owners = new Map(shelf.map((g) => [g.id, g.ownerIds]));
 
+  // Coming up: which games nobody owns are on it, and where each stands
+  const today = localDate(new Date());
+  const hotIds = new Set(catalog.filter((c) => c.source === "hot").map((c) => c.gameId));
+  const wishlisted = new Set(collection.filter((c) => c.wishlist).map((c) => c.gameId));
+  const upcomingSources = new Map(upcomingRows.map((u) => [u.gameId, u]));
+  const upcoming = new Map<number, NonNullable<Candidate["upcoming"]>>();
+  for (const id of new Set([...hotIds, ...wishlisted, ...upcomingSources.keys()])) {
+    const g = games.get(id);
+    if (!g || owners.has(id)) continue;
+    const status = upcomingStatus({ year: g.year, source: upcomingSources.get(id) ?? null, trending: hotIds.has(id), wishlisted: wishlisted.has(id) }, today);
+    if (status) upcoming.set(id, status);
+  }
+
   /** What a member has actually said about the game if anything, else the model's chance. */
   const fitFor = (p: Profile, g: GameFeatures): MemberFit => {
     const actual = p.prefs.get(g.id);
@@ -175,7 +195,10 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
   const candidate = (gameId: number): Candidate | null => {
     const g = games.get(gameId);
     if (!g) return null;
-    const fits = Object.fromEntries(profiles.map((p) => [p.userId, fitFor(p, g)]));
+    const soon = upcoming.get(gameId) ?? null;
+    // This early, a game's BGG rating comes mostly from backers and fans, so it says little
+    const scoredAs = soon ? { ...g, bggRating: null } : g;
+    const fits = Object.fromEntries(profiles.map((p) => [p.userId, fitFor(p, scoredAs)]));
     return {
       game: g,
       fits,
@@ -185,6 +208,8 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
       suggestion: null,
       vetoedBy: vetoes.get(gameId) ?? [],
       unplayed: !playedTimes.has(gameId),
+      upcoming: soon,
+      unscored: Boolean(soon) && !g.mechanics?.length && !g.categories?.length,
     };
   };
 
@@ -212,6 +237,7 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
   // used to own, rated on BGG or played elsewhere aren't ideas in themselves: nobody can bring them.
   for (const [id, userIds] of byStatus((c) => c.wishlist)) add(id, { kind: "wishlist", userIds });
   for (const c of catalog) add(c.gameId, { kind: c.source });
+  for (const id of upcoming.keys()) add(id, { kind: "upcoming" });
 
   // The usual table: median players across recent plays. Before any, everyone, plus two guests
   // on the casual night (as the planner starts it)
@@ -222,16 +248,19 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
   // The casual night's ceiling: heavier than 4 in 5 of the games it has played is out
   const weights = casualWeights.map((w) => w.weight!).sort((a, b) => a - b);
   const casualCeiling = weights.length >= CASUAL_WEIGHT_PLAYS ? Math.round(weights[Math.floor(weights.length * 0.8)] * 10) / 10 : CASUAL_MAX_WEIGHT;
-  const nightFit = (night: Night, tableSize: number, maxWeight: number | null) => ({
-    tableSize,
-    maxWeight,
+  const nightFit = (night: Night, tableSize: number, maxWeight: number | null) => {
+    const seats = (g: NightGame) => (g.minPlayers ?? 1) <= tableSize && (g.maxPlayers ?? 99) >= tableSize;
     /** Seats the night's usual table and is its kind of game */
-    fits: (g: NightGame) =>
-      (g.minPlayers ?? 1) <= tableSize &&
-      (g.maxPlayers ?? 99) >= tableSize &&
-      gameTier({ weight: g.weight, tier: g.tier ?? null }) === NIGHT_TIER[night] &&
-      (maxWeight === null || (g.weight ?? 0) <= maxWeight),
-  });
+    const fits = (g: NightGame) =>
+      seats(g) && gameTier({ weight: g.weight, tier: g.tier ?? null }) === NIGHT_TIER[night] && (maxWeight === null || (g.weight ?? 0) <= maxWeight);
+    return {
+      tableSize,
+      maxWeight,
+      fits,
+      /** A game coming up may have no weight, which says nothing about it, so it's shown for every night it seats */
+      fitsUpcoming: (g: NightGame) => (g.weight === null && !g.tier ? seats(g) : fits(g)),
+    };
+  };
   const byNight = { core: nightFit("core", usualTable(coreTables, "core"), null), casual: nightFit("casual", usualTable(casualTables, "casual"), casualCeiling) };
 
   // The group has a list for each night; one member's list is the same whichever night is showing
@@ -260,6 +289,8 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
   const notVetoedByMe = (c: Candidate) => !c.vetoedBy.includes(meId);
   // Turned down by enough of the group that it shouldn't be put forward
   const notWidelyVetoed = (c: Candidate) => c.vetoedBy.length < Math.max(2, scored.length / 2);
+  // Hundreds of games come only from Coming up's sources; they stay on its tab
+  const onlyComingUp = (c: Candidate) => c.sources.every((s) => s.kind === "upcoming");
 
   // On BGA, nobody owns it and the group hasn't played it: worth a try online. Any player count
   // fits, since two people can play online. Only games with BGG details can be scored.
@@ -272,14 +303,20 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
   const myClaude = unowned.filter((c) => isClaude(c, meId) && notVetoedByMe(c)).sort(byMine);
   const forNight = (night: Night) => {
     const { fits, ...table } = byNight[night];
+    /** Worth keeping an eye on for this night: best match first, then any there's nothing to score on */
+    const upcomingGames = unowned
+      .filter((c) => c.upcoming && table.fitsUpcoming(c.game) && notWidelyVetoed(c) && (c.unscored || c.group.of === 0 || c.group.chance >= MIN_UPCOMING_CHANCE))
+      .sort((a, b) => Number(a.unscored) - Number(b.unscored) || byMatch(a, b));
+    const ofKind = (kind: UpcomingKind) => upcomingGames.filter((c) => c.upcoming?.kind === kind).slice(0, UPCOMING_PER_GROUP);
     return {
       ...table,
       fits,
+      upcoming: { opening: ofKind("opening"), crowdfunded: ofKind("crowdfunded"), new: ofKind("new") },
       /** Claude's latest picks for this night that are still its kind of game */
       claude: unowned.filter((c) => isClaude(c, null, night) && fits(c.game)).sort(byMatch),
       claudeUpdatedAt: latestAsk[night],
       /** Everything else nobody owns that fits the night, best match first */
-      more: unowned.filter((c) => !isClaude(c, null, night) && fits(c.game) && notWidelyVetoed(c)).sort(byMatch).slice(0, 18),
+      more: unowned.filter((c) => !isClaude(c, null, night) && !onlyComingUp(c) && fits(c.game) && notWidelyVetoed(c)).sort(byMatch).slice(0, 18),
       /** Games someone owns now that fit the night, best match first */
       shelf: owned.filter((c) => fits(c.game) && notWidelyVetoed(c)).sort(byMatch).slice(0, 12),
     };
@@ -299,7 +336,7 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
     me: {
       claude: myClaude,
       claudeUpdatedAt: latestAsk.me,
-      more: unowned.filter((c) => !isClaude(c, meId) && notVetoedByMe(c)).sort(byMine).slice(0, 18),
+      more: unowned.filter((c) => !isClaude(c, meId) && !onlyComingUp(c) && notVetoedByMe(c)).sort(byMine).slice(0, 18),
       shelf: owned.filter((c) => !playedByMe.has(c.game.id)).sort(byMine).slice(0, 12),
       enoughData: (profileById.get(meId)?.evidence ?? 0) >= MIN_EVIDENCE,
     },
