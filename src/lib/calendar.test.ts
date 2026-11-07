@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type CalendarEvent, buildCalendar, deviceFrom, googleCalendarUrl, googleSubscribeUrl, outlookCalendarUrl, readNightKey, signNightKey, webcalUrl } from "./calendar";
+import { type CalendarEvent, buildCalendar, deviceFrom, googleCalendarUrl, googleSubscribeUrl, isFeedToken, isSyncOrigin, outlookCalendarUrl, readNightKey, signNightKey, webcalUrl } from "./calendar";
 
 const night: CalendarEvent = {
   id: 7,
@@ -100,6 +100,19 @@ describe("a night's key", () => {
     expect(readNightKey(`13-${signature}`, "secret")).toBeNull();
     expect(readNightKey(signNightKey(12, "other"), "secret")).toBeNull();
     for (const key of ["12", "12-short", "", "sync", "-1-aaaaaaaaaaaaaaaaaaaaaa"]) expect(readNightKey(key, "secret")).toBeNull();
+  });
+});
+
+describe("what the calendar pages take from their addresses", () => {
+  it("only takes something shaped like a feed's secret", () => {
+    expect(isFeedToken("NgJYxxY_0epDI8l6-cQs-SB3c3ZxvQxQ")).toBe(true);
+    for (const s of ["short", "", undefined, ["NgJYxxY_0epDI8l6-cQs-SB3c3ZxvQxQ"], "../../settings/aaaaaaaaaaaaaaaaa"]) expect(isFeedToken(s)).toBe(false);
+  });
+
+  it("only goes back to Plan or a night's page", () => {
+    expect(isSyncOrigin("plan")).toBe(true);
+    expect(isSyncOrigin(signNightKey(12, "secret"))).toBe(true);
+    for (const s of ["https://example.com", "//example.com", "settings", "", undefined, ["plan"]]) expect(isSyncOrigin(s)).toBe(false);
   });
 });
 

@@ -12,6 +12,7 @@ import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
 import { canPostToDiscord, discordCode, hasInteractions, holdsRole, registerCommands, sendDirectMessage } from "@/lib/discord";
 import type { ParsedPlayer } from "@/lib/play-parser";
+import { isSyncOrigin } from "@/lib/calendar";
 import { feedTokenFor, replaceFeedToken } from "@/lib/calendar-store";
 import { addToLog, playOrder, refreshLogPost } from "@/lib/log-post";
 import { moveIn } from "@/lib/nights";
@@ -515,10 +516,11 @@ export async function setMyColor(color: string) {
 }
 
 /** Off to the page for subscribing to their events, making their feed's secret if it's the first time */
-export async function openCalendarSync() {
+export async function openCalendarSync(form: FormData) {
   const me = await requireUser();
   if (!me.playerId) redirect("/settings");
-  redirect(`/calendar/sync/${await feedTokenFor(me.playerId)}`);
+  const from = form.get("from");
+  redirect(`/calendar/sync/${await feedTokenFor(me.playerId)}${isSyncOrigin(from) ? `?from=${from}` : ""}`);
 }
 
 /** Their calendar link got out: a new one, which stops the old one working */
