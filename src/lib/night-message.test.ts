@@ -77,10 +77,11 @@ describe("buildNightMessage", () => {
       { kind: "rsvp", nightId: 12, status: "declined" },
       { kind: "for", nightId: 12 },
     ]);
-    expect(more.map((x) => x.label)).toEqual(["Edit", "Find a new date", "Plan it in Boardroom"]);
-    expect(parseActionId(more[0].custom_id)).toEqual({ kind: "edit", nightId: 12 });
-    expect(parseActionId(more[1].custom_id)).toEqual({ kind: "refind", nightId: 12 });
-    expect(more[2].url).toBe(base.planUrl);
+    expect(more.map((x) => x.label)).toEqual(["Add to calendar", "Edit", "Find a new date", "Plan it in Boardroom"]);
+    expect(parseActionId(more[0].custom_id)).toEqual({ kind: "calendar", nightId: 12 });
+    expect(parseActionId(more[1].custom_id)).toEqual({ kind: "edit", nightId: 12 });
+    expect(parseActionId(more[2].custom_id)).toEqual({ kind: "refind", nightId: 12 });
+    expect(more[3].url).toBe(base.planUrl);
   });
 
   it("leaves the site link off where most people can't open it", () => {

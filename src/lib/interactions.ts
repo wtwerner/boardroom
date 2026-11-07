@@ -101,6 +101,10 @@ export type Action =
   | { kind: "cancel"; nightId: number }
   /** Find a new date on a night's post, and the form it opens */
   | { kind: "refind"; nightId: number }
+  /** Add to calendar on a night's post, which opens a panel only they see */
+  | { kind: "calendar"; nightId: number }
+  /** New sync link on that panel, and `sure` on the button that confirms it */
+  | { kind: "calendarNew"; nightId: number; sure?: boolean }
   /** Invite someone to the core group's nights: the confirm button after Invite to … */
   | { kind: "welcome"; userId: string }
   /** Answer being asked to bring a game to a casual night: the buttons on the DM */
@@ -152,6 +156,8 @@ export function actionId(a: Action): string {
       return `v1:${POLL_CODES[a.kind]}:${a.pollId}`;
     case "pollOff":
       return `v1:${POLL_CODES.pollOff}:${a.pollId}${a.sure ? ":y" : ""}`;
+    case "calendarNew":
+      return `v1:calendarNew:${a.nightId}${a.sure ? ":y" : ""}`;
     default:
       return `v1:${a.kind}:${a.nightId}`;
   }
@@ -183,7 +189,8 @@ export function parseActionId(id: string | undefined): Action | null {
   const nightId = Number(rawNight);
   if (!Number.isInteger(nightId) || nightId <= 0) return null;
   if (kind === "rsvp") return RSVP_CODES[code] ? { kind, nightId, status: RSVP_CODES[code] } : null;
-  if (kind === "edit" || kind === "cancel" || kind === "for" || kind === "refind") return { kind, nightId };
+  if (kind === "calendarNew") return code === "y" ? { kind, nightId, sure: true } : { kind, nightId };
+  if (kind === "edit" || kind === "cancel" || kind === "for" || kind === "refind" || kind === "calendar") return { kind, nightId };
   return null;
 }
 

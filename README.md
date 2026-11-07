@@ -110,6 +110,7 @@ Sign in with Discord and open **Settings → Group settings**. Until someone's a
 | New events' title | `{date} ` and the night's name | What a new night is called unless someone names it. `{date}` is its date ("10/29/26"), `{game}` the game locked in for it or TBD: `{date} Game Night — {game}` makes "10/29/26 Game Night — TBD", then "10/29/26 Game Night — Root" once Root is locked in. Its thread has the same name |
 | Fewest to set a date | 2, or 3 for a casual night | Picking a date, how many need to be able to come for a date to be worth setting. A date with fewer shows as too few |
 | Reminder | 3 | How many hours before a night starts its post gets a reply pinging whoever's going or a maybe. `0` turns it off. Needs [the tick](#reminders-and-the-morning-after) |
+| How long an event runs | 3 | Hours, for when an event ends in people's calendars. Events only have a start time otherwise |
 | A casual night too | off | A second, casual night with its own name, title and channels (see [Core and casual nights](docs/how-it-works.md#core-and-casual-nights)) |
 | Heavy from BGG weight | 2.75 | Where the two rankings, Heavy games and Light games, split. Set it to the weight your group's heavier games start at |
 | Use Claude | off | Claude's picks and reading hand-written play posts the parser can't. Shown once `ANTHROPIC_API_KEY` is set. Off, the site never calls Claude or mentions it |

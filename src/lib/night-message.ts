@@ -137,6 +137,7 @@ function nightRows(n: NightCard, e: AppEmoji): Component[][] {
       button({ kind: "for", nightId: n.id }, "Someone else…", buttonEmoji(e, "someone")),
     ],
     [
+      button({ kind: "calendar", nightId: n.id }, "Add to calendar", buttonEmoji(e, "date")),
       button({ kind: "edit", nightId: n.id }, "Edit", buttonEmoji(e, "edit")),
       button({ kind: "refind", nightId: n.id }, "Find a new date", buttonEmoji(e, "date")),
       ...(n.planUrl ? [{ type: BUTTON, style: LINK_BUTTON_STYLE, label: `Plan it in ${n.siteName}`.slice(0, 80), url: n.planUrl }] : []),

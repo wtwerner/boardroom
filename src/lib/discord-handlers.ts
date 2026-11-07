@@ -42,6 +42,8 @@ import { escape } from "./discord-components";
 import { alreadyIn, canWelcome, welcomeCandidate, welcomeName, welcomeToGroup } from "./welcome";
 import { welcomeSummary } from "./welcome-message";
 import { bringAnswered, bringAskGone } from "./bring-message";
+import { feedTokenFor, nightKey, playerOfDiscordUser, replaceFeedToken } from "./calendar-store";
+import { buildCalendarPanel, buildNewLinkCheck } from "./calendar-message";
 
 /**
  * What the bot does with each button click, slash command and form, called from
@@ -152,6 +154,15 @@ async function component(i: Interaction) {
     return pollButton(i, action);
   const n = await ownNight(action.nightId);
 
+  // Anyone who can see the post can put it in their calendar
+  if (action.kind === "calendar") return panel(await calendarPanel(i, n));
+  if (action.kind === "calendarNew") {
+    if (!action.sure) return updatePanel(buildNewLinkCheck(n.id));
+    const player = await playerOfDiscordUser(i.member!.user.id);
+    if (player) await replaceFeedToken(player.id);
+    return updatePanel(await calendarPanel(i, n, { newLink: Boolean(player) }));
+  }
+
   if (action.kind === "rsvp") {
     if (!mayAnswer(i, n.night)) return reply(NOT_THIS_ONE());
     const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
@@ -184,6 +195,19 @@ async function component(i: Interaction) {
     }
   });
   return updateReply(`Cancelled **${n.title}**.`);
+}
+
+/** Their links for adding this night, with a sync link once they're a player (answering makes them one) */
+async function calendarPanel(i: Interaction, n: typeof schema.gameNight.$inferSelect, opts: { newLink?: boolean } = {}) {
+  if (!SITE_URL) throw new Error("The site's address isn't set, so there's no calendar link to give.");
+  const player = await playerOfDiscordUser(i.member!.user.id);
+  return buildCalendarPanel({
+    nightId: n.id,
+    title: n.title || NIGHT_NAMES[n.night],
+    addUrl: `${SITE_URL}/calendar/${await nightKey(n.id)}`,
+    syncUrl: player ? `${SITE_URL}/calendar/sync/${await feedTokenFor(player.id)}` : null,
+    newLink: opts.newLink,
+  });
 }
 
 async function submitted(i: Interaction) {

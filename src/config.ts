@@ -69,6 +69,9 @@ export let HEAVY_WEIGHT: number;
  */
 export let REMINDER_HOURS: number;
 
+/** How long a night usually runs, in hours. Nights only have a start, and calendars need an end. */
+export let NIGHT_HOURS: number;
+
 /**
  * The fewest who need to be able to come for a date on offer to be worth setting, by kind of
  * night: fewer, and the dates show as too few (poll-store.ts)
@@ -99,6 +102,7 @@ export function applySettings(s: GroupSettings) {
   GROUP_NIGHTS = s.casualNight ? ["core", "casual"] : ["core"];
   HEAVY_WEIGHT = s.heavyWeight;
   REMINDER_HOURS = s.reminderHours;
+  NIGHT_HOURS = s.nightHours;
   MIN_PEOPLE = { core: s.coreMinPeople, casual: s.casualMinPeople };
   CLAUDE = s.claude;
   CLAUDE_IDEAS_PER_DAY = s.claudeIdeasPerDay;

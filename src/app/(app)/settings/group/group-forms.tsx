@@ -63,6 +63,9 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
           <Field label="Reminder" hint="Hours before an event starts that its channel gets a ping for whoever's going or a maybe. 0 turns it off." {...field("reminderHours")}>
             <input id="reminderHours" name="reminderHours" type="number" min={0} max={72} step={1} defaultValue={s.reminderHours} className={clsx(input, "max-w-28")} />
           </Field>
+          <Field label="How long an event runs" hint="Hours, for when an event ends in people's calendars." {...field("nightHours")}>
+            <input id="nightHours" name="nightHours" type="number" min={0.5} max={24} step={0.5} defaultValue={s.nightHours} className={clsx(input, "max-w-28")} />
+          </Field>
           <div className="border-t border-line pt-4">
             <Toggle name="casualNight" checked={casual} onChange={setCasual} label="A casual night too">
               A second, lighter night with guests, with its own channels and picks.
