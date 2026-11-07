@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import clsx from "clsx";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, CalendarPlus, ExternalLink } from "lucide-react";
 import { DEMO, GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { DateBadge, NightTag, NightWhen, OnNow, isOn } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
 import { discordAppUrl } from "@/lib/discord-components";
 import { bggPrepLinks } from "@/lib/bgg-links";
+import { nightKey } from "@/lib/calendar-store";
 import { Empty, Panel, Section, Skeleton, TextLink } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { getAllGamesForPicker, getMembers, getPlayedBy, getPlayers, getShelf, getTieredRankingLists } from "@/lib/queries";
@@ -78,6 +79,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     );
   }
 
+  const addToCalendar = n.findingDate || n.cancelled ? null : `/calendar/${await nightKey(n.id)}`;
   const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates, poll, calendar] = await Promise.all([
     // Recency and "never played" come from this kind of night's plays only
     getShelf({ night: n.night }).then(async (all) => {
@@ -115,7 +117,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
       <LiveRefresh nightId={n.id} />
       <div className="space-y-4">
         <BackLink />
-        <NightHeader n={n} staying={staying} decideBy={poll?.decideBy ? localDate(new Date(poll.decideBy)) : null} calendar={calendar} />
+        <NightHeader n={n} staying={staying} decideBy={poll?.decideBy ? localDate(new Date(poll.decideBy)) : null} calendar={calendar} addToCalendar={addToCalendar} />
         {poll ? (
           // Finding its date: everyone says which dates work, and their answers are who's coming once one's set
           <PollCard poll={pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} calendar={calendar} />
@@ -328,6 +330,7 @@ function NightHeader({
   staying = [],
   decideBy,
   calendar,
+  addToCalendar,
 }: {
   n: NightDetail;
   staying?: string[];
@@ -335,6 +338,8 @@ function NightHeader({
   decideBy?: string | null;
   /** For picking new dates when its date falls through; none on a night that's on or over */
   calendar?: CalendarSetup;
+  /** Its page for adding it to someone's calendar; none until it has a date, or once it's on or over */
+  addToCalendar?: string | null;
 }) {
   const when = nightWhen(n.startsAt, TIME_ZONE);
   return (
@@ -363,6 +368,11 @@ function NightHeader({
         </p>
       </div>
       <div className="flex max-w-full shrink-0 flex-wrap items-center gap-3">
+        {addToCalendar && (
+          <a href={addToCalendar} className="inline-flex items-center gap-1.5 text-sm font-medium text-accent underline-offset-4 hover:underline">
+            <CalendarPlus className="size-3.5" /> Add to calendar
+          </a>
+        )}
         {n.posted && n.url && (
           <a href={discordAppUrl(n.url) ?? n.url} className="inline-flex items-center gap-1.5 text-sm font-medium text-accent underline-offset-4 hover:underline">
             <ExternalLink className="size-3.5" /> Open in Discord

@@ -155,6 +155,8 @@ export const player = sqliteTable("player", {
   /** When someone invited them to the core group's nights (gave them the member role), before they'd signed in */
   welcomedAt: integer("welcomed_at", { mode: "timestamp_ms" }),
   welcomedBy: text("welcomed_by").references(() => user.id, { onDelete: "set null" }),
+  /** The secret in their calendar feed's address, made the first time they ask for it (calendar-store.ts) */
+  calendarToken: text("calendar_token").unique(),
   ...timestamps,
 });
 

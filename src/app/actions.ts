@@ -12,6 +12,7 @@ import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
 import { canPostToDiscord, discordCode, hasInteractions, holdsRole, registerCommands, sendDirectMessage } from "@/lib/discord";
 import type { ParsedPlayer } from "@/lib/play-parser";
+import { feedTokenFor, replaceFeedToken } from "@/lib/calendar-store";
 import { addToLog, playOrder, refreshLogPost } from "@/lib/log-post";
 import { moveIn } from "@/lib/nights";
 import { buildGroupContext, buildNightContext } from "@/lib/insights";
@@ -513,6 +514,22 @@ export async function setMyColor(color: string) {
   refresh();
 }
 
+/** Off to the page for subscribing to their events, making their feed's secret if it's the first time */
+export async function openCalendarSync() {
+  const me = await requireUser();
+  if (!me.playerId) redirect("/settings");
+  redirect(`/calendar/sync/${await feedTokenFor(me.playerId)}`);
+}
+
+/** Their calendar link got out: a new one, which stops the old one working */
+export async function newCalendarLink(): Promise<ActionResult> {
+  const me = await requireUser();
+  if (!me.playerId) return { ok: false, error: "You don't have a calendar link yet." };
+  await replaceFeedToken(me.playerId);
+  refresh();
+  return { ok: true, message: "Done. Your old link has stopped working, so subscribe again with Sync my events." };
+}
+
 /** Tie a player to a Discord account so posts from the app can @-tag them. */
 export async function setPlayerDiscord(playerId: number, discordId: string | null): Promise<ActionResult> {
   await requireUser();
@@ -662,6 +679,7 @@ export async function mergePlayers(fromId: number, intoId: number): Promise<Acti
         discordId: into.discordId ?? from.discordId,
         welcomedAt: into.welcomedAt ?? from.welcomedAt,
         welcomedBy: into.welcomedBy ?? from.welcomedBy,
+        calendarToken: into.calendarToken ?? from.calendarToken,
       })
       .where(eq(schema.player.id, intoId));
   });

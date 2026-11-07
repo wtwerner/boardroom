@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useState, useTransition } from "react";
 import clsx from "clsx";
 import { MEEPLE_COLORS, type MeepleColor } from "@/db/enums";
-import { type ActionResult, importCsv, mergePlayers, playerNightsFor, renamePlayer, saveBgaProfile, saveBggUsername, setMyColor, setPlayerDiscord, splitPlayer } from "@/app/actions";
+import { type ActionResult, importCsv, mergePlayers, newCalendarLink, openCalendarSync, playerNightsFor, renamePlayer, saveBgaProfile, saveBggUsername, setMyColor, setPlayerDiscord, splitPlayer } from "@/app/actions";
 import { authClient } from "@/lib/auth-client";
 import { Meeple, buttonClass, formatDate } from "@/components/ui";
 import type { SeatNight } from "@/lib/queries";
@@ -44,6 +44,33 @@ export function ColorPicker({ current, taken }: { current: MeepleColor | null; t
           </button>
         );
       })}
+    </div>
+  );
+}
+
+export function CalendarSync({ hasLink }: { hasLink: boolean }) {
+  const [pending, start] = useTransition();
+  const [state, setState] = useState<ActionResult | null>(null);
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <form action={openCalendarSync}>
+          <button className={buttonClass("primary")}>Sync my events</button>
+        </form>
+        {hasLink && (
+          <button
+            type="button"
+            className={buttonClass("ghost")}
+            disabled={pending}
+            onClick={() => {
+              if (confirm("Make a new link? Your current one stops working, and any calendar subscribed with it stops updating.")) start(async () => setState(await newCalendarLink()));
+            }}
+          >
+            Get a new link
+          </button>
+        )}
+      </div>
+      <Result state={state} />
     </div>
   );
 }

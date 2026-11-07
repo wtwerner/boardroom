@@ -9,7 +9,7 @@ import { canManageGroup, requireUser } from "@/lib/session";
 import { getPlayers } from "@/lib/queries";
 import { hasBggToken } from "@/lib/bgg";
 import { anyServerMemberCanSignIn, listGuildMembers } from "@/lib/discord";
-import { BgaForm, BggForm, ColorPicker, CsvForm, MergePlayersForm, PlayerDiscordLink, RenamePlayerForm, SignOutButton, SplitPlayerForm } from "./settings-forms";
+import { BgaForm, BggForm, CalendarSync, ColorPicker, CsvForm, MergePlayersForm, PlayerDiscordLink, RenamePlayerForm, SignOutButton, SplitPlayerForm } from "./settings-forms";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -26,7 +26,7 @@ export default function SettingsPage() {
 
 async function Settings() {
   const me = await requireUser();
-  const [players, [owned], seatCounts, discordMembers, [bga], canManage, admins] = await Promise.all([
+  const [players, [owned], seatCounts, discordMembers, [bga], canManage, admins, myCalendar] = await Promise.all([
     getPlayers(),
     db
       .select({ n: count() })
@@ -43,6 +43,7 @@ async function Settings() {
       .where(eq(schema.user.id, me.id)),
     canManageGroup(),
     db.select({ name: schema.user.name }).from(schema.user).where(eq(schema.user.isAdmin, true)),
+    me.playerId ? db.query.player.findFirst({ where: eq(schema.player.id, me.playerId), columns: { calendarToken: true } }) : null,
   ]);
   const plays = new Map(seatCounts.map((s) => [s.playerId, s.n]));
   const takenColors = players.filter((p) => p.id !== me.playerId && p.color).map((p) => p.color!);
@@ -84,6 +85,15 @@ async function Settings() {
         <p className="mb-3 text-sm text-slate">Your meeple color marks you everywhere on the site.</p>
         <ColorPicker current={me.color} taken={takenColors} />
       </Section>
+
+      {me.playerId && (
+        <Section id="calendar" title="Your calendar" className="scroll-mt-6">
+          <Panel className="space-y-3 p-4">
+            <p className="text-sm text-slate">Subscribe your phone&apos;s calendar to every event you say Going or Maybe to. It follows moves and cancellations.</p>
+            <CalendarSync hasLink={Boolean(myCalendar?.calendarToken)} />
+          </Panel>
+        </Section>
+      )}
 
       <Section id="bgg" title="BoardGameGeek collection" className="scroll-mt-6">
         <Panel className="space-y-5 p-4">
