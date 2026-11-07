@@ -13,9 +13,9 @@ const actionButton = (label: string, action: Action): Component => ({ type: BUTT
 export function buildCalendarPanel(p: { nightId: number; title: string; addUrl: string; syncUrl: string | null; newLink?: boolean }) {
   const text = [
     `**${escape(p.title)}**`,
-    "**Add this event** puts it in your calendar as it is now. It won't follow any changes.",
+    "**Add this event** adds it once, and it won't update if the event changes.",
     p.syncUrl
-      ? "**Sync my events** subscribes your calendar to every event you say Going or Maybe to, and follows moves and cancellations. The link is yours: keep it to yourself."
+      ? "**Sync my events** adds every event you say Going or Maybe to, and keeps them up to date. Keep that link to yourself."
       : "-# To sync every event you're coming to, say Going or Maybe, then press Add to calendar again.",
     ...(p.newLink ? ["-# That's your new link. The old one has stopped working, so subscribe again with this one."] : []),
   ].join("\n");

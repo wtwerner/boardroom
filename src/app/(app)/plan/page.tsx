@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
+import { RefreshCw } from "lucide-react";
+import { openCalendarSync } from "@/app/actions";
 import { GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES } from "@/config";
 import { Empty, PageHeader, Section, Skeleton, buttonClass } from "@/components/ui";
 import { NightRow, isOn } from "@/components/night-row";
@@ -22,7 +24,14 @@ const PAST_STEP = 10;
 export default function PlanPage(props: PageProps<"/plan">) {
   return (
     <>
-      <PageHeader title="Events" />
+      <PageHeader title="Events">
+        <form action={openCalendarSync}>
+          <input type="hidden" name="from" value="plan" />
+          <button className={buttonClass("secondary")}>
+            <RefreshCw className="size-4 shrink-0" /> Sync my events
+          </button>
+        </form>
+      </PageHeader>
       <Suspense fallback={<Skeleton className="h-96" />}>
         <Agenda searchParams={props.searchParams} />
       </Suspense>

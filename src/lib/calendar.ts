@@ -121,6 +121,12 @@ export function readNightKey(key: string, secret: string): number | null {
   return given.length === expected.length && timingSafeEqual(given, expected) ? nightId : null;
 }
 
+/** Looks like a feed's secret: 24 random bytes, base64url. Whether it's anyone's is for the feed to say. */
+export const isFeedToken = (s: unknown): s is string => typeof s === "string" && /^[\w-]{32}$/.test(s);
+
+/** Where someone came to the sync page from: Plan, or a night's calendar page by its key */
+export const isSyncOrigin = (s: unknown): s is string => typeof s === "string" && /^(plan|\d{1,15}-[\w-]{22})$/.test(s);
+
 export type CalendarDevice = "apple" | "android" | "other";
 
 /** Which calendars to offer first. The web can't see someone's default calendar app, so this goes by their phone. */

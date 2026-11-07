@@ -201,11 +201,14 @@ async function component(i: Interaction) {
 async function calendarPanel(i: Interaction, n: typeof schema.gameNight.$inferSelect, opts: { newLink?: boolean } = {}) {
   if (!SITE_URL) throw new Error("The site's address isn't set, so there's no calendar link to give.");
   const player = await playerOfDiscordUser(i.member!.user.id);
+  const key = await nightKey(n.id);
+  // Discord's browser isn't signed in to the site, so the event's page gets their link from its address
+  const token = player ? await feedTokenFor(player.id) : null;
   return buildCalendarPanel({
     nightId: n.id,
     title: n.title || NIGHT_NAMES[n.night],
-    addUrl: `${SITE_URL}/calendar/${await nightKey(n.id)}`,
-    syncUrl: player ? `${SITE_URL}/calendar/sync/${await feedTokenFor(player.id)}` : null,
+    addUrl: `${SITE_URL}/calendar/${key}${token ? `?sync=${token}` : ""}`,
+    syncUrl: token ? `${SITE_URL}/calendar/sync/${token}?from=${key}` : null,
     newLink: opts.newLink,
   });
 }

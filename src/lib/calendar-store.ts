@@ -96,6 +96,9 @@ export async function feedEvents(token: string) {
   return rows.map((r) => calendarEvent(r.night));
 }
 
+/** How many of someone's events are still to come */
+export const upcomingCount = (events: CalendarEvent[]) => events.filter((e) => !e.cancelled && e.startsAt.getTime() >= Date.now()).length;
+
 /** A calendar file for a calendar app or browser. Never cached: its address is a secret and its contents change. */
 export const calendarResponse = (ics: string, disposition: string) =>
   new Response(ics, {
