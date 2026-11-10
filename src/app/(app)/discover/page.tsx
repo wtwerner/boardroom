@@ -7,7 +7,7 @@ import { CASUAL_NIGHT, CLAUDE, NIGHT_NAMES } from "@/config";
 import type { MeepleColor, Night } from "@/db/enums";
 import { nightParam } from "@/components/night-switch";
 import { Empty, GameCover, Meeple, PageHeader, Section, Skeleton, TextLink, playerRange, playtime } from "@/components/ui";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { hasAnthropicKey } from "@/lib/ai";
 import { hasBggToken } from "@/lib/bgg";
 import { bggUrl } from "@/lib/bgg-links";
@@ -39,7 +39,7 @@ export default function DiscoverPage(props: PageProps<"/discover">) {
 }
 
 async function Discover({ searchParams }: { searchParams: PageProps<"/discover">["searchParams"] }) {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const params = await searchParams;
   // Group taste has its own page now
   if (params.view === "taste") redirect("/people/taste");

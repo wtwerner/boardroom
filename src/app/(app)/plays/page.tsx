@@ -6,7 +6,7 @@ import { CASUAL_NIGHT, GROUP_NIGHTS, NIGHT_NAMES, TIME_ZONE } from "@/config";
 import { DateBadge, NightTag } from "@/components/night-row";
 import { NightSwitch, nightParam } from "@/components/night-switch";
 import { Empty, GameCover, PageHeader, Panel, PlayerChip, Section, Skeleton, buttonClass, formatDate } from "@/components/ui";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { getAllGamesForPicker, getPlayers, getPlays, getReviewQueue, getWhichQueue, type PlayRow } from "@/lib/queries";
 import { type NightSummary, getNightsByDate } from "@/lib/events";
 import { zonedToUtc } from "@/lib/nights";
@@ -41,7 +41,7 @@ export default async function PlaysPage(props: PageProps<"/plays">) {
 }
 
 async function Plays({ searchParams }: { searchParams: PageProps<"/plays">["searchParams"] }) {
-  await requireUser();
+  await requireMemberPage();
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
   const night = CASUAL_NIGHT ? nightParam(params.night) : undefined;

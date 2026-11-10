@@ -1,11 +1,11 @@
 import "server-only";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
 import { db, schema } from "@/db";
 import { MUST_PLAY_LIMIT, type Night, TIERS } from "@/db/enums";
 import { inSentence } from "./text";
 import { HEAVY_WEIGHT, TIER_LABEL } from "./tier";
-import { getGroupRanking, getMembers, getPlays, getShelf, getTieredRankingLists } from "./queries";
+import { getGroupRanking, getMembers, getPlays, getShelf, getTieredRankingLists, inCrowd } from "./queries";
 import { playerRange, playtime } from "@/components/ui";
 
 /**
@@ -22,12 +22,13 @@ export async function buildGroupContext({ forPurchases = false, currentPicks = [
     db
       .select({ userId: schema.opinion.userId, sentiment: schema.opinion.sentiment, wantToPlay: schema.opinion.wantToPlay, mustPlay: schema.opinion.mustPlay, name: schema.game.name })
       .from(schema.opinion)
-      .innerJoin(schema.game, eq(schema.game.id, schema.opinion.gameId)),
+      .innerJoin(schema.game, eq(schema.game.id, schema.opinion.gameId))
+      .where(inCrowd(schema.opinion.userId)),
     db
       .selectDistinct({ name: schema.game.name })
       .from(schema.collectionItem)
       .innerJoin(schema.game, eq(schema.game.id, schema.collectionItem.gameId))
-      .where(eq(schema.collectionItem.wishlist, true)),
+      .where(and(eq(schema.collectionItem.wishlist, true), inCrowd(schema.collectionItem.userId))),
     db.select({ name: schema.suggestion.name }).from(schema.suggestion).orderBy(desc(schema.suggestion.createdAt)),
   ]);
 
@@ -128,7 +129,7 @@ export async function buildNightContext(input: {
   minutes: number | null;
   candidateIds: number[];
 }) {
-  const members = await getMembers();
+  const members = await getMembers(input.night);
   const coming = members.filter((m) => input.presentUserIds.includes(m.id)).map((m) => m.name);
   const ids = input.candidateIds.slice(0, 20);
   const candidates = ids.length

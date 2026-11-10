@@ -6,7 +6,7 @@ import { CASUAL_NIGHT, DEMO, GROUP_NIGHTS, NIGHT_NAMES } from "@/config";
 import { NightTag } from "@/components/night-row";
 import { PrepLinks } from "@/components/prep-links";
 import { Empty, GameCover, Meeple, Panel, PlayerChip, Section, Skeleton, formatDate, playerRange, playtime } from "@/components/ui";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { getBgaGame, getGame, getGamePlaces, getMembers, getMustPlayLeft } from "@/lib/queries";
 import { tierHref } from "../../rankings/tabs";
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
@@ -29,7 +29,7 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
 }
 
 async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const id = Number((await params).id);
   const [data, members, mustPlayLeft, bga] = await Promise.all([getGame(id), getMembers(), getMustPlayLeft(me.id, id), getBgaGame(id)]);
   if (!data) notFound();

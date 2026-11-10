@@ -6,7 +6,7 @@ import { Avatar, Empty, GameCover, NewBadge, Section, Skeleton, TextLink, format
 import { localDate } from "@/lib/nights";
 import { TIERS } from "@/db/enums";
 import { TIER_LABEL } from "@/lib/tier";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { getPerson, isNewMember } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "Person" };
@@ -22,7 +22,7 @@ export default function PersonPage(props: PageProps<"/people/[id]">) {
 type ListGame = { id: number; name: string; thumbnail: string | null };
 
 async function Person({ params }: { params: PageProps<"/people/[id]">["params"] }) {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const data = await getPerson((await params).id);
   if (!data) notFound();
   const { member: m, collection, wishlist, top, keen, played } = data;

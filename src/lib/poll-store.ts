@@ -64,12 +64,13 @@ export type PollDetail = {
   decideBy: string | null;
 };
 
-/** The group's members, by name */
+/** The group's members, by name: a casual account is answered for like a guest, and isn't waited on */
 async function members(): Promise<PollMember[]> {
   const rows = await db
     .select({ userId: schema.user.id, userName: schema.user.name, userDiscordId: schema.user.discordId, playerId: schema.player.id, name: schema.player.name, discordId: schema.player.discordId })
     .from(schema.user)
     .leftJoin(schema.player, eq(schema.player.userId, schema.user.id))
+    .where(eq(schema.user.access, "member"))
     .orderBy(asc(schema.user.name));
   return rows.map((r) => ({ playerId: r.playerId, name: r.name ?? r.userName, discordId: r.discordId ?? r.userDiscordId, userId: r.userId }));
 }

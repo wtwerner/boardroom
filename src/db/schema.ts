@@ -8,7 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/sqlite-core";
-import { DATE_ANSWERS, type MeepleColor, NIGHTS, RSVP_STATUSES, SENTIMENTS, TIERS } from "./enums";
+import { ACCESS, DATE_ANSWERS, type MeepleColor, NIGHTS, RSVP_STATUSES, SENTIMENTS, TIERS } from "./enums";
 
 const timestamps = {
   createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -40,6 +40,8 @@ export const user = sqliteTable("user", {
   nameChosenAt: integer("name_chosen_at", { mode: "timestamp_ms" }),
   /** Can change the group's settings and make other members admins. While nobody is one, everyone can */
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
+  /** A member of the core group, or a casual account that only sees the casual night (ACCESS) */
+  access: text("access", { enum: ACCESS }).notNull().default("member"),
   ...timestamps,
 });
 

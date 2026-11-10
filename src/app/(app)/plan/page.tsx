@@ -7,7 +7,7 @@ import { GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES } from "@/config";
 import { Empty, PageHeader, Section, Skeleton, buttonClass } from "@/components/ui";
 import { NightRow, isOn } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { getMembers } from "@/lib/queries";
 import { commandName, postsNights } from "@/lib/discord";
 import { getPastNights, getUpcomingNights, loadNight } from "@/lib/events";
@@ -41,7 +41,7 @@ export default function PlanPage(props: PageProps<"/plan">) {
 
 /** Every upcoming night, of every kind together by date, each planned on its own page; then the ones that have happened */
 async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["searchParams"] }) {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const shown = Math.max(PAST_STEP, Math.min(500, Number((await searchParams).past) || PAST_STEP));
   const [nights, past, members, polls, calledOff, calendar, times] = await Promise.all([
     getUpcomingNights(),

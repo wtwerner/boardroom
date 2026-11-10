@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Empty, GameCover, Meeple, PageHeader, Panel, Section, Skeleton, TextLink } from "@/components/ui";
 import { requireUser } from "@/lib/session";
-import { getGroupRanking, getMembers, getNewToRank, getNightRankingLists, getRankingLists, getRankingPool } from "@/lib/queries";
+import { getGroupRanking, getMembers, getMyRanking, getNewToRank, getNightRankingLists, getRankingPool } from "@/lib/queries";
 import { NightSwitch, nightParam } from "@/components/night-switch";
 import { inSentence } from "@/lib/text";
 import { RankingEditor } from "./ranking-editor";
@@ -32,16 +32,17 @@ async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">
   const me = await requireUser();
   const params = await searchParams;
   const tier = tierParam(params.tier);
-  // Each kind of night has its own group list, from the people who come to it
-  const night = CASUAL_NIGHT ? (nightParam(params.night) ?? "core") : "core";
-  const [lists, crowdLists, group, members, toRank] = await Promise.all([
-    getRankingLists(tier),
+  // Each kind of night has its own group list, from the people who come to it. A casual account
+  // only has theirs: the core group's list isn't there for them, and neither is the switch
+  const member = me.access === "member";
+  const night = !member ? "casual" : CASUAL_NIGHT ? (nightParam(params.night) ?? "core") : "core";
+  const [mine, crowdLists, group, members, toRank] = await Promise.all([
+    getMyRanking(me.id, tier),
     getNightRankingLists(tier, night),
     getGroupRanking(tier, undefined, night),
-    getMembers(),
+    getMembers(night),
     getNewToRank(me.id, me.playerId),
   ]);
-  const mine = lists[me.id] ?? [];
   const games = await getRankingPool(me.id, me.playerId, mine, tier);
   const voters = members.filter((m) => crowdLists[m.id]?.length);
   const waiting = Object.fromEntries(TIERS.map((t) => [t, toRank.filter((g) => g.tier === t).length])) as Record<Tier, number>;
@@ -83,7 +84,7 @@ async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">
       </Section>
 
       <Section title="The group's list">
-        {CASUAL_NIGHT && (
+        {CASUAL_NIGHT && member && (
           <div className="mb-3 space-y-2">
             <NightSwitch current={night} href={(n) => tierHref("/rankings", tier, n)} />
             <p className="text-sm text-slate">

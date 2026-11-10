@@ -38,3 +38,11 @@ export const POLL_MAX_DATES = 8;
  */
 export const TIERS = ["heavy", "light"] as const;
 export type Tier = (typeof TIERS)[number];
+
+/**
+ * What someone signed in can do. A member is in the core group: every page and action. A casual
+ * account comes to the casual night only: their own ratings, rankings and collection, and that
+ * night's answers and bring list. Nothing about the core group's nights is shown to them.
+ */
+export const ACCESS = ["member", "casual"] as const;
+export type Access = (typeof ACCESS)[number];

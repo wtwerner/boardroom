@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { MeepleColor } from "@/db/enums";
 import { Empty, GameCover, Meeple, PageHeader, Panel, Section, Skeleton, TextLink } from "@/components/ui";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { MIN_EVIDENCE, type TasteInsights, getTasteInsights } from "@/lib/recommend";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { PeopleTabs } from "../tabs";
@@ -26,7 +26,7 @@ export default function GroupTastePage() {
 }
 
 async function GroupTaste() {
-  await requireUser();
+  await requireMemberPage();
   const { members, insights } = await getTasteInsights();
   return <Taste insights={insights} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} />;
 }

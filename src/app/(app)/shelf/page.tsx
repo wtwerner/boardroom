@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Empty, PageHeader, Skeleton, TextLink } from "@/components/ui";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { getBgaByBggId, getMembers, getShelf } from "@/lib/queries";
 import { getShelfOfShame } from "@/lib/recommend";
 import { ShelfBrowser } from "./shelf-browser";
@@ -20,7 +20,7 @@ export default function ShelfPage(props: PageProps<"/shelf">) {
 }
 
 async function Shelf({ searchParams }: { searchParams: PageProps<"/shelf">["searchParams"] }) {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const [games, members, bga, params] = await Promise.all([getShelf(), getMembers(), getBgaByBggId(), searchParams]);
   if (games.length === 0) {
     return (

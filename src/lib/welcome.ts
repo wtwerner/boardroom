@@ -35,14 +35,14 @@ export const coreNightName = () => (CASUAL_NIGHT ? NIGHT_NAMES.core : null);
 /** The command on the right-click menu: "Invite to Strategy events" */
 export const welcomeName = () => welcomeCommandName(coreNightName(), SITE_NAME);
 
-/** Who someone is in the server, and whether they already have the member role (or, without one, an account) */
+/** Who someone is in the server, and whether they already have the member role (or, without one, a member's account) */
 export async function welcomeCandidate(discordId: string) {
   const member = await getServerMember(discordId);
   if (!member) throw new Error("They're not in the server yet.");
   if (member.bot) throw new Error("That's a bot.");
-  // Without a role, anyone in the server can sign in, so having an account is the same thing
-  const account = await db.query.user.findFirst({ where: eq(schema.user.discordId, discordId), columns: { id: true } });
-  const already = member.hasRole ?? Boolean(account);
+  // Without a role, a member's account is the same thing. A casual account isn't: they're who invites are for
+  const account = await db.query.user.findFirst({ where: eq(schema.user.discordId, discordId), columns: { access: true } });
+  const already = member.hasRole ?? account?.access === "member";
   return { ...member, already };
 }
 
@@ -65,6 +65,9 @@ export async function welcomeToGroup(discordId: string, by: { name: string; user
       throw new Error("Couldn't give them the role. Try again in a minute?");
     }
   }
+
+  // Someone with a casual account is a member from now on, with their ratings and collection as they were
+  await db.update(schema.user).set({ access: "member" }).where(eq(schema.user.discordId, discordId));
 
   // Their history from the play logs is theirs when they sign in; this marks them as on their way
   const player = await playerForDiscordUser(discordId, member.name);

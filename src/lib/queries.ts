@@ -1,5 +1,5 @@
 import "server-only";
-import { and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, max, not, sql } from "drizzle-orm";
+import { type Column, and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, max, not, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MUST_PLAY_LIMIT, TIERS, type MeepleColor, type Night, type Sentiment, type Tier } from "@/db/enums";
 import { localDate, recentMonths } from "./nights";
@@ -10,6 +10,16 @@ import { rankLists } from "./setup";
 import { gameTier } from "./tier";
 
 const { game, play, playPlayer, player, collectionItem, opinion, ranking, user } = schema;
+
+/**
+ * Who counts as the group for a kind of night: the core group's nights are its members', and the
+ * casual night's are everyone with an account, members and casual players alike. A condition on a
+ * user id column (none when everyone counts), so a casual player's collection, ratings and rankings
+ * help plan their night without showing up in the core group's shelf, lists or Discover.
+ */
+export function inCrowd(userId: Column, night: Night = "core") {
+  return night === "casual" ? undefined : inArray(userId, db.select({ id: user.id }).from(user).where(eq(user.access, "member")));
+}
 
 export type Person = {
   id: number;
@@ -40,11 +50,13 @@ export async function getPlayers(): Promise<Person[]> {
   return rows.map((p) => ({ id: p.id, name: p.name, color: p.color, userId: p.userId, discordId: p.discordId, image: p.image, label: labels.get(p.id)! }));
 }
 
-export async function getMembers() {
+/** The people with an account who count for a kind of night (inCrowd): the core group's members unless it says casual */
+export async function getMembers(night: Night = "core") {
   return db
     .select({ id: user.id, name: user.name, image: user.image, color: player.color, playerId: player.id })
     .from(user)
     .leftJoin(player, eq(player.userId, user.id))
+    .where(inCrowd(user.id, night))
     .orderBy(user.name);
 }
 
@@ -223,20 +235,20 @@ export async function getShelf(opts: { night?: Night } = {}) {
       mechanics: game.mechanics,
     })
     .from(game)
-    .innerJoin(collectionItem, and(eq(collectionItem.gameId, game.id), eq(collectionItem.own, true)))
+    .innerJoin(collectionItem, and(eq(collectionItem.gameId, game.id), eq(collectionItem.own, true), inCrowd(collectionItem.userId, opts.night)))
     .orderBy(game.name);
 
   const [owners, plays, opinions] = await Promise.all([
     db
       .select({ gameId: collectionItem.gameId, userId: collectionItem.userId })
       .from(collectionItem)
-      .where(eq(collectionItem.own, true)),
+      .where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId, opts.night))),
     db
       .select({ gameId: play.gameId, plays: count(), lastPlayed: max(play.playedOn) })
       .from(play)
       .where(and(isNotNull(play.gameId), opts.night ? eq(play.night, opts.night) : undefined))
       .groupBy(play.gameId),
-    db.select().from(opinion),
+    db.select().from(opinion).where(inCrowd(opinion.userId, opts.night)),
   ]);
 
   const playMap = new Map(plays.map((p) => [p.gameId, p]));
@@ -272,19 +284,32 @@ export type RankingLists = Record<string, number[]>;
  * Everyone's rankings, best first, split by tier (tier.ts): a game is only ever compared with
  * games of its own tier, so each tier's lists are what positions and shares are counted in.
  */
-export async function getTieredRankingLists(): Promise<Record<Tier, RankingLists>> {
+export async function getTieredRankingLists(night: Night = "core"): Promise<Record<Tier, RankingLists>> {
   const rows = await db
     .select({ userId: ranking.userId, gameId: ranking.gameId, weight: game.weight, tier: game.tier })
     .from(ranking)
     .innerJoin(game, eq(game.id, ranking.gameId))
+    .where(inCrowd(ranking.userId, night))
     .orderBy(ranking.userId, ranking.position);
   const lists: Record<Tier, RankingLists> = { heavy: {}, light: {} };
   for (const r of rows) (lists[gameTier(r)][r.userId] ??= []).push(r.gameId);
   return lists;
 }
 
-export async function getRankingLists(tier: Tier) {
-  return (await getTieredRankingLists())[tier];
+/** Everyone's rankings in one tier, of the people who count for a kind of night (inCrowd) */
+export async function getRankingLists(tier: Tier, night: Night = "core") {
+  return (await getTieredRankingLists(night))[tier];
+}
+
+/** One person's ranking in a tier, best first, whoever they are */
+export async function getMyRanking(userId: string, tier: Tier) {
+  const rows = await db
+    .select({ gameId: ranking.gameId, weight: game.weight, tier: game.tier })
+    .from(ranking)
+    .innerJoin(game, eq(game.id, ranking.gameId))
+    .where(eq(ranking.userId, userId))
+    .orderBy(ranking.position);
+  return rows.filter((r) => gameTier(r) === tier).map((r) => r.gameId);
 }
 
 /** Each game's tier, for the games given */
@@ -300,7 +325,7 @@ export async function getGameTiers(ids: number[]) {
  * included, so its list is the room it's planned for.
  */
 export async function getNightCrowd(night: Night): Promise<Set<string>> {
-  if (night === "core") return new Set((await db.select({ id: user.id }).from(user)).map((r) => r.id));
+  if (night === "core") return new Set((await getMembers()).map((m) => m.id));
   const rows = await db
     .selectDistinct({ id: player.userId })
     .from(play)
@@ -312,7 +337,7 @@ export async function getNightCrowd(night: Night): Promise<Set<string>> {
 
 /** The rankings in one tier of the people in a night's crowd (getNightCrowd) */
 export async function getNightRankingLists(tier: Tier, night: Night) {
-  const [lists, crowd] = await Promise.all([getRankingLists(tier), getNightCrowd(night)]);
+  const [lists, crowd] = await Promise.all([getRankingLists(tier, night), getNightCrowd(night)]);
   return crowdLists(lists, crowd);
 }
 
@@ -372,11 +397,11 @@ export async function getGame(id: number) {
       .select({ userId: user.id, name: user.name, own: collectionItem.own, wishlist: collectionItem.wishlist, rating: collectionItem.bggUserRating })
       .from(collectionItem)
       .innerJoin(user, eq(user.id, collectionItem.userId))
-      .where(eq(collectionItem.gameId, id)),
+      .where(and(eq(collectionItem.gameId, id), inCrowd(collectionItem.userId))),
     db
       .select({ userId: opinion.userId, sentiment: opinion.sentiment, wantToPlay: opinion.wantToPlay, mustPlay: opinion.mustPlay, playOnline: opinion.playOnline })
       .from(opinion)
-      .where(eq(opinion.gameId, id)),
+      .where(and(eq(opinion.gameId, id), inCrowd(opinion.userId))),
     getPlays({ gameId: id, limit: 200 }),
   ]);
   if (!g) return null;
@@ -607,7 +632,7 @@ export async function getSuggestions(userId: string) {
       .where(eq(schema.suggestion.dismissed, false))
       .groupBy(schema.suggestion.id)
       .orderBy(desc(sql`coalesce(sum(${schema.suggestionVote.value}), 0)`), desc(schema.suggestion.createdAt)),
-    db.select({ id: collectionItem.gameId }).from(collectionItem).where(eq(collectionItem.own, true)),
+    db.select({ id: collectionItem.gameId }).from(collectionItem).where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId))),
   ]);
   // Hide anything someone has since bought
   const owned = new Set(ownedRows.map((r) => r.id));
@@ -645,16 +670,17 @@ export async function getPeople() {
       })
       .from(user)
       .leftJoin(player, eq(player.userId, user.id))
+      .where(inCrowd(user.id))
       .orderBy(desc(user.createdAt)),
     db
       .select({ userId: collectionItem.userId, n: count() })
       .from(collectionItem)
-      .where(eq(collectionItem.own, true))
+      .where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId)))
       .groupBy(collectionItem.userId),
     db
       .select({ userId: opinion.userId, n: count() })
       .from(opinion)
-      .where(isNotNull(opinion.sentiment))
+      .where(and(isNotNull(opinion.sentiment), inCrowd(opinion.userId)))
       .groupBy(opinion.userId),
     getAttendance(),
     // Invited to the core group's nights, not signed in yet
@@ -698,7 +724,7 @@ export async function getNewMembers() {
     .select({ id: user.id, name: user.name, image: user.image, joinedAt: user.createdAt, color: player.color })
     .from(user)
     .leftJoin(player, eq(player.userId, user.id))
-    .where(sql`${user.createdAt} >= ${since.getTime()}`)
+    .where(and(sql`${user.createdAt} >= ${since.getTime()}`, inCrowd(user.id)))
     .orderBy(desc(user.createdAt));
 }
 
@@ -793,6 +819,7 @@ export async function getBgaMembers() {
     .select({ id: user.id, name: user.name, image: user.image, color: player.color, bgaUsername: user.bgaUsername, bgaPremium: user.bgaPremium })
     .from(user)
     .leftJoin(player, eq(player.userId, user.id))
+    .where(inCrowd(user.id))
     .orderBy(user.name);
 }
 
@@ -806,14 +833,14 @@ export async function getOnlineGames() {
   const bga = await getBgaByBggId();
   if (bga.size === 0) return [];
   const [owners, plays, opinions, wishes, buyList] = await Promise.all([
-    db.select({ gameId: collectionItem.gameId, userId: collectionItem.userId }).from(collectionItem).where(eq(collectionItem.own, true)),
+    db.select({ gameId: collectionItem.gameId, userId: collectionItem.userId }).from(collectionItem).where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId))),
     db
       .select({ gameId: play.gameId, plays: count(), lastPlayed: max(play.playedOn) })
       .from(play)
       .where(isNotNull(play.gameId))
       .groupBy(play.gameId),
-    db.select({ gameId: opinion.gameId, userId: opinion.userId, sentiment: opinion.sentiment, playOnline: opinion.playOnline }).from(opinion),
-    db.select({ gameId: collectionItem.gameId, userId: collectionItem.userId }).from(collectionItem).where(eq(collectionItem.wishlist, true)),
+    db.select({ gameId: opinion.gameId, userId: opinion.userId, sentiment: opinion.sentiment, playOnline: opinion.playOnline }).from(opinion).where(inCrowd(opinion.userId)),
+    db.select({ gameId: collectionItem.gameId, userId: collectionItem.userId }).from(collectionItem).where(and(eq(collectionItem.wishlist, true), inCrowd(collectionItem.userId))),
     // "Want it" votes put a game on the buy list; Claude's ideas nobody has voted for don't count
     db
       .select({ gameId: schema.suggestion.bggId })

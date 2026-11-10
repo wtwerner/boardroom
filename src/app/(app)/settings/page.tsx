@@ -5,7 +5,7 @@ import { count, eq } from "drizzle-orm";
 import { DEMO } from "@/config";
 import { db, schema } from "@/db";
 import { PageHeader, Panel, Section, Skeleton } from "@/components/ui";
-import { canManageGroup, requireUser } from "@/lib/session";
+import { canManageGroup, requireMemberPage } from "@/lib/session";
 import { getPlayers } from "@/lib/queries";
 import { hasBggToken } from "@/lib/bgg";
 import { anyServerMemberCanSignIn, listGuildMembers } from "@/lib/discord";
@@ -25,7 +25,7 @@ export default function SettingsPage() {
 }
 
 async function Settings() {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const [players, [owned], seatCounts, discordMembers, [bga], canManage, admins, myCalendar] = await Promise.all([
     getPlayers(),
     db

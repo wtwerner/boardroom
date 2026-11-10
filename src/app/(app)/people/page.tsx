@@ -8,7 +8,7 @@ import { hasMemberRole, listGuildMembers } from "@/lib/discord";
 import { localDate } from "@/lib/nights";
 import { inSentence } from "@/lib/text";
 import { TIER_TAG } from "@/lib/tier";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { getPeople, getPlayers, isNewMember, type PersonCard } from "@/lib/queries";
 import { canWelcome, coreNightName, welcomeName } from "@/lib/welcome";
 import { PeopleTabs } from "./tabs";
@@ -30,7 +30,7 @@ export default function PeoplePage() {
 }
 
 async function People() {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const people = getPeople();
   const invitedTo = coreNightName() ? `${coreNightName()} events` : SITE_NAME;
   const [{ members, notSignedUp, welcomed }, candidates] = await Promise.all([people, canWelcome() ? welcomeCandidates(people) : null]);

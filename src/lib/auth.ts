@@ -78,6 +78,7 @@ export const auth = betterAuth({
       discordId: { type: "string", required: false, input: false },
       bggUsername: { type: "string", required: false, input: false },
       isAdmin: { type: "boolean", required: false, input: false },
+      access: { type: "string", required: false, input: false },
     },
   },
   session: {

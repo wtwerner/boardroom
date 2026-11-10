@@ -10,7 +10,7 @@ import { Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass } from "@/
 import { channelUrl, commandName, eventsChannel, postsNights } from "@/lib/discord";
 import { discordAppUrl } from "@/lib/discord-components";
 import { getPlayers, getSetupStatus } from "@/lib/queries";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { type SetupStep, setupProgress, setupSteps } from "@/lib/setup";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { inSentence } from "@/lib/text";
@@ -33,7 +33,7 @@ export default function WelcomePage() {
 }
 
 async function Welcome() {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const [status, players, [profile]] = await Promise.all([
     getSetupStatus(me),
     getPlayers(),

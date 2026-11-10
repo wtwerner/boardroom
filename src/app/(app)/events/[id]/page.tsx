@@ -47,10 +47,11 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   const me = await requireUser();
   const id = Number((await params).id);
   const n = Number.isInteger(id) ? await loadNight(id) : null;
-  if (!n) notFound();
+  // The core group's nights aren't there for a casual account
+  if (!n || (me.access !== "member" && n.night !== "casual")) notFound();
 
   if (n.past) {
-    const [members, log] = await Promise.all([getMembers(), nightLog(n)]);
+    const [members, log] = await Promise.all([getMembers(n.night), nightLog(n)]);
     return (
       <div className="space-y-10">
         <div className="space-y-4">
@@ -84,10 +85,11 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     // Recency and "never played" come from this kind of night's plays only
     getShelf({ night: n.night }).then(async (all) => {
       const s = all.filter((g) => !isLegacy(g));
-      return [all, s, await getTasteChances(s.map((g) => g.id))] as const;
+      return [all, s, await getTasteChances(s.map((g) => g.id), { night: n.night })] as const;
     }),
-    getMembers(),
-    getTieredRankingLists(),
+    // Who counts is the night's crowd: on a casual night, casual players coming count like members
+    getMembers(n.night),
+    getTieredRankingLists(n.night),
     db.select().from(schema.opinion),
     getPlayedBy(),
     db.select({ id: schema.player.id, name: schema.player.name }).from(schema.player).orderBy(schema.player.name),
@@ -240,7 +242,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
  */
 async function nightLog(n: NightDetail) {
   if (!n.date || n.cancelled) return null;
-  const [games, players, members] = await Promise.all([getAllGamesForPicker(), getPlayers(), n.night === "casual" ? getMembers() : []]);
+  const [games, players, members] = await Promise.all([getAllGamesForPicker(), getPlayers(), n.night === "casual" ? getMembers("casual") : []]);
   const bringers = new Map(members.map((m) => [m.id, m.name]));
   const played = new Set(n.plays.flatMap((p) => (p.gameId ? [p.gameId] : [])));
   const last = n.plays.at(-1);

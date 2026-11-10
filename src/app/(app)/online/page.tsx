@@ -5,7 +5,7 @@ import { Empty, GameCover, Meeple, PageHeader, Panel, Skeleton, TextLink, format
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
 import { type BgaListing, type OnlineGame, getBgaByBggId, getBgaMembers, getOnlineGames } from "@/lib/queries";
 import { type Candidate, MIN_EVIDENCE, getRecommendations } from "@/lib/recommend";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { describeReason } from "@/lib/taste";
 import { BGA_SYNC_KEY, lastSyncedAt } from "@/lib/sync";
@@ -35,7 +35,7 @@ const SENTIMENT_SCORE: Record<Sentiment, number> = { love: 2, like: 1, meh: -1, 
 const loved = (g: OnlineGame) => g.sentiments.reduce((n, s) => n + SENTIMENT_SCORE[s.sentiment], 0);
 
 async function Online() {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const [games, members, syncedAt] = await Promise.all([getOnlineGames(), getBgaMembers(), lastSyncedAt(BGA_SYNC_KEY)]);
   const mine = members.find((m) => m.id === me.id);
 

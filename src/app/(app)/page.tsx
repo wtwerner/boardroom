@@ -10,7 +10,7 @@ import { findingPolls } from "@/lib/poll-store";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { Avatar, Empty, GameCover, Meeple, PlayerChip, Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass, formatDate } from "@/components/ui";
 import { dayWord, localDate } from "@/lib/nights";
-import { requireUser } from "@/lib/session";
+import { requireMemberPage } from "@/lib/session";
 import {
   getAttendance,
   getGroupRanking,
@@ -42,7 +42,7 @@ export default function HomePage() {
 }
 
 async function Home() {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const upcoming = getUpcomingNights();
   const [stats, lastNight, mostPlayed, attendance, months, group, shame, wanted, review, setup, members, plans, newMembers, taste, toRank, toAnswer] = await Promise.all([
     getHeadlineStats(),

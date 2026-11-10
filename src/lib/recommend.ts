@@ -6,7 +6,7 @@ import { type ChanceModel, type GroupChance, chanceOf, groupChance, saidChance, 
 import { isLegacy } from "./night";
 import { localDate } from "./nights";
 import { MIN_UPCOMING_CHANCE, UPCOMING_PER_GROUP, type UpcomingKind, upcomingStatus } from "./upcoming";
-import { type RankingLists, type ShelfGame, getMembers, getShelf, getSuggestions, getTieredRankingLists } from "./queries";
+import { type RankingLists, type ShelfGame, getMembers, getShelf, getSuggestions, getTieredRankingLists, inCrowd } from "./queries";
 import { isFromLatestAsk } from "./picks";
 import { rankShare } from "./ranking";
 import { HEAVY_WEIGHT, NIGHT_TIER, gameTier } from "./tier";
@@ -106,8 +106,8 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
   const [members, lists, opinions, collection, allGames, shelf, suggestions, catalog, groupPlays, myPlayed, coreTables, casualTables, onBga, casualWeights, upcomingRows] = await Promise.all([
     getMembers(),
     getTieredRankingLists(),
-    db.select().from(schema.opinion),
-    db.select().from(schema.collectionItem),
+    db.select().from(schema.opinion).where(inCrowd(schema.opinion.userId)),
+    db.select().from(schema.collectionItem).where(inCrowd(schema.collectionItem.userId)),
     db
       .select({
         id: schema.game.id,
@@ -354,7 +354,11 @@ export async function getShelfOfShame(limit = 10, loaded?: ShelfGame[]) {
   const [shelf, members, vetoes] = await Promise.all([
     loaded ?? getShelf(),
     getMembers(),
-    db.select({ gameId: schema.opinion.gameId, n: count() }).from(schema.opinion).where(eq(schema.opinion.sentiment, "nope")).groupBy(schema.opinion.gameId),
+    db
+      .select({ gameId: schema.opinion.gameId, n: count() })
+      .from(schema.opinion)
+      .where(and(eq(schema.opinion.sentiment, "nope"), inCrowd(schema.opinion.userId)))
+      .groupBy(schema.opinion.gameId),
   ]);
   const turnedDown = new Set(vetoes.filter((v) => v.n >= Math.max(2, members.length / 2)).map((v) => v.gameId));
   const waiting = shelf.filter((g) => g.plays === 0 && (g.maxPlayers ?? 99) > 2 && !isLegacy(g) && !turnedDown.has(g.id));
@@ -376,12 +380,16 @@ export async function getShelfOfShame(limit = 10, loaded?: ShelfGame[]) {
  * enough evidence for a model are left out, as are games they've already had their say on,
  * unless `includeSaid` is set: then what they said counts, as it does on Discover.
  */
-export async function getTasteChances(gameIds: number[], { includeSaid = false } = {}): Promise<Record<number, Record<string, number>>> {
+export async function getTasteChances(
+  gameIds: number[],
+  { includeSaid = false, night = "core" }: { includeSaid?: boolean; night?: Night } = {},
+): Promise<Record<number, Record<string, number>>> {
+  // A casual night's planner counts the casual players coming too (inCrowd)
   const [members, lists, opinions, collection, allGames] = await Promise.all([
-    getMembers(),
-    getTieredRankingLists(),
-    db.select().from(schema.opinion),
-    db.select().from(schema.collectionItem),
+    getMembers(night),
+    getTieredRankingLists(night),
+    db.select().from(schema.opinion).where(inCrowd(schema.opinion.userId, night)),
+    db.select().from(schema.collectionItem).where(inCrowd(schema.collectionItem.userId, night)),
     db
       .select({
         id: schema.game.id,
@@ -445,8 +453,11 @@ export async function getTasteInsights() {
   const [members, lists, opinions, collection, allGames] = await Promise.all([
     getMembers(),
     getTieredRankingLists(),
-    db.select({ userId: schema.opinion.userId, gameId: schema.opinion.gameId, sentiment: schema.opinion.sentiment }).from(schema.opinion),
-    db.select({ userId: schema.collectionItem.userId, gameId: schema.collectionItem.gameId, bggUserRating: schema.collectionItem.bggUserRating }).from(schema.collectionItem),
+    db.select({ userId: schema.opinion.userId, gameId: schema.opinion.gameId, sentiment: schema.opinion.sentiment }).from(schema.opinion).where(inCrowd(schema.opinion.userId)),
+    db
+      .select({ userId: schema.collectionItem.userId, gameId: schema.collectionItem.gameId, bggUserRating: schema.collectionItem.bggUserRating })
+      .from(schema.collectionItem)
+      .where(inCrowd(schema.collectionItem.userId)),
     db
       .select({
         id: schema.game.id,
@@ -555,7 +566,7 @@ export async function describeTaste(rec: Recommendations, { forUserId, night }: 
     .select({ name: schema.game.name, userId: schema.opinion.userId })
     .from(schema.opinion)
     .innerJoin(schema.game, eq(schema.game.id, schema.opinion.gameId))
-    .where(eq(schema.opinion.sentiment, "nope")))
+    .where(and(eq(schema.opinion.sentiment, "nope"), inCrowd(schema.opinion.userId))))
     .filter((r) => !forUserId || r.userId === forUserId)
     .map((r) => `${r.name} (${name.get(r.userId)})`);
   if (turnedDown.length) lines.push("", `Marked "not for me" (don't suggest these or close cousins): ${turnedDown.join(", ")}`);

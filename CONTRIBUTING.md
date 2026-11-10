@@ -37,7 +37,8 @@ Nights' buttons and `/event` need Discord to reach your machine: give the test a
 
 ## Where code goes
 
-- Mutations go in `src/app/actions.ts` and start with `requireUser()`.
+- Mutations go in `src/app/actions.ts` and start with `requireMember()`. Only an action a casual account may take starts with `requireUser()`: changing their own things (ratings, rankings, collection, color, calendar link), or their own answers on a casual night, which it checks is one. Pages that show the core group's things start with `requireMemberPage()`, which a casual account gets as not found. See [Casual accounts](docs/how-it-works.md#casual-accounts).
+- A query that means "the group" (the shelf, opinions, rankings, People) counts only the members, with `inCrowd` from `src/lib/queries.ts`; pass the night where a casual night's planning should count casual players too.
 - Pure logic goes in `src/lib` with a test next to it (`*.test.ts`, Vitest).
 - Anything a group would set differently (names, the time zone, the weight the rankings split at, limits) comes from `src/config.ts`, never a literal. Name a night with `NIGHT_NAMES` and a ranking list with `TIER_LABEL`, never "core", "casual", "heavy" or "light" in text people read; `inSentence` from `src/lib/text.ts` lowercases a name mid-sentence. A new setting goes in `src/lib/settings.ts`, `applySettings` in `src/config.ts`, the Group settings form, and the settings table in the README. Secrets and things set once with the site (the Discord application, the database) stay environment variables, in `.env.example`.
 - Config values are live bindings that `loadSettings()` fills in: read them where they're used, never into a constant at the top of a module. A new page, route or script awaits `loadSettings()` (or `requireUser()`, which does it) before reading one.
