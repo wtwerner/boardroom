@@ -1,0 +1,1 @@
+ALTER TABLE `game_night` ADD `rate_nudged_at` integer;

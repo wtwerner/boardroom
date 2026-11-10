@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { logNudgeDm, logNudgeDue, reminderDue, reminderMessage } from "./nudges";
+import { logNudgeDm, logNudgeDue, rateNudgeDm, rateNudges, reminderDue, reminderMessage } from "./nudges";
 
 const TZ = "America/Chicago";
 // Thursday Oct 29, 7pm in Chicago
@@ -121,5 +121,41 @@ describe("logNudgeDm", () => {
 
   it("names the site when its address isn't known", () => {
     expect(logNudgeDm({ title: "Game night", url: null, siteName: "Boardroom" }).content).toContain("on its page in Boardroom");
+  });
+});
+
+describe("rateNudges", () => {
+  const plays = [
+    { gameId: 1, name: "Cascadia", userIds: ["u-sam", "u-casey"] },
+    { gameId: 2, name: "Heat", userIds: ["u-casey", "u-alex"] },
+    { gameId: 1, name: "Cascadia", userIds: ["u-casey"] },
+    { gameId: null, name: "Some homebrew", userIds: ["u-casey"] },
+  ];
+
+  it("asks each person with an account about the games they played and haven't rated, once each", () => {
+    const rated = new Map([["u-alex", new Set([2])]]);
+    expect(rateNudges(plays, rated)).toEqual([
+      { userId: "u-sam", games: ["Cascadia"] },
+      { userId: "u-casey", games: ["Cascadia", "Heat"] },
+    ]);
+  });
+
+  it("leaves out anyone who's rated everything they played", () => {
+    const rated = new Map([["u-sam", new Set([1])], ["u-casey", new Set([1, 2])], ["u-alex", new Set([2])]]);
+    expect(rateNudges(plays, rated)).toEqual([]);
+  });
+});
+
+describe("rateNudgeDm", () => {
+  it("names the games and links to rating them", () => {
+    const dm = rateNudgeDm({ title: "Casual night", games: ["Cascadia", "Heat"], url: "https://boardroom.example/rankings/rate", siteName: "Boardroom" }).content;
+    expect(dm).toContain("**Casual night**");
+    expect(dm).toContain("Cascadia and Heat");
+    expect(dm).toContain("[Rate them](<https://boardroom.example/rankings/rate>)");
+  });
+
+  it("says where to rate it without a link, and one game is it", () => {
+    const dm = rateNudgeDm({ title: "Casual night", games: ["Cascadia"], url: null, siteName: "Boardroom" }).content;
+    expect(dm).toContain("Rate it on Boardroom");
   });
 });

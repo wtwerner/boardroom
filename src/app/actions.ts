@@ -195,11 +195,20 @@ async function withNewGuests<T extends { players: ParsedPlayer[] }>(shared: T, n
 /** "A", "A and B", "A, B and C" */
 const listNames = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
+/**
+ * A casual account logs plays on the casual night, and changes or deletes only the ones it
+ * logged; the core group's nights and other people's plays are the members'.
+ */
+function casualMayChange(me: CurrentUser, p: { night: Night; createdBy: string | null }, { own = true } = {}) {
+  return me.access === "member" || (p.night === "casual" && (!own || p.createdBy === me.id));
+}
+
 /** Log one game, or a whole night of them with the same date, place and people. */
 export async function logPlay(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
-  const me = await requireMember();
+  const me = await requireUser();
   const f = readPlayForm(form);
   if (!f) return { ok: false, error: MISSING_PLAY_FIELDS };
+  if (!casualMayChange(me, { night: f.night, createdBy: me.id })) return { ok: false, error: "That event is gone." };
 
   try {
     const { games, shared } = await nightFromForm(f);
@@ -253,11 +262,15 @@ export async function logPlay(_prev: ActionResult | null, form: FormData): Promi
 
 /** Correct a logged play. If the app posted it to Discord, the post is rewritten to match. */
 export async function updatePlay(playId: number, form: FormData): Promise<ActionResult> {
-  await requireMember();
+  const me = await requireUser();
   const existing = await db.query.play.findFirst({ where: eq(schema.play.id, playId) });
   if (!existing) return { ok: false, error: "That play is gone." };
   const f = readPlayForm(form);
   if (!f) return { ok: false, error: MISSING_PLAY_FIELDS };
+  // Their own play, staying on the casual night
+  if (!casualMayChange(me, existing) || !casualMayChange(me, { night: f.night, createdBy: existing.createdBy })) {
+    return { ok: false, error: "You can only change plays you logged." };
+  }
   if (f.gameIds.length > 1) return { ok: false, error: "A play is one game. Log the others as new plays." };
 
   try {
@@ -284,7 +297,11 @@ export async function updatePlay(playId: number, form: FormData): Promise<Action
 }
 
 export async function deletePlay(id: number) {
-  await requireMember();
+  const me = await requireUser();
+  if (me.access !== "member") {
+    const p = await db.query.play.findFirst({ where: eq(schema.play.id, id), columns: { night: true, createdBy: true } });
+    if (!p || !casualMayChange(me, p)) throw new Error("You can only delete plays you logged.");
+  }
   const [deleted] = await db.delete(schema.play).where(eq(schema.play.id, id)).returning();
   if (deleted?.source === "discord") await rememberDeletedDiscordPlays([deleted.sourceRef]);
   // Take the play out of the message the app posted for it (or the whole message, if it was the only one)
@@ -296,9 +313,11 @@ export async function deletePlay(id: number) {
 
 /** Move a play up or down its night's order, and its log post in Discord with it */
 export async function movePlay(id: number, by: -1 | 1): Promise<ActionResult> {
-  await requireMember();
+  const me = await requireUser();
   const p = await db.query.play.findFirst({ where: eq(schema.play.id, id) });
   if (!p) return { ok: false, error: "That play is gone." };
+  // The order is the night's, so anyone logging the casual night can fix it
+  if (!casualMayChange(me, p, { own: false })) return { ok: false, error: "That play is gone." };
   try {
     const night = await db
       .select({ id: schema.play.id, source: schema.play.source, sourceRef: schema.play.sourceRef })
@@ -326,11 +345,11 @@ export async function movePlay(id: number, by: -1 | 1): Promise<ActionResult> {
  * shows what was played and how it went against the plan, and it leaves the nights coming up.
  */
 export async function endNight(id: number): Promise<ActionResult> {
-  await requireMember();
+  const me = await requireUser();
   // Everyone trying the demo shares its night that's on
   if (DEMO) return { ok: false, error: "The night can't be ended on the demo, so it's still on for the next person." };
   const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, id) });
-  if (!n) return { ok: false, error: "That's gone: it was deleted." };
+  if (!n || (me.access !== "member" && n.night !== "casual")) return { ok: false, error: "That's gone: it was deleted." };
   if (n.startsAt.getTime() > Date.now()) return { ok: false, error: "It hasn't started yet." };
   await db.update(schema.gameNight).set({ endedAt: new Date() }).where(and(eq(schema.gameNight.id, id), isNull(schema.gameNight.endedAt)));
   refresh();

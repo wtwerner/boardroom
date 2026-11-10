@@ -52,7 +52,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   if (!n || (limited && n.night !== "casual")) notFound();
 
   if (n.past) {
-    const [members, log] = await Promise.all([getMembers(n.night), nightLog(n, limited)]);
+    const [members, log] = await Promise.all([getMembers(n.night), nightLog(n, limited, me.id)]);
     return (
       <div className="space-y-10">
         <div className="space-y-4">
@@ -67,7 +67,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
 
   // On now: answering, planning and the recommendations are behind it, so it's only what's played
   if (n.started) {
-    const log = await nightLog(n, limited);
+    const log = await nightLog(n, limited, me.id);
     return (
       <div className="space-y-10">
         <LiveRefresh nightId={n.id} />
@@ -244,7 +244,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
  * tap, with whoever's playing (the last game's table, or before anything is logged, who said
  * they were going)
  */
-async function nightLog(n: NightDetail, limited: boolean) {
+async function nightLog(n: NightDetail, limited: boolean, meId: string) {
   if (!n.date || n.cancelled) return null;
   const [games, players, members] = await Promise.all([getAllGamesForPicker(), getPlayers(), n.night === "casual" ? getMembers("casual") : []]);
   const bringers = new Map(members.map((m) => [m.id, m.name]));
@@ -266,13 +266,16 @@ async function nightLog(n: NightDetail, limited: boolean) {
       games={games}
       players={players}
       seated={seated}
-      canPost={Object.fromEntries(GROUP_NIGHTS.map((k) => [k, canPostToDiscord(k)]))}
-      nightNames={NIGHT_NAMES}
+      // A casual account only has its own night: editing a play doesn't offer to move it to the core group's
+      canPost={Object.fromEntries((limited ? (["casual"] as const) : GROUP_NIGHTS).map((k) => [k, canPostToDiscord(k)]))}
+      // What's sent to the browser is readable there: a casual account's page doesn't carry the core group's night's name
+      nightNames={limited ? { core: "", casual: NIGHT_NAMES.casual } : NIGHT_NAMES}
       postLabel={`Post it to ${GROUP_NIGHTS.length > 1 ? `the ${inSentence(NIGHT_NAMES[n.night])}'s` : "the"} Discord plays channel${n.posted ? " and the event's thread" : ""}`}
       canEnd={n.started && !n.past && n.plays.length > 0}
       demo={DEMO}
       collapsed={n.past && n.plays.length > 0}
-      readOnly={limited}
+      limited={limited}
+      meId={meId}
     />
   );
 }

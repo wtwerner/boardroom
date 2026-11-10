@@ -361,11 +361,11 @@ function uniqueSeats(plays: PlayRow[]) {
 }
 
 /** Nights that are on, with what's been played so far and, for just the one, where to log the next game */
-function HappeningNow({ nights, members, log = true }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[]; log?: boolean }) {
+function HappeningNow({ nights, members }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[] }) {
   const colors = Object.fromEntries(members.map((m) => [m.id, m.color]));
   const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
   return (
-    <Section title="Happening now" action={log && nights.length === 1 && <TextLink href={`/events/${nights[0].id}#log`}>Log a game</TextLink>}>
+    <Section title="Happening now" action={nights.length === 1 && <TextLink href={`/events/${nights[0].id}#log`}>Log a game</TextLink>}>
       <ul className="grid gap-3 lg:grid-cols-2">
         {nights.map((n) => (
           <li key={n.id}>
@@ -513,7 +513,7 @@ async function CasualHome({ me }: { me: CurrentUser }) {
   return (
     <div className="space-y-10">
       <SetupNudge name={me.name} status={setup} toRank={toRank} casual />
-      {onNow.length > 0 && <HappeningNow nights={onNow} members={crowd} log={false} />}
+      {onNow.length > 0 && <HappeningNow nights={onNow} members={crowd} />}
       {comingUp.length > 0 ? (
         <UpNext nights={comingUp.slice(0, 3)} members={crowd} plan={false} />
       ) : (

@@ -341,6 +341,8 @@ export const gameNight = sqliteTable(
     remindedAt: integer("reminded_at", { mode: "timestamp_ms" }),
     /** When whoever made it was asked to log what was played */
     logNudgedAt: integer("log_nudged_at", { mode: "timestamp_ms" }),
+    /** After a casual night, when everyone with an account who played was asked to rate the games */
+    rateNudgedAt: integer("rate_nudged_at", { mode: "timestamp_ms" }),
     /** Someone said that's everything played: it's over before its time runs out */
     endedAt: integer("ended_at", { mode: "timestamp_ms" }),
     /** A copy of its log post (what was played) in its thread (log-post.ts) */

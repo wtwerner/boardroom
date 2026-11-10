@@ -170,7 +170,7 @@ async function getNightPlays(nights: { night: Night; date: string | null }[]) {
   const keys = nights.filter((n) => n.date);
   if (keys.length === 0) return [];
   const rows = await db
-    .select({ id: schema.play.id, night: schema.play.night, playedOn: schema.play.playedOn, gameId: schema.play.gameId, gameName: schema.play.gameName, location: schema.play.location, notes: schema.play.notes, source: schema.play.source, sourceRef: schema.play.sourceRef, title: game.name, thumbnail: game.thumbnail, image: game.image })
+    .select({ id: schema.play.id, night: schema.play.night, playedOn: schema.play.playedOn, gameId: schema.play.gameId, gameName: schema.play.gameName, location: schema.play.location, notes: schema.play.notes, source: schema.play.source, sourceRef: schema.play.sourceRef, createdBy: schema.play.createdBy, title: game.name, thumbnail: game.thumbnail, image: game.image })
     .from(schema.play)
     .leftJoin(game, eq(game.id, schema.play.gameId))
     .where(or(...keys.map((n) => and(eq(schema.play.night, n.night), eq(schema.play.playedOn, n.date!)))))
