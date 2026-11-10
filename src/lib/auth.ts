@@ -4,10 +4,11 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { and, eq } from "drizzle-orm";
-import { SITE_URL } from "@/config";
+import { CASUAL_SIGN_IN, SITE_URL } from "@/config";
 import { db, schema } from "@/db";
-import { MEEPLE_COLORS } from "@/db/enums";
-import { groupMemberRefusal } from "./discord";
+import { type Access, MEEPLE_COLORS } from "@/db/enums";
+import { signInAccess } from "./access";
+import { getServerMember } from "./discord";
 import { discordAccountEmail } from "./discord-email";
 import { matchByName } from "./players";
 import { loadSettings } from "./settings-store";
@@ -18,14 +19,20 @@ const REFUSAL_MESSAGE: Record<SignInRefusal, string> = {
   missing_role: "Couldn't sign you in with that Discord account.",
 };
 
-async function assertGroupMember(discordId: string | null | undefined) {
-  // The member role is set on Group settings
+/**
+ * What someone signs in as (src/lib/access.ts), or a refusal. `existing` is their access if
+ * they've signed in before; the first time, it's null and the member role decides.
+ */
+async function signInAs(discordId: string | null | undefined, existing: Access | null) {
+  // The member role and casual sign-in are set on Group settings
   await loadSettings({ fresh: true });
-  const refusal = discordId ? await groupMemberRefusal(discordId) : "not_in_server";
-  if (refusal) {
+  const member = discordId ? await getServerMember(discordId) : null;
+  const decision = signInAccess({ inServer: Boolean(member && !member.bot), hasRole: member?.hasRole ?? null, existing, casualSignIn: CASUAL_SIGN_IN });
+  if (!decision.ok) {
     // With a code, Better Auth redirects the OAuth callback to /sign-in?error=<code>; without one it answers with raw JSON
-    throw new APIError("FORBIDDEN", { code: refusal, message: REFUSAL_MESSAGE[refusal] });
+    throw new APIError("FORBIDDEN", { code: decision.refusal, message: REFUSAL_MESSAGE[decision.refusal] });
   }
+  return decision.access;
 }
 
 /**
@@ -90,8 +97,11 @@ export const auth = betterAuth({
   databaseHooks: {
     account: {
       create: {
+        // The first sign-in: the member role decides whether they're a member or a casual account
         before: async (account) => {
-          if (account.providerId === "discord") await assertGroupMember(account.accountId);
+          if (account.providerId !== "discord") return;
+          const access = await signInAs(account.accountId, null);
+          await db.update(schema.user).set({ access }).where(eq(schema.user.id, account.userId));
         },
         // Only after the membership check passed: record the id and give them a player
         after: async (account) => {
@@ -107,13 +117,17 @@ export const auth = betterAuth({
     },
     session: {
       create: {
-        // Re-checked on every sign-in so people who leave the server (or lose the role) lose access
+        // Re-checked on every sign-in: someone who leaves the server, or an admin removed, can't get back in.
+        // After the first time Boardroom says what they are, not the role
         before: async (session) => {
-          const row = await db.query.account.findFirst({
-            where: and(eq(schema.account.userId, session.userId), eq(schema.account.providerId, "discord")),
-            columns: { accountId: true },
-          });
-          await assertGroupMember(row?.accountId);
+          const [row, u] = await Promise.all([
+            db.query.account.findFirst({
+              where: and(eq(schema.account.userId, session.userId), eq(schema.account.providerId, "discord")),
+              columns: { accountId: true },
+            }),
+            db.query.user.findFirst({ where: eq(schema.user.id, session.userId), columns: { access: true } }),
+          ]);
+          await signInAs(row?.accountId, u?.access ?? null);
         },
       },
     },

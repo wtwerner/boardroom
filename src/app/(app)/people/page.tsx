@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME } from "@/config";
-import { Avatar, Empty, GameCover, Meeple, NewBadge, PageHeader, Panel, Section, Skeleton, formatDate } from "@/components/ui";
+import { Avatar, Empty, GameCover, Meeple, NewBadge, PageHeader, Panel, Section, Skeleton, TextLink, formatDate } from "@/components/ui";
 import { TIERS } from "@/db/enums";
 import { hasMemberRole, listGuildMembers } from "@/lib/discord";
 import { localDate } from "@/lib/nights";
 import { inSentence } from "@/lib/text";
 import { TIER_TAG } from "@/lib/tier";
-import { requireMemberPage } from "@/lib/session";
+import { canManageGroup, requireMemberPage } from "@/lib/session";
 import { getPeople, getPlayers, isNewMember, type PersonCard } from "@/lib/queries";
 import { canWelcome, coreNightName, welcomeName } from "@/lib/welcome";
 import { PeopleTabs } from "./tabs";
@@ -33,7 +33,9 @@ async function People() {
   const me = await requireMemberPage();
   const people = getPeople();
   const invitedTo = coreNightName() ? `${coreNightName()} events` : SITE_NAME;
-  const [{ members, notSignedUp, welcomed }, candidates] = await Promise.all([people, canWelcome() ? welcomeCandidates(people) : null]);
+  // Who's a member is the admins' to decide, so inviting is theirs too
+  const admin = await canManageGroup();
+  const [{ members, notSignedUp, welcomed }, candidates] = await Promise.all([people, canWelcome() && admin ? welcomeCandidates(people) : null]);
 
   return (
     <div className="space-y-10">
@@ -96,7 +98,8 @@ async function People() {
           <p className="mb-3 max-w-2xl text-sm text-slate">
             {coreNightName() ? `For a ${inSentence(NIGHT_NAMES.casual)} regular who wants in on the heavier games. ` : ""}The bot
             {hasMemberRole() ? " gives them the role in Discord," : ""} says hi and DMs them a link to get set up here. You can also right-click them
-            in Discord and pick <strong className="font-semibold">Apps → {welcomeName()}</strong>.
+            in Discord and pick <strong className="font-semibold">Apps → {welcomeName()}</strong>. Someone already signed in is moved up on{" "}
+            <TextLink href="/settings/access">People and access</TextLink>.
           </p>
           {candidates.length ? (
             <WelcomeForm candidates={candidates} hasRole={hasMemberRole()} invitedTo={invitedTo} />

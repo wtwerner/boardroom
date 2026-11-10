@@ -42,7 +42,9 @@ export type Tier = (typeof TIERS)[number];
 /**
  * What someone signed in can do. A member is in the core group: every page and action. A casual
  * account comes to the casual night only: their own ratings, rankings and collection, and that
- * night's answers and bring list. Nothing about the core group's nights is shown to them.
+ * night's answers, bring list and plays. Nothing about the core group's nights is shown to them.
+ * Removed is someone an admin took off the site: they can't sign in, and count for nothing.
+ * Boardroom decides it (src/lib/access.ts); Discord's member role follows.
  */
-export const ACCESS = ["member", "casual"] as const;
+export const ACCESS = ["member", "casual", "removed"] as const;
 export type Access = (typeof ACCESS)[number];

@@ -30,7 +30,7 @@ export type CurrentUser = {
    * A member of the core group, or a casual account (ACCESS in db/enums.ts). A member previewing
    * the casual side is casual here, so everything they see and can do is a casual account's.
    */
-  access: Access;
+  access: Exclude<Access, "removed">;
   /** A member seeing the site as a casual account would (PREVIEW_COOKIE) */
   previewing: boolean;
 };
@@ -43,8 +43,11 @@ export const requireUser = cache(async (): Promise<CurrentUser> => {
   // Whatever runs next reads the group's settings, so have the latest in place first
   const [session, jar] = await Promise.all([getSession(), cookies(), loadSettings({ fresh: true })]);
   if (!session) redirect("/sign-in");
+  const stored = (session.user as { access?: Access }).access;
+  // Removing someone ends their sessions; this catches one that's still on its way out
+  if (stored === "removed") redirect("/sign-in?error=missing_role");
   // Anything but a casual account is a member, as every account was before there were casual ones
-  const access: Access = (session.user as { access?: Access }).access === "casual" ? "casual" : "member";
+  const access = stored === "casual" ? "casual" : "member";
   // There's only a casual side to preview while the group has a casual night
   const previewing = access === "member" && CASUAL_NIGHT && jar.get(PREVIEW_COOKIE)?.value === "on";
   const p = await db.query.player.findFirst({

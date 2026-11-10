@@ -36,6 +36,7 @@ export function GroupSettingsForm({ settings, timeZones, claude, discord, readOn
 
 function Fields({ settings: s, timeZones, claude, discord, errors }: { settings: GroupSettings; timeZones: string[]; claude: boolean; discord: Discord | null; errors: Partial<Record<SettingKey, string>> }) {
   const [casual, setCasual] = useState(s.casualNight);
+  const [casualSignIn, setCasualSignIn] = useState(s.casualSignIn);
   const [useClaude, setUseClaude] = useState(s.claude);
   const [names, setNames] = useState({ core: s.coreNightName, casual: s.casualNightName });
   const field = (key: SettingKey) => ({ id: key, error: errors[key] });
@@ -72,6 +73,15 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
             </Toggle>
           </div>
           {casual && <NightFields night="casual" names={names} setNames={setNames} title={s.casualNightTitle} minPeople={s.casualMinPeople} errors={errors} />}
+          {casual && (
+            <div className="border-t border-line pt-4">
+              <Toggle name="casualSignIn" checked={casualSignIn} onChange={setCasualSignIn} label={`${names.casual || "Casual night"} players can sign in`}>
+                Anyone in the Discord server without the member role signs in with an account for the {inSentence(names.casual || "Casual night")} only:
+                their own ratings, rankings and collection, its events and plays, and nothing of the {inSentence(names.core || "Game night")}. Admins
+                move people up, down or out on People and access.
+              </Toggle>
+            </div>
+          )}
         </Panel>
       </Section>
 

@@ -6,12 +6,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
-import { CLAUDE_IDEAS_PER_DAY, DEMO, GROUP_NIGHTS, SETTINGS, SITE_URL, TIME_ZONE } from "@/config";
+import { CLAUDE_IDEAS_PER_DAY, DEMO, GROUP_NIGHTS, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { DATE_ANSWERS, MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
+import { ACCESS, type Access, DATE_ANSWERS, MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
-import { canPostToDiscord, discordCode, hasInteractions, holdsRole, registerCommands, sendDirectMessage } from "@/lib/discord";
+import { canPostToDiscord, discordCode, getServerMember, giveMemberRole, hasInteractions, hasMemberRole, holdsRole, registerCommands, sendDirectMessage, takeMemberRole } from "@/lib/discord";
 import type { ParsedPlayer } from "@/lib/play-parser";
 import { isSyncOrigin } from "@/lib/calendar";
 import { feedTokenFor, replaceFeedToken } from "@/lib/calendar-store";
@@ -30,7 +30,8 @@ import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
 import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
-import { canWelcome, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
+import { canWelcome, welcomeCandidate, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
+import { accessChangeRefusal } from "@/lib/access";
 import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, setDecideBy, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
 import { announceDateSetLater, announceFellThroughLater, answeredLater, nudgeLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
@@ -730,7 +731,8 @@ export async function mergePlayers(fromId: number, intoId: number): Promise<Acti
 
 /** Bring someone from the Discord server into the group: the member role, a hello and a DM with how to get set up */
 export async function welcomeToGroup(discordId: string): Promise<ActionResult> {
-  const me = await requireMember();
+  // Who's a member is the admins' to decide
+  const me = await requireAdmin();
   const id = z.string().regex(/^\d{15,20}$/).safeParse(discordId);
   if (!id.success) return { ok: false, error: "Pick someone from the list." };
   try {
@@ -740,6 +742,81 @@ export async function welcomeToGroup(discordId: string): Promise<ActionResult> {
     return { ok: true, message: welcomeSummary(result, () => "Discord") };
   } catch (err) {
     return fail(err);
+  }
+}
+
+/**
+ * An admin moves someone up to member, down to casual, or off the site (src/lib/access.ts), and
+ * Discord's member role follows. Moving up someone without the role is an invite: the role, the
+ * hello in the channel and the DM. Off the site ends their sessions too. Boardroom changes first;
+ * if Discord won't, the message says so and People and access shows it until it's settled.
+ */
+export async function setAccess(userId: string, to: Access): Promise<ActionResult> {
+  try {
+    const me = await requireAdmin();
+    if (!ACCESS.includes(to)) return { ok: false, error: "Pick member, casual or removed." };
+    const target = await db.query.user.findFirst({ where: eq(schema.user.id, userId) });
+    if (!target) return { ok: false, error: "They're not on the site." };
+    const refusal = accessChangeRefusal(me.id, target, to);
+    if (refusal) return { ok: false, error: refusal };
+    if (target.access === to) return { ok: true };
+
+    if (to === "member" && target.discordId && canWelcome()) {
+      const candidate = await welcomeCandidate(target.discordId).catch(() => null);
+      if (candidate && !candidate.already) {
+        const row = await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } });
+        // Gives the role and makes them a member
+        const result = await welcome(target.discordId, { name: me.name, userId: me.id, discordId: row?.discordId ?? null });
+        await db.update(schema.user).set({ access: "member" }).where(eq(schema.user.id, userId));
+        refresh();
+        return { ok: true, message: welcomeSummary(result, () => "Discord") };
+      }
+    }
+
+    await db
+      .update(schema.user)
+      .set({ access: to, ...(to === "removed" && { isAdmin: false }) })
+      .where(eq(schema.user.id, userId));
+    // Off the site means now, not when their session runs out
+    if (to === "removed") await db.delete(schema.session).where(eq(schema.session.userId, userId));
+    const discord = await matchRole(target.discordId, to, me.name);
+    refresh();
+    const said = { member: `${target.name} is a member.`, casual: `${target.name} has a casual account.`, removed: `${target.name} is off the site.` }[to];
+    return { ok: true, message: discord ? `${said} ${discord}` : said };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Give or take Discord's member role to match someone's access here, for a mismatch on People and access */
+export async function matchDiscordRole(userId: string): Promise<ActionResult> {
+  try {
+    const me = await requireAdmin();
+    const target = await db.query.user.findFirst({ where: eq(schema.user.id, userId), columns: { name: true, discordId: true, access: true } });
+    if (!target) return { ok: false, error: "They're not on the site." };
+    const discord = await matchRole(target.discordId, target.access, me.name);
+    refresh();
+    return discord ? { ok: false, error: discord } : { ok: true, message: `Discord matches for ${target.name}.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Make Discord's member role match `access`; a sentence when it couldn't, null when it's done or there's no role */
+async function matchRole(discordId: string | null, access: Access, by: string): Promise<string | null> {
+  if (!discordId || !hasMemberRole() || !process.env.DISCORD_BOT_TOKEN) return null;
+  try {
+    const member = await getServerMember(discordId);
+    if (!member) return null;
+    const reason = `${access === "member" ? "Made a member" : access === "casual" ? "Made casual" : "Taken off"} by ${by} on ${SITE_NAME}`;
+    if (access === "member" && !member.hasRole) await giveMemberRole(discordId, reason);
+    if (access !== "member" && member.hasRole) await takeMemberRole(discordId, reason);
+    return null;
+  } catch (err) {
+    console.error(`Couldn't match ${discordId}'s member role`, err);
+    return discordCode(err) === 50013 || /→ 403/.test(String(err))
+      ? "The bot can't change their role in Discord: give its role Manage Roles, above the member role."
+      : "Discord didn't change their role. Try Match Discord in a minute.";
   }
 }
 

@@ -308,7 +308,7 @@ async function answerFor(i: Interaction, nightId: number, form: Record<string, s
  * asks first, saying what's about to happen.
  */
 async function welcomeCommand(i: Interaction) {
-  if (!isMember(i)) return reply(MEMBERS_ONLY());
+  if (!(await isSiteAdmin(i))) return reply(ADMINS_ONLY());
   if (!canWelcome()) return reply("Inviting people needs the bot in the server.");
   const target = i.data?.target_id;
   if (!target) return reply("Right-click someone in the server to invite them.");
@@ -323,7 +323,7 @@ async function welcomeCommand(i: Interaction) {
 
 /** The confirm button: giving the role, posting and DMing take a few calls, so the answer replaces the question once they're done */
 async function welcomeConfirmed(i: Interaction, discordId: string) {
-  if (!isMember(i)) return reply(MEMBERS_ONLY());
+  if (!(await isSiteAdmin(i))) return reply(ADMINS_ONLY());
   const by = { name: memberName(i), discordId: i.member!.user.id, userId: await accountFor(i) };
   after(async () => {
     let content: string;
@@ -350,6 +350,19 @@ async function bringAnswer(i: Interaction, action: { planId: number; yes: boolea
 }
 
 /** Making a night needs an account: a night belongs to whoever made it */
+/** Whether whoever pressed it is one of the site's admins (or nobody is yet): who's a member is theirs to decide */
+async function isSiteAdmin(i: Interaction) {
+  const id = i.member?.user.id;
+  if (!id) return false;
+  const [me, anyAdmin] = await Promise.all([
+    db.query.user.findFirst({ where: eq(schema.user.discordId, id), columns: { isAdmin: true, access: true } }),
+    db.query.user.findFirst({ where: eq(schema.user.isAdmin, true), columns: { id: true } }),
+  ]);
+  return me?.access === "member" && (me.isAdmin || !anyAdmin);
+}
+
+const ADMINS_ONLY = () => `Only ${SITE_NAME}'s admins can invite people. Ask one of them.`;
+
 async function accountFor(i: Interaction) {
   const member = await db.query.user.findFirst({ where: eq(schema.user.discordId, i.member!.user.id), columns: { id: true } });
   return member?.id ?? null;

@@ -15,10 +15,13 @@ const { game, play, playPlayer, player, collectionItem, opinion, ranking, user }
  * Who counts as the group for a kind of night: the core group's nights are its members', and the
  * casual night's are everyone with an account, members and casual players alike. A condition on a
  * user id column (none when everyone counts), so a casual player's collection, ratings and rankings
- * help plan their night without showing up in the core group's shelf, lists or Discover.
+ * help plan their night without showing up in the core group's shelf, lists or Discover. Someone
+ * an admin removed counts for neither.
  */
 export function inCrowd(userId: Column, night: Night = "core") {
-  return night === "casual" ? undefined : inArray(userId, db.select({ id: user.id }).from(user).where(eq(user.access, "member")));
+  // Someone removed counts for neither
+  const who = night === "casual" ? not(eq(user.access, "removed")) : eq(user.access, "member");
+  return inArray(userId, db.select({ id: user.id }).from(user).where(who));
 }
 
 export type Person = {
@@ -336,7 +339,7 @@ export async function getNightCrowd(night: Night): Promise<Set<string>> {
     .from(play)
     .innerJoin(playPlayer, eq(playPlayer.playId, play.id))
     .innerJoin(player, eq(player.id, playPlayer.playerId))
-    .where(and(eq(play.night, "casual"), isNotNull(player.userId), gte(play.playedOn, crowdSince(localDate(new Date())))));
+    .where(and(eq(play.night, "casual"), inCrowd(player.userId, "casual"), gte(play.playedOn, crowdSince(localDate(new Date())))));
   return new Set(rows.map((r) => r.id!));
 }
 
@@ -888,3 +891,72 @@ export async function getOnlineGames() {
     onBuyList: onBuyList.has(g.id),
   }));
 }
+
+// ---------------------------------------------------------------------------
+// People and access (admins)
+// ---------------------------------------------------------------------------
+
+/**
+ * Everyone with an account, for admins deciding who's a member: their access, whether they're an
+ * admin, the nights of each kind they've come to in the last year (CROWD_DAYS) and the last one,
+ * how many games they've rated, and when they were last on the site. Also the casual night's
+ * regulars without an account, who could sign in once they're in the Discord server.
+ */
+export async function getAccessOverview() {
+  const since = crowdSince(localDate(new Date()));
+  const [accounts, attendance, rated, seen] = await Promise.all([
+    db
+      .select({
+        id: user.id,
+        name: user.name,
+        image: user.image,
+        access: user.access,
+        isAdmin: user.isAdmin,
+        discordId: user.discordId,
+        joinedAt: user.createdAt,
+        playerId: player.id,
+        color: player.color,
+      })
+      .from(user)
+      .leftJoin(player, eq(player.userId, user.id))
+      .orderBy(user.name),
+    db
+      .select({
+        playerId: player.id,
+        name: player.name,
+        color: player.color,
+        userId: player.userId,
+        discordId: player.discordId,
+        core: countDistinct(nightOn("core")),
+        casual: countDistinct(nightOn("casual")),
+        last: max(play.playedOn),
+      })
+      .from(playPlayer)
+      .innerJoin(player, eq(player.id, playPlayer.playerId))
+      .innerJoin(play, eq(play.id, playPlayer.playId))
+      .where(gte(play.playedOn, since))
+      .groupBy(player.id),
+    db.select({ userId: opinion.userId, n: count() }).from(opinion).where(isNotNull(opinion.sentiment)).groupBy(opinion.userId),
+    db.select({ userId: schema.session.userId, last: max(schema.session.updatedAt) }).from(schema.session).groupBy(schema.session.userId),
+  ]);
+  const came = new Map(attendance.map((a) => [a.playerId, a]));
+  const ratedBy = new Map(rated.map((r) => [r.userId, r.n]));
+  const lastSeen = new Map(seen.map((s) => [s.userId, s.last]));
+  return {
+    accounts: accounts.map((a) => {
+      const nights = a.playerId ? came.get(a.playerId) : undefined;
+      return {
+        ...a,
+        coreNights: nights?.core ?? 0,
+        casualNights: nights?.casual ?? 0,
+        lastNight: nights?.last ?? null,
+        rated: ratedBy.get(a.id) ?? 0,
+        lastSeen: lastSeen.get(a.id) ?? null,
+      };
+    }),
+    // Twice or more in the last year: one-off guests aren't worth listing
+    regulars: attendance.filter((a) => !a.userId && a.casual >= 2).sort((a, b) => b.casual - a.casual || a.name.localeCompare(b.name)),
+  };
+}
+
+export type AccessOverview = Awaited<ReturnType<typeof getAccessOverview>>;

@@ -62,13 +62,22 @@ async function Settings() {
         </p>
       )}
       {!member ? null : canManage ? (
-        <Link href="/settings/group" className="flex items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/40">
-          <span>
-            <span className="block font-medium">Group settings</span>
-            <span className="block text-sm text-slate">The site&apos;s name, time zone, kinds of events, Discord channels, and who the admins are.</span>
-          </span>
-          <span aria-hidden className="text-slate">→</span>
-        </Link>
+        <div className="space-y-2">
+          <Link href="/settings/group" className="flex items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/40">
+            <span>
+              <span className="block font-medium">Group settings</span>
+              <span className="block text-sm text-slate">The site&apos;s name, time zone, kinds of events, Discord channels, and who the admins are.</span>
+            </span>
+            <span aria-hidden className="text-slate">→</span>
+          </Link>
+          <Link href="/settings/access" className="flex items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/40">
+            <span>
+              <span className="block font-medium">People and access</span>
+              <span className="block text-sm text-slate">Who&apos;s a member{CASUAL_NIGHT && ` or a ${inSentence(NIGHT_NAMES.casual)} account`}, who&apos;s an admin, and what each can do.</span>
+            </span>
+            <span aria-hidden className="text-slate">→</span>
+          </Link>
+        </div>
       ) : (
         <p className="text-sm text-slate">
           The site&apos;s name, time zone and Discord channels are on Group settings, which {admins.map((a) => a.name).join(", ")}{" "}

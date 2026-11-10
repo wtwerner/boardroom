@@ -57,6 +57,12 @@ export let TIME_ZONE: string;
  */
 export let CASUAL_NIGHT: boolean;
 
+/**
+ * People in the Discord server without the member role can sign in, with a casual account that
+ * sees only the casual night (src/lib/access.ts). Only with a casual night.
+ */
+export let CASUAL_SIGN_IN: boolean;
+
 /** The kinds of night this group has: its own, and the casual night when it has one */
 export let GROUP_NIGHTS: readonly Night[];
 
@@ -99,6 +105,7 @@ export function applySettings(s: GroupSettings) {
   };
   TIME_ZONE = s.timeZone;
   CASUAL_NIGHT = s.casualNight;
+  CASUAL_SIGN_IN = s.casualNight && s.casualSignIn;
   GROUP_NIGHTS = s.casualNight ? ["core", "casual"] : ["core"];
   HEAVY_WEIGHT = s.heavyWeight;
   REMINDER_HOURS = s.reminderHours;
