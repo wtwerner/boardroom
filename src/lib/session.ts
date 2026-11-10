@@ -1,10 +1,10 @@
 import "server-only";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { count, eq } from "drizzle-orm";
-import { DEMO } from "@/config";
+import { CASUAL_NIGHT, DEMO } from "@/config";
 import { db, schema } from "@/db";
 import type { Access, MeepleColor } from "@/db/enums";
 import { auth } from "./auth";
@@ -26,15 +26,27 @@ export type CurrentUser = {
   color: MeepleColor | null;
   /** Can change the group's settings (see canManageGroup) */
   isAdmin: boolean;
-  /** A member of the core group, or a casual account (ACCESS in db/enums.ts) */
+  /**
+   * A member of the core group, or a casual account (ACCESS in db/enums.ts). A member previewing
+   * the casual side is casual here, so everything they see and can do is a casual account's.
+   */
   access: Access;
+  /** A member seeing the site as a casual account would (PREVIEW_COOKIE) */
+  previewing: boolean;
 };
+
+/** Set while a member is seeing the site as a casual account would. Settings turns it on; the banner turns it off */
+export const PREVIEW_COOKIE = "casual-preview";
 
 /** The signed-in member, or a redirect to /sign-in. Call from every page and action. */
 export const requireUser = cache(async (): Promise<CurrentUser> => {
   // Whatever runs next reads the group's settings, so have the latest in place first
-  const [session] = await Promise.all([getSession(), loadSettings({ fresh: true })]);
+  const [session, jar] = await Promise.all([getSession(), cookies(), loadSettings({ fresh: true })]);
   if (!session) redirect("/sign-in");
+  // Anything but a casual account is a member, as every account was before there were casual ones
+  const access: Access = (session.user as { access?: Access }).access === "casual" ? "casual" : "member";
+  // There's only a casual side to preview while the group has a casual night
+  const previewing = access === "member" && CASUAL_NIGHT && jar.get(PREVIEW_COOKIE)?.value === "on";
   const p = await db.query.player.findFirst({
     where: eq(schema.player.userId, session.user.id),
     columns: { id: true, color: true },
@@ -47,8 +59,8 @@ export const requireUser = cache(async (): Promise<CurrentUser> => {
     playerId: p?.id ?? null,
     color: p?.color ?? null,
     isAdmin: Boolean((session.user as { isAdmin?: boolean }).isAdmin),
-    // Anything but a casual account is a member, as every account was before there were casual ones
-    access: (session.user as { access?: Access }).access === "casual" ? "casual" : "member",
+    access: previewing ? "casual" : access,
+    previewing,
   };
 });
 

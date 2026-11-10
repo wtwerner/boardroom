@@ -22,6 +22,8 @@ export function CasualGames(props: {
   headcount: number;
   /** Who owns each game on the list, for one nobody's bringing yet */
   owners: Record<number, Owner[]>;
+  /** A casual account takes back only their own bring or ask, not anyone else's */
+  limited?: boolean;
 }) {
   const { nightId, games, members, meId, headcount } = props;
   if (games.length === 0) {
@@ -70,7 +72,7 @@ export function CasualGames(props: {
             </h3>
             <ul className="space-y-2">
               {list.map((g) => (
-                <BringRow key={g.id} nightId={nightId} plan={g} meId={meId} owners={props.owners[g.game.id] ?? []} askedBy={byId.get(g.createdBy ?? "")?.name ?? null} headcount={headcount} />
+                <BringRow key={g.id} nightId={nightId} plan={g} meId={meId} owners={props.owners[g.game.id] ?? []} askedBy={byId.get(g.createdBy ?? "")?.name ?? null} headcount={headcount} limited={props.limited} />
               ))}
             </ul>
           </div>
@@ -89,7 +91,7 @@ function order(g: PlannedGame, meId: string) {
   return 4;
 }
 
-function BringRow(props: { nightId: number; plan: PlannedGame; meId: string; owners: Owner[]; askedBy: string | null; headcount: number }) {
+function BringRow(props: { nightId: number; plan: PlannedGame; meId: string; owners: Owner[]; askedBy: string | null; headcount: number; limited?: boolean }) {
   const { nightId, plan, meId, owners, askedBy, headcount } = props;
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -127,10 +129,12 @@ function BringRow(props: { nightId: number; plan: PlannedGame; meId: string; own
           </button>
         </span>
       ) : plan.bringerId || plan.askedId ? (
-        // Anyone can take a game off, someone else's or an ask, so a wrong one can be undone
-        <button type="button" disabled={pending} onClick={() => start(() => dropPlan(plan.id))} className={buttonClass("ghost", "ml-auto px-2.5 py-1.5 text-xs")}>
-          {plan.bringerId === meId ? "Not bringing it" : "Take it off"}
-        </button>
+        // Anyone can take a game off, someone else's or an ask, so a wrong one can be undone; a casual account, only their own
+        (!props.limited || plan.bringerId === meId || (plan.askedId && plan.createdBy === meId)) && (
+          <button type="button" disabled={pending} onClick={() => start(() => dropPlan(plan.id))} className={buttonClass("ghost", "ml-auto px-2.5 py-1.5 text-xs")}>
+            {plan.bringerId === meId ? "Not bringing it" : "Take it off"}
+          </button>
+        )
       ) : (
         <BringButton nightId={nightId} gameId={g.id} owners={owners} meId={meId} />
       )}

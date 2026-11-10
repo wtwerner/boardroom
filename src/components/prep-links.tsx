@@ -10,9 +10,10 @@ import { DemoTag, buttonClass } from "@/components/ui";
 /**
  * A game's prep: BGG's rules files and teach videos, then the links the group added for it. The
  * links are the game's, so they're there on its page and for every night it's locked in.
- * lockLinks (a demo) shows the links without adding or removing any.
+ * lockLinks (a demo) shows the links without adding or removing any, and says why; readOnly (a
+ * casual account) shows them and nothing else.
  */
-export function PrepLinks({ game, links, lockLinks }: { game: { id: number; name: string }; links: PrepLink[]; lockLinks: boolean }) {
+export function PrepLinks({ game, links, lockLinks, readOnly = false }: { game: { id: number; name: string }; links: PrepLink[]; lockLinks: boolean; readOnly?: boolean }) {
   const [, start] = useTransition();
   const all = [...bggPrepLinks(game.id, game.name).map((l) => ({ ...l, builtIn: true })), ...links.map((l) => ({ ...l, builtIn: false }))];
   return (
@@ -24,7 +25,7 @@ export function PrepLinks({ game, links, lockLinks }: { game: { id: number; name
               <ExternalLink className="size-3.5 shrink-0" />
               <span className="truncate">{l.label}</span>
             </a>
-            {!l.builtIn && !lockLinks && (
+            {!l.builtIn && !lockLinks && !readOnly && (
               <button
                 type="button"
                 aria-label={`Remove ${l.label}`}
@@ -37,7 +38,7 @@ export function PrepLinks({ game, links, lockLinks }: { game: { id: number; name
           </li>
         ))}
       </ul>
-      {lockLinks ? (
+      {readOnly ? null : lockLinks ? (
         <p className="mt-2 text-xs text-slate">
           <DemoTag /> Adding links is off on the demo.
         </p>

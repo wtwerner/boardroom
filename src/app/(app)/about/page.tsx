@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import { CASUAL_NIGHT, CLAUDE, CLAUDE_IDEAS_PER_DAY, MIN_PEOPLE, NIGHT_NAMES } from "@/config";
 import { MUST_PLAY_LIMIT, SENTIMENTS } from "@/db/enums";
-import { PageHeader, Panel, TextLink } from "@/components/ui";
+import { PageHeader, Panel, Skeleton, TextLink } from "@/components/ui";
 import { MIN_EVIDENCE } from "@/lib/recommend";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { inSentence } from "@/lib/text";
-import { loadSettings } from "@/lib/settings-store";
+import { requireMemberPage } from "@/lib/session";
 import { HEAVY_WEIGHT, TIER_LABEL } from "@/lib/tier";
 import { UPCOMING_PER_GROUP } from "@/lib/upcoming";
 
@@ -28,8 +28,17 @@ const SECTIONS = [
 ] as const;
 
 /** What every number on the site means and where it comes from, in one place. */
-export default async function AboutPage() {
-  await loadSettings();
+export default function AboutPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-96" />}>
+      <About />
+    </Suspense>
+  );
+}
+
+/** For members: it explains the core group's nights too, so it isn't there for a casual account yet */
+async function About() {
+  await requireMemberPage();
   // The nights by the names this group gives them, for use mid-sentence
   const core = inSentence(NIGHT_NAMES.core);
   const casual = inSentence(NIGHT_NAMES.casual);

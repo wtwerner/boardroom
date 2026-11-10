@@ -47,34 +47,35 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   const me = await requireUser();
   const id = Number((await params).id);
   const n = Number.isInteger(id) ? await loadNight(id) : null;
-  // The core group's nights aren't there for a casual account
-  if (!n || (me.access !== "member" && n.night !== "casual")) notFound();
+  // The core group's nights aren't there for a casual account, and on theirs they do what's theirs to do
+  const limited = me.access !== "member";
+  if (!n || (limited && n.night !== "casual")) notFound();
 
   if (n.past) {
-    const [members, log] = await Promise.all([getMembers(n.night), nightLog(n)]);
+    const [members, log] = await Promise.all([getMembers(n.night), nightLog(n, limited)]);
     return (
       <div className="space-y-10">
         <div className="space-y-4">
-          <BackLink />
-          <NightHeader n={n} />
+          <BackLink limited={limited} />
+          <NightHeader n={n} limited={limited} />
         </div>
         <LiveRefresh nightId={n.id} />
-        <PastNight n={n} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} log={log} />
+        <PastNight n={n} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} log={log} limited={limited} />
       </div>
     );
   }
 
   // On now: answering, planning and the recommendations are behind it, so it's only what's played
   if (n.started) {
-    const log = await nightLog(n);
+    const log = await nightLog(n, limited);
     return (
       <div className="space-y-10">
         <LiveRefresh nightId={n.id} />
         <div className="space-y-4">
-          <BackLink />
-          <NightHeader n={n} />
+          <BackLink limited={limited} />
+          <NightHeader n={n} limited={limited} />
         </div>
-        <PlayedSection n={n} log={log} title="What's been played" />
+        <PlayedSection n={n} log={log} title="What's been played" limited={limited} />
         <RulesAndTeach n={n} />
       </div>
     );
@@ -118,11 +119,11 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     <div className="space-y-10">
       <LiveRefresh nightId={n.id} />
       <div className="space-y-4">
-        <BackLink />
-        <NightHeader n={n} staying={staying} decideBy={poll?.decideBy ? localDate(new Date(poll.decideBy)) : null} calendar={calendar} addToCalendar={addToCalendar} />
+        <BackLink limited={limited} />
+        <NightHeader n={n} limited={limited} staying={staying} decideBy={poll?.decideBy ? localDate(new Date(poll.decideBy)) : null} calendar={calendar} addToCalendar={addToCalendar} />
         {poll ? (
           // Finding its date: everyone says which dates work, and their answers are who's coming once one's set
-          <PollCard poll={pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} calendar={calendar} />
+          <PollCard poll={pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} calendar={calendar} limited={limited} />
         ) : (
           <Panel className="p-4">
             <People
@@ -135,6 +136,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
               othersComing={n.othersComing}
               capacity={n.capacity}
               myPlayerId={me.playerId}
+              limited={limited}
               members={members.map((m) => ({ id: m.id, name: m.name, color: m.color, playerName: players.find((p) => p.id === m.playerId)?.name ?? null }))}
               players={players}
             />
@@ -148,6 +150,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
         ) : (
           <CasualGames
             nightId={n.id}
+            limited={limited}
             games={n.games}
             members={people}
             meId={me.id}
@@ -227,7 +230,8 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
             rankings={[rankings.heavy, rankings.light]}
             chances={chances}
             today={new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE })}
-            aiEnabled={claudeReady()}
+            aiEnabled={claudeReady() && !limited}
+            explain={!limited}
           />
         )}
       </Section>
@@ -240,7 +244,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
  * tap, with whoever's playing (the last game's table, or before anything is logged, who said
  * they were going)
  */
-async function nightLog(n: NightDetail) {
+async function nightLog(n: NightDetail, limited: boolean) {
   if (!n.date || n.cancelled) return null;
   const [games, players, members] = await Promise.all([getAllGamesForPicker(), getPlayers(), n.night === "casual" ? getMembers("casual") : []]);
   const bringers = new Map(members.map((m) => [m.id, m.name]));
@@ -268,6 +272,7 @@ async function nightLog(n: NightDetail) {
       canEnd={n.started && !n.past && n.plays.length > 0}
       demo={DEMO}
       collapsed={n.past && n.plays.length > 0}
+      readOnly={limited}
     />
   );
 }
@@ -303,10 +308,11 @@ function RulesAndTeach({ n }: { n: NightDetail }) {
   );
 }
 
-function BackLink() {
+/** Back to Plan, or for a casual account, who has no Plan, to Home */
+function BackLink({ limited }: { limited: boolean }) {
   return (
-    <TextLink href="/plan" className="inline-flex items-center gap-1 text-sm">
-      <ArrowLeft className="size-3.5" /> All events
+    <TextLink href={limited ? "/" : "/plan"} className="inline-flex items-center gap-1 text-sm">
+      <ArrowLeft className="size-3.5" /> {limited ? "Home" : "All events"}
     </TextLink>
   );
 }
@@ -329,12 +335,15 @@ function TbdBadge({ night }: { night: NightDetail["night"] }) {
 /** When and where, its post in Discord, and edit and delete */
 function NightHeader({
   n,
+  limited,
   staying = [],
   decideBy,
   calendar,
   addToCalendar,
 }: {
   n: NightDetail;
+  /** A casual account: no editing, moving or deleting it, which are the members' */
+  limited: boolean;
   staying?: string[];
   /** The day its date should be decided by (YYYY-MM-DD) */
   decideBy?: string | null;
@@ -380,7 +389,7 @@ function NightHeader({
             <ExternalLink className="size-3.5" /> Open in Discord
           </a>
         )}
-        {(!n.cancelled || n.findingDate) && (
+        {(!n.cancelled || n.findingDate) && !limited && (
           <NightActions
             id={n.id}
             initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "", capacity: n.capacity }}

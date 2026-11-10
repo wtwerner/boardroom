@@ -69,7 +69,7 @@ async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">
           {tier === "heavy"
             ? `BGG weight ${HEAVY_WEIGHT} and up${CASUAL_NIGHT ? ", whichever kind of event they were played at" : ""}.`
             : `Under BGG weight ${HEAVY_WEIGHT}.`}{" "}
-          A game in the wrong list can be moved from its page.
+          {member && "A game in the wrong list can be moved from its page."}
         </p>
       </div>
     <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -97,7 +97,7 @@ async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">
         <p className="mb-3 text-sm text-slate">
           <strong className="font-semibold text-ink">Beats</strong> is how much of each person&apos;s list a game is ranked above, on average:
           100% tops every list, 50% is the middle. Games few people have ranked are pulled toward 50%.{" "}
-          <TextLink href="/about#rankings">How it works</TextLink>
+          {member && <TextLink href="/about#rankings">How it works</TextLink>}
         </p>
         {group.length === 0 ? (
           <Empty>

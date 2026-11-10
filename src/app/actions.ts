@@ -2,6 +2,7 @@
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { refresh, updateTag } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
@@ -23,7 +24,7 @@ import { refreshCatalog } from "@/lib/catalog";
 import { type SeatNight, getGameTiers, getPlayerNights, inCrowd } from "@/lib/queries";
 import { nightsVersion } from "@/lib/events";
 import { replaceTier } from "@/lib/tier";
-import { type CurrentUser, requireAdmin, requireMember, requireUser } from "@/lib/session";
+import { type CurrentUser, PREVIEW_COOKIE, requireAdmin, requireMember, requireUser } from "@/lib/session";
 import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
 import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
@@ -512,6 +513,19 @@ export async function setAdmin(userId: string, admin: boolean): Promise<ActionRe
 // Players
 // ---------------------------------------------------------------------------
 
+/**
+ * A member sees the site as a casual account would, and back: the same pages and the same limits,
+ * so what the group checks is what casual players get. It's a cookie, so it's only their browser.
+ */
+export async function previewCasual(on: boolean) {
+  const me = await requireUser();
+  if (me.access !== "member" && !me.previewing) throw new Error("That isn't something you can do here.");
+  const jar = await cookies();
+  if (on) jar.set(PREVIEW_COOKIE, "on", { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 7 });
+  else jar.delete(PREVIEW_COOKIE);
+  redirect(on ? "/" : "/settings");
+}
+
 export async function setMyColor(color: string) {
   const me = await requireUser();
   const c = z.enum(MEEPLE_COLORS).parse(color);
@@ -555,9 +569,10 @@ export async function setPlayerDiscord(playerId: number, discordId: string | nul
 }
 
 /** Fold one player into another — for "Sammy" vs "Sam" in old logs, or claiming yourself. */
-/** Members rename themselves; anyone can tidy up a non-member's name. */
+/** Members rename themselves; anyone can tidy up a non-member's name. A casual account only renames themselves. */
 export async function renamePlayer(playerId: number, rawName: string): Promise<ActionResult> {
-  const me = await requireMember();
+  const me = await requireUser();
+  if (me.access !== "member" && playerId !== me.playerId) return { ok: false, error: "You can only change your own name." };
   const name = rawName.trim().replace(/\s+/g, " ").slice(0, 40);
   if (!name) return { ok: false, error: "Enter a name." };
   const target = await db.query.player.findFirst({ where: eq(schema.player.id, playerId) });
@@ -1200,8 +1215,16 @@ export async function setPrepped(planId: number, ready: boolean) {
 
 /** Take a game off a night: a proposal withdrawn, or no longer bringing it */
 export async function dropPlan(id: number) {
-  await requireMember();
-  const plan = await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, id), columns: { gameNightId: true, chosen: true } });
+  const me = await requireUser();
+  const plan = await db.query.gamePlan.findFirst({
+    where: eq(schema.gamePlan.id, id),
+    columns: { gameNightId: true, chosen: true, night: true, bringerId: true, askedId: true, createdBy: true },
+  });
+  // A casual account takes back only their own: a game they said they'd bring, or someone they asked
+  if (me.access !== "member") {
+    const own = plan?.bringerId === me.id || (plan?.askedId && plan.createdBy === me.id);
+    if (plan?.night !== "casual" || !own) throw new Error("That isn't something you can do here.");
+  }
   await dropPlanRows([id]);
   // Dropping the locked-in game unlocks it, which a title with the game in it follows
   if (plan?.gameNightId) syncNightPostLater(plan.gameNightId, { renamed: plan.chosen && (await titleForGame(plan.gameNightId)) });

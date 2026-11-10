@@ -17,8 +17,9 @@ export function OpinionControls({
   gameId,
   mustPlayLeft,
   compact = false,
+  explain = true,
   ...initial
-}: State & { gameId: number; mustPlayLeft: number; compact?: boolean }) {
+}: State & { gameId: number; mustPlayLeft: number; compact?: boolean; explain?: boolean }) {
   const [state, setState] = useOptimistic<State, Partial<State>>(initial, (s, patch) => ({ ...s, ...patch }));
   const [error, setError] = useState<string | null>(null);
   const [, start] = useTransition();
@@ -111,9 +112,11 @@ export function OpinionControls({
           ? "You've put a must-play vote on this. It comes back to you once you've played it."
           : `Must play: you get ${MUST_PLAY_LIMIT} at a time for the games you really want on the table. ${mustPlayLeft} left.`}{" "}
         Want to play clears once you&apos;ve played it, so tick it again if you still want to.{" "}
-        <Link href="/about#votes" className="text-accent underline-offset-4 hover:underline">
-          How votes work
-        </Link>
+        {explain && (
+          <Link href="/about#votes" className="text-accent underline-offset-4 hover:underline">
+            How votes work
+          </Link>
+        )}
       </p>
       {error && <p role="status" className="text-sm text-meeple-red">{error}</p>}
     </div>

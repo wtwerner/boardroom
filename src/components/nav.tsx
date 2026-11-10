@@ -6,24 +6,34 @@ import { Suspense, useState } from "react";
 import clsx from "clsx";
 import { CalendarDays, CircleHelp, Ellipsis, Globe, House, Library, ListOrdered, ScrollText, Settings, Sparkles, Users } from "lucide-react";
 
+/** `casual`: a casual account has it too. The rest are the core group's pages, which aren't there for them */
 const LINKS = [
-  { href: "/", label: "Home", icon: House },
-  { href: "/plays", label: "Plays", icon: ScrollText },
-  { href: "/shelf", label: "Shelf", icon: Library },
-  { href: "/rankings", label: "Rankings", icon: ListOrdered },
-  { href: "/plan", label: "Plan", icon: CalendarDays },
-  { href: "/people", label: "People", icon: Users },
-  { href: "/discover", label: "Discover", icon: Sparkles },
-  { href: "/online", label: "Online", icon: Globe },
-  { href: "/about", label: "How it works", icon: CircleHelp },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "Home", icon: House, casual: true },
+  { href: "/plays", label: "Plays", icon: ScrollText, casual: false },
+  { href: "/shelf", label: "Shelf", icon: Library, casual: false },
+  { href: "/rankings", label: "Rankings", icon: ListOrdered, casual: true },
+  { href: "/plan", label: "Plan", icon: CalendarDays, casual: false },
+  { href: "/people", label: "People", icon: Users, casual: false },
+  { href: "/discover", label: "Discover", icon: Sparkles, casual: false },
+  { href: "/online", label: "Online", icon: Globe, casual: false },
+  { href: "/about", label: "How it works", icon: CircleHelp, casual: false },
+  { href: "/settings", label: "Settings", icon: Settings, casual: true },
 ] as const;
 
+/**
+ * Whose nav it is: a member's, a casual account's, or not known yet. The nav renders before the
+ * session is read, so until then it has only the links everyone has, and a casual account never
+ * sees the core group's pages listed, even for a moment.
+ */
+export type NavFor = "member" | "casual" | "unknown";
+
+const linksFor = (who: NavFor) => LINKS.filter((l) => who === "member" || l.casual);
+
 /** Mobile: the five things people reach for at the table. */
-const TAB_LINKS = LINKS.filter((l) => !["/settings", "/discover", "/online", "/people", "/about"].includes(l.href));
+const TAB_LINKS = (who: NavFor) => linksFor(who).filter((l) => !["/settings", "/discover", "/online", "/people", "/about"].includes(l.href));
 
 /** Mobile: the rest, under the header's ⋯ menu. Settings is the avatar beside it. */
-const MORE_LINKS = LINKS.filter((l) => ["/people", "/discover", "/online", "/about"].includes(l.href));
+const MORE_LINKS = (who: NavFor) => linksFor(who).filter((l) => ["/people", "/discover", "/online", "/about"].includes(l.href));
 
 /** A count shown beside a link, like how many games are waiting to be ranked */
 export type NavBadges = Partial<Record<(typeof LINKS)[number]["href"], { count: number; label: string }>>;
@@ -47,12 +57,12 @@ function Active({ render }: { render: (pathname: string | null) => React.ReactNo
   return render(usePathname());
 }
 
-export function SideNav({ badges = {} }: { badges?: NavBadges }) {
+export function SideNav({ badges = {}, who = "unknown" }: { badges?: NavBadges; who?: NavFor }) {
   return (
     <WithPathname
       render={(pathname) => (
         <nav className="flex flex-col gap-0.5">
-          {LINKS.map(({ href, label, icon: Icon }) => (
+          {linksFor(who).map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -78,12 +88,16 @@ export function SideNav({ badges = {} }: { badges?: NavBadges }) {
   );
 }
 
-export function TabBar({ badges = {} }: { badges?: NavBadges }) {
+export function TabBar({ badges = {}, who = "unknown" }: { badges?: NavBadges; who?: NavFor }) {
+  const links = TAB_LINKS(who);
   return (
     <WithPathname
       render={(pathname) => (
-        <nav className="grid grid-cols-5 border-t border-ink/20 bg-felt pb-[env(safe-area-inset-bottom)] text-felt-ink">
-          {TAB_LINKS.map(({ href, label, icon: Icon }) => (
+        <nav
+          className="grid border-t border-ink/20 bg-felt pb-[env(safe-area-inset-bottom)] text-felt-ink"
+          style={{ gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }}
+        >
+          {links.map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
@@ -108,11 +122,12 @@ export function TabBar({ badges = {} }: { badges?: NavBadges }) {
   );
 }
 
-export function MoreMenu() {
-  return <WithPathname render={(pathname) => <MoreMenuButton pathname={pathname} />} />;
+export function MoreMenu({ who }: { who: NavFor }) {
+  if (MORE_LINKS(who).length === 0) return null;
+  return <WithPathname render={(pathname) => <MoreMenuButton pathname={pathname} who={who} />} />;
 }
 
-function MoreMenuButton({ pathname }: { pathname: string | null }) {
+function MoreMenuButton({ pathname, who }: { pathname: string | null; who: NavFor }) {
   // Remembering where it was opened closes it on its own once a link navigates away
   const [openOn, setOpenOn] = useState<string | null | undefined>(undefined);
   const open = openOn === pathname;
@@ -134,7 +149,7 @@ function MoreMenuButton({ pathname }: { pathname: string | null }) {
         <>
           <button type="button" aria-hidden tabIndex={-1} onClick={close} className="fixed inset-0 z-30 cursor-default" />
           <nav id="more-pages" className="absolute top-full right-0 z-40 mt-2 w-48 rounded-xl border border-line bg-card p-1 text-ink shadow-lg">
-            {MORE_LINKS.map(({ href, label, icon: Icon }) => (
+            {MORE_LINKS(who).map(({ href, label, icon: Icon }) => (
               <Link
                 key={href}
                 href={href}

@@ -44,6 +44,8 @@ export function People(props: {
   members: Member[];
   players: Player[];
   myPlayerId: number | null;
+  /** A casual account answers for themselves only: answering for others and counting them is the members' */
+  limited?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -116,17 +118,19 @@ export function People(props: {
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-line pt-3">
-        <Stepper label="Others coming, not named" value={props.othersComing} max={20} disabled={pending} onChange={(n) => start(async () => void (await setOthersComing(props.nightId, n)))} />
-        <ForSomeoneElse players={props.players} myPlayerId={props.myPlayerId} disabled={pending} onAnswer={(who, status) => answer(status, who)} />
-      </div>
+      {!props.limited && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-line pt-3">
+          <Stepper label="Others coming, not named" value={props.othersComing} max={20} disabled={pending} onChange={(n) => start(async () => void (await setOthersComing(props.nightId, n)))} />
+          <ForSomeoneElse players={props.players} myPlayerId={props.myPlayerId} disabled={pending} onAnswer={(who, status) => answer(status, who)} />
+        </div>
+      )}
     </div>
   );
 }
 
 function Answered({ a, colors, faded }: { a: Attendee; colors: Record<string, MeepleColor | null>; faded?: boolean }) {
   return (
-    <span className={clsx("inline-flex items-center gap-1", faded && "opacity-70")} title={a.userId ? undefined : "Not a member"}>
+    <span className={clsx("inline-flex items-center gap-1", faded && "opacity-70")} title={a.userId ? undefined : "Not signed up here"}>
       <PlayerChip name={a.guests ? `${a.name} +${a.guests}` : a.name} color={a.userId ? (colors[a.userId] ?? null) : null} />
     </span>
   );

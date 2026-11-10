@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { CLAUDE } from "@/config";
+import { CLAUDE, NIGHT_NAMES } from "@/config";
+import { inSentence } from "@/lib/text";
 import { MUST_PLAY_LIMIT } from "@/db/enums";
 import { Empty, GameCover, PageHeader, Panel, Section, Skeleton, TextLink, formatDate } from "@/components/ui";
 import { requireUser } from "@/lib/session";
@@ -28,7 +29,9 @@ type Row = Awaited<ReturnType<typeof getRateableGames>>["played"][number] & { me
 
 async function Rate() {
   const me = await requireUser();
-  const [{ played, unplayed }, mustPlayLeft] = await Promise.all([getRateableGames(me.id, me.playerId), getMustPlayLeft(me.id)]);
+  // A casual account's shelf is what can come to their night: everyone's collections
+  const member = me.access === "member";
+  const [{ played, unplayed }, mustPlayLeft] = await Promise.all([getRateableGames(me.id, me.playerId, member ? "core" : "casual"), getMustPlayLeft(me.id)]);
   const rated = played.filter((g) => g.sentiment).length;
   // Unrated first so a return visit starts where you left off
   const byUnrated = <T extends { sentiment: unknown }>(a: T, b: T) => Number(Boolean(a.sentiment)) - Number(Boolean(b.sentiment));
@@ -36,7 +39,12 @@ async function Rate() {
   return (
     <div className="max-w-3xl space-y-10">
       <p className="text-sm text-slate">
-        Tap a face for how you feel about each game. These feed the dashboard, planning{CLAUDE ? <> and Claude&apos;s suggestions</> : " and Discover"}.{" "}
+        Tap a face for how you feel about each game.{" "}
+        {member ? (
+          <>These feed the dashboard, planning{CLAUDE ? <> and Claude&apos;s suggestions</> : " and Discover"}.</>
+        ) : (
+          <>They help pick what to play at the {inSentence(NIGHT_NAMES.casual)}.</>
+        )}{" "}
         <strong className="font-semibold text-ink">🔥 Must play</strong> is for the few games you really want on the table: you get{" "}
         {MUST_PLAY_LIMIT}, and one comes back each time you play its game. You have {mustPlayLeft} left.
       </p>
@@ -52,16 +60,22 @@ async function Rate() {
           />
         ) : (
           <Empty>
-            Nothing logged with you in it yet. If you&apos;re in old plays under another name, <TextLink href="/settings#players">claim them in Settings</TextLink>.
+            Nothing logged with you in it yet.
+            {member && (
+              <>
+                {" "}
+                If you&apos;re in old plays under another name, <TextLink href="/settings#players">claim them in Settings</TextLink>.
+              </>
+            )}
           </Empty>
         )}
       </Section>
 
-      <Section title="On the shelf, not played by you">
+      <Section title={member ? "On the shelf, not played by you" : "Games people own that you haven't played"}>
         {unplayed.length ? (
           <RateList rows={[...unplayed].sort(byUnrated).map((g) => ({ ...g, image: null, plays: 0, lastPlayed: null, meta: `owned by ${g.owners}` }))} mustPlayLeft={mustPlayLeft} />
         ) : (
-          <Empty>You&apos;ve played everything on the shelf.</Empty>
+          <Empty>{member ? "You've played everything on the shelf." : "You've played everything people own."}</Empty>
         )}
       </Section>
     </div>

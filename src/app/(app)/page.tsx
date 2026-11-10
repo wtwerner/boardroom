@@ -10,7 +10,7 @@ import { findingPolls } from "@/lib/poll-store";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { Avatar, Empty, GameCover, Meeple, PlayerChip, Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass, formatDate } from "@/components/ui";
 import { dayWord, localDate } from "@/lib/nights";
-import { requireMemberPage } from "@/lib/session";
+import { type CurrentUser, requireUser } from "@/lib/session";
 import {
   getAttendance,
   getGroupRanking,
@@ -32,6 +32,7 @@ import { TIER_LABEL, TIER_TAG } from "@/lib/tier";
 import { listNames } from "@/lib/discord-components";
 import { setupProgress, setupSteps } from "@/lib/setup";
 import { tierHref } from "./rankings/tabs";
+import { inSentence } from "@/lib/text";
 
 export default function HomePage() {
   return (
@@ -42,7 +43,9 @@ export default function HomePage() {
 }
 
 async function Home() {
-  const me = await requireMemberPage();
+  const me = await requireUser();
+  // A casual account's Home is their night's
+  if (me.access !== "member") return <CasualHome me={me} />;
   const upcoming = getUpcomingNights();
   const [stats, lastNight, mostPlayed, attendance, months, group, shame, wanted, review, setup, members, plans, newMembers, taste, toRank, toAnswer] = await Promise.all([
     getHeadlineStats(),
@@ -358,11 +361,11 @@ function uniqueSeats(plays: PlayRow[]) {
 }
 
 /** Nights that are on, with what's been played so far and, for just the one, where to log the next game */
-function HappeningNow({ nights, members }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[] }) {
+function HappeningNow({ nights, members, log = true }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[]; log?: boolean }) {
   const colors = Object.fromEntries(members.map((m) => [m.id, m.color]));
   const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
   return (
-    <Section title="Happening now" action={nights.length === 1 && <TextLink href={`/events/${nights[0].id}#log`}>Log a game</TextLink>}>
+    <Section title="Happening now" action={log && nights.length === 1 && <TextLink href={`/events/${nights[0].id}#log`}>Log a game</TextLink>}>
       <ul className="grid gap-3 lg:grid-cols-2">
         {nights.map((n) => (
           <li key={n.id}>
@@ -409,11 +412,11 @@ function DatesToAnswer({ events }: { events: Awaited<ReturnType<typeof datesToAn
   );
 }
 
-function UpNext({ nights, members }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[] }) {
+function UpNext({ nights, members, plan = true }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[]; plan?: boolean }) {
   const colors = Object.fromEntries(members.map((m) => [m.id, m.color]));
   const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
   return (
-    <Section title="Coming up" action={<TextLink href="/plan">All events</TextLink>}>
+    <Section title="Coming up" action={plan && <TextLink href="/plan">All events</TextLink>}>
       <ul className="grid gap-3 lg:grid-cols-2">
         {nights.map((n) => (
           <li key={n.id}>
@@ -430,8 +433,8 @@ function UpNext({ nights, members }: { nights: NightDetail[]; members: { id: str
  * setup page a tap away. Once they're set up, the games they've played since they last ranked,
  * by name, so a new one is hard to miss.
  */
-function SetupNudge({ name, status, toRank }: { name: string; status: SetupStatus; toRank: Awaited<ReturnType<typeof getNewToRank>> }) {
-  const progress = setupProgress(setupSteps(status));
+function SetupNudge({ name, status, toRank, casual = false }: { name: string; status: SetupStatus; toRank: Awaited<ReturnType<typeof getNewToRank>>; casual?: boolean }) {
+  const progress = setupProgress(setupSteps(status, { casual }));
   if (!progress.complete) {
     return (
       <Link
@@ -485,6 +488,91 @@ function SetupNudge({ name, status, toRank }: { name: string; status: SetupStatu
         Rank {one ? "it" : "them"}
       </Link>
     </section>
+  );
+}
+
+/**
+ * Home for a casual account: their night and nothing of the core group's. What's coming up and on
+ * now, what was played last time, how the people who come rank games, and their own setup.
+ */
+async function CasualHome({ me }: { me: CurrentUser }) {
+  const [nights, crowd, setup, toRank, favorites] = await Promise.all([
+    getUpcomingNights().then((all) => all.filter((n) => n.night === "casual")),
+    getMembers("casual"),
+    getSetupStatus(me),
+    getNewToRank(me.id, me.playerId),
+    Promise.all([getGroupRanking("light", 5, "casual"), getGroupRanking("heavy", 3, "casual")]),
+  ]);
+  const onNow = nights.filter(isOn);
+  const comingUp = nights.filter((n) => !isOn(n));
+  const last = await getLastNight(onNow, "casual");
+  const lastId = last && (await getNightsByDate([{ night: "casual", date: last.date }])).get(`casual:${last.date}`)?.id;
+  const games = last ? [...new Map(last.plays.map((p) => [p.gameId ?? `p${p.id}`, p])).values()] : [];
+  const casual = inSentence(NIGHT_NAMES.casual);
+
+  return (
+    <div className="space-y-10">
+      <SetupNudge name={me.name} status={setup} toRank={toRank} casual />
+      {onNow.length > 0 && <HappeningNow nights={onNow} members={crowd} log={false} />}
+      {comingUp.length > 0 ? (
+        <UpNext nights={comingUp.slice(0, 3)} members={crowd} plan={false} />
+      ) : (
+        <Section title="Coming up">
+          <Empty>Nothing&apos;s on the calendar yet. The next {casual} shows up here, and in Discord, once it&apos;s set.</Empty>
+        </Section>
+      )}
+
+      {last && games.length > 0 && (
+        <Section title={`Last ${casual}`} action={lastId && <TextLink href={`/events/${lastId}`}>See the event</TextLink>}>
+          <p className="-mt-1 mb-3 text-sm text-slate">{formatDate(last.date, { weekday: "long", month: "long", day: "numeric" })}</p>
+          <ul className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-6">
+            {games.slice(0, 6).map((p) => (
+              <li key={p.gameId ?? `p${p.id}`}>
+                {p.gameId ? (
+                  <Link href={`/games/${p.gameId}`} className="group block">
+                    <GameCover src={p.thumbnail} image={p.image} name={p.name} size="fluid" sizes="(min-width: 640px) 15vw, 30vw" />
+                    <span className="mt-1.5 block truncate text-xs font-medium group-hover:underline">{p.name}</span>
+                  </Link>
+                ) : (
+                  <>
+                    <GameCover src={p.thumbnail} image={p.image} name={p.name} size="fluid" sizes="(min-width: 640px) 15vw, 30vw" />
+                    <span className="mt-1.5 block truncate text-xs font-medium">{p.name}</span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      <Section title="Favorites" action={<TextLink href={tierHref("/rankings", "light")}>Rank yours</TextLink>}>
+        {favorites.some((list) => list.length) ? (
+          <div className="grid gap-6 sm:grid-cols-2">
+            {favorites.map((list, t) =>
+              list.length ? (
+                <div key={t}>
+                  <h3 className="mb-1.5 text-xs font-medium text-slate">{TIER_LABEL[t === 0 ? "light" : "heavy"]}</h3>
+                  <ol className="space-y-2">
+                    {list.map((g, i) => (
+                      <GameRow
+                        key={g.gameId}
+                        id={g.gameId}
+                        name={g.game.name}
+                        thumb={g.game.thumbnail}
+                        lead={<span className="font-display w-5 text-accent tabular">{i + 1}</span>}
+                        meta={`beats ${g.points}%`}
+                      />
+                    ))}
+                  </ol>
+                </div>
+              ) : null,
+            )}
+          </div>
+        ) : (
+          <Empty>Once people who come rank the games they&apos;ve played, the favorites show up here.</Empty>
+        )}
+      </Section>
+    </div>
   );
 }
 

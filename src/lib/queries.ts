@@ -141,11 +141,16 @@ export async function getPlays(opts: { limit?: number; offset?: number; gameId?:
 }
 
 /** The latest night anything was played, of either kind, leaving out `skip` (nights still on); of two on one day, the one logged last */
-export async function getLastNight(skip: { night: Night; date: string | null }[] = []) {
+export async function getLastNight(skip: { night: Night; date: string | null }[] = [], only?: Night) {
   const [latest] = await db
     .select({ day: play.playedOn, night: play.night })
     .from(play)
-    .where(and(...skip.flatMap((n) => (n.date ? [not(and(eq(play.night, n.night), eq(play.playedOn, n.date))!)] : []))))
+    .where(
+      and(
+        only ? eq(play.night, only) : undefined,
+        ...skip.flatMap((n) => (n.date ? [not(and(eq(play.night, n.night), eq(play.playedOn, n.date))!)] : [])),
+      ),
+    )
     .orderBy(desc(play.playedOn), desc(play.id))
     .limit(1);
   if (!latest) return null;
@@ -435,8 +440,8 @@ export async function getPlayedBy() {
   return byGame;
 }
 
-/** Games I've played (most played first), then shelf games I haven't, each with my opinion. */
-export async function getRateableGames(userId: string, playerId: number | null) {
+/** Games I've played (most played first), then shelf games I haven't, each with my opinion. The shelf is my night's crowd's (inCrowd). */
+export async function getRateableGames(userId: string, playerId: number | null, night: Night = "core") {
   const [played, shelf, mine] = await Promise.all([
     db
       .select({ id: game.id, name: game.name, thumbnail: game.thumbnail, image: game.image, plays: count(play.id), lastPlayed: max(play.playedOn) })
@@ -449,7 +454,7 @@ export async function getRateableGames(userId: string, playerId: number | null) 
     db
       .select({ id: game.id, name: game.name, thumbnail: game.thumbnail, owners: sql<string>`group_concat(${user.name}, ', ')` })
       .from(game)
-      .innerJoin(collectionItem, and(eq(collectionItem.gameId, game.id), eq(collectionItem.own, true)))
+      .innerJoin(collectionItem, and(eq(collectionItem.gameId, game.id), eq(collectionItem.own, true), inCrowd(collectionItem.userId, night)))
       .innerJoin(user, eq(user.id, collectionItem.userId))
       .groupBy(game.id)
       .orderBy(game.name),

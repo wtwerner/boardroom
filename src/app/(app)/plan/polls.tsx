@@ -83,12 +83,15 @@ export function PollCard({
   colors,
   calendar,
   link = false,
+  limited = false,
 }: {
   poll: PollView;
   myPlayerId: number | null;
   colors: Record<string, MeepleColor | null>;
   calendar: CalendarSetup;
   link?: boolean;
+  /** A casual account answers the dates; setting, suggesting, nudging and calling it off are the members' */
+  limited?: boolean;
 }) {
   const [open, setOpen] = useState<"suggest" | "set" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -133,7 +136,7 @@ export function PollCard({
           </span>
           {poll.progress.waiting.length > 0 && <span className="text-slate">Waiting on {andList(poll.progress.waiting)}</span>}
           {poll.decideBy && <span className="text-slate">Decide by {poll.decideBy}</span>}
-          {poll.canNudge && (
+          {poll.canNudge && !limited && (
             <button type="button" disabled={pending} onClick={() => run(() => nudgeForDates(poll.id))} className={buttonClass("ghost", "px-2 py-1 text-xs")}>
               Nudge {poll.progress.waiting.length === 1 ? "them" : "them all"} in Discord
             </button>
@@ -141,7 +144,7 @@ export function PollCard({
         </div>
       )}
       {poll.status === "open" && !answered && <p className="text-sm text-slate">Say which dates work. Any you leave count as can&apos;t.</p>}
-      {poll.status === "closed" && <p className="text-sm text-slate">Every date&apos;s gone by. Suggest another, or call it off.</p>}
+      {poll.status === "closed" && <p className="text-sm text-slate">Every date&apos;s gone by.{!limited && " Suggest another, or call it off."}</p>}
 
       <ul className="space-y-2">
         {onOffer.map((d) => (
@@ -184,19 +187,19 @@ export function PollCard({
       {open === "set" && <SetForm poll={poll} pending={pending} onCancel={() => setOpen(null)} onSubmit={(optionId) => run(() => setNightDate(poll.id, optionId), () => setOpen(null))} />}
       {error && <p role="alert" className="text-sm text-meeple-red">{error}</p>}
 
-      {poll.status === "cancelled" && onOffer.length > 0 && (
+      {poll.status === "cancelled" && onOffer.length > 0 && !limited && (
         <button type="button" disabled={pending} onClick={() => run(() => reopenPoll(poll.id))} className={buttonClass("secondary", "px-2.5 py-1.5 text-xs")}>
           <Undo2 className="size-3.5" /> {pending ? "Reopening…" : "Reopen"}
         </button>
       )}
       {!open && poll.status !== "cancelled" && (
         <div className="flex flex-wrap gap-2">
-          {onOffer.length > 0 && poll.status === "open" && (
+          {onOffer.length > 0 && poll.status === "open" && !limited && (
             <button type="button" onClick={() => setOpen("set")} className={buttonClass("primary", "px-2.5 py-1.5 text-xs")}>
               <Check className="size-3.5" strokeWidth={3} /> Set the date
             </button>
           )}
-          {onOffer.length < POLL_MAX_DATES && (
+          {onOffer.length < POLL_MAX_DATES && !limited && (
             <button type="button" onClick={() => setOpen("suggest")} className={buttonClass("secondary", "px-2.5 py-1.5 text-xs")}>
               <CalendarPlus className="size-3.5" /> Suggest a date
             </button>
@@ -206,16 +209,18 @@ export function PollCard({
               None work for me
             </button>
           )}
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              if (confirm(`Call off ${poll.title} without setting a date?`)) run(() => callOffPoll(poll.id));
-            }}
-            className={buttonClass("ghost", "px-2.5 py-1.5 text-xs")}
-          >
-            Call it off
-          </button>
+          {!limited && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                if (confirm(`Call off ${poll.title} without setting a date?`)) run(() => callOffPoll(poll.id));
+              }}
+              className={buttonClass("ghost", "px-2.5 py-1.5 text-xs")}
+            >
+              Call it off
+            </button>
+          )}
         </div>
       )}
     </article>

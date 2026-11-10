@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { count, eq } from "drizzle-orm";
-import { DEMO } from "@/config";
+import { CASUAL_NIGHT, DEMO, NIGHT_NAMES } from "@/config";
 import { db, schema } from "@/db";
-import { PageHeader, Panel, Section, Skeleton } from "@/components/ui";
-import { canManageGroup, requireMemberPage } from "@/lib/session";
+import { PageHeader, Panel, Section, Skeleton, buttonClass } from "@/components/ui";
+import { previewCasual } from "@/app/actions";
+import { inSentence } from "@/lib/text";
+import { canManageGroup, requireUser } from "@/lib/session";
 import { getPlayers } from "@/lib/queries";
 import { hasBggToken } from "@/lib/bgg";
 import { anyServerMemberCanSignIn, listGuildMembers } from "@/lib/discord";
@@ -25,7 +27,9 @@ export default function SettingsPage() {
 }
 
 async function Settings() {
-  const me = await requireMemberPage();
+  const me = await requireUser();
+  // A casual account has their own things here: name, color, calendar and collection
+  const member = me.access === "member";
   const [players, [owned], seatCounts, discordMembers, [bga], canManage, admins, myCalendar] = await Promise.all([
     getPlayers(),
     db
@@ -36,7 +40,7 @@ async function Settings() {
       .select({ playerId: schema.playPlayer.playerId, n: count() })
       .from(schema.playPlayer)
       .groupBy(schema.playPlayer.playerId),
-    listGuildMembers(),
+    member ? listGuildMembers() : [],
     db
       .select({ username: schema.user.bgaUsername, premium: schema.user.bgaPremium })
       .from(schema.user)
@@ -50,14 +54,14 @@ async function Settings() {
 
   return (
     <div className="max-w-2xl space-y-10">
-      {anyServerMemberCanSignIn() && (
+      {member && anyServerMemberCanSignIn() && (
         <p role="note" className="rounded-xl border border-meeple-yellow/60 bg-meeple-yellow/10 px-4 py-3 text-sm">
           <strong>Anyone in the Discord server can sign in here</strong>, and everyone who signs in can edit and delete plays. That&apos;s fine
           if the server is just your group. If it isn&apos;t, give the group a role and {canManage ? "choose it" : "ask an admin to choose it"} as
           the member role on <Link href="/settings/group" className="text-accent underline-offset-4 hover:underline">Group settings</Link>.
         </p>
       )}
-      {canManage ? (
+      {!member ? null : canManage ? (
         <Link href="/settings/group" className="flex items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/40">
           <span>
             <span className="block font-medium">Group settings</span>
@@ -73,7 +77,7 @@ async function Settings() {
       )}
       <p className="text-sm text-slate">
         New here, or missing something? The <Link href="/welcome" className="text-accent underline-offset-4 hover:underline">setup guide</Link> walks
-        through rating, ranking and connecting BGG and Board Game Arena.
+        through rating, ranking and connecting BGG{member && " and Board Game Arena"}.
       </p>
       <Section title="You">
         {me.playerId && (
@@ -101,7 +105,11 @@ async function Settings() {
           <div>
             <BggForm username={me.bggUsername} />
             <p className="mt-2 text-xs text-slate">
-              {owned.n ? `${owned.n} games from your collection are on the shared shelf. ` : ""}
+              {owned.n
+                ? member
+                  ? `${owned.n} games from your collection are on the shared shelf. `
+                  : `${owned.n} games from your collection can be brought to the ${inSentence(NIGHT_NAMES.casual)}. `
+                : ""}
               {hasBggToken() ? "Collections re-sync every night." : "Automatic syncing starts once the site's BGG API token is set up. Until then, use the CSV import."}
             </p>
           </div>
@@ -115,69 +123,88 @@ async function Settings() {
         </Panel>
       </Section>
 
-      <Section id="bga" title="Board Game Arena" className="scroll-mt-6">
-        <Panel className="p-4">
-          <p className="mb-3 text-sm text-slate">For playing online, at boardgamearena.com. It&apos;s a different site from BoardGameGeek.</p>
-          <BgaForm username={bga?.username ?? null} premium={bga?.premium ?? false} />
-          <p className="mt-2 text-xs text-slate">
-            Shown on the <Link href="/online" className="text-accent underline-offset-4 hover:underline">Online</Link> page so the others can find you
-            there. Only whoever opens a table needs Premium for a Premium game.
-          </p>
-        </Panel>
-      </Section>
+      {member && (
+        <>
+          <Section id="bga" title="Board Game Arena" className="scroll-mt-6">
+            <Panel className="p-4">
+              <p className="mb-3 text-sm text-slate">For playing online, at boardgamearena.com. It&apos;s a different site from BoardGameGeek.</p>
+              <BgaForm username={bga?.username ?? null} premium={bga?.premium ?? false} />
+              <p className="mt-2 text-xs text-slate">
+                Shown on the <Link href="/online" className="text-accent underline-offset-4 hover:underline">Online</Link> page so the others can find you
+                there. Only whoever opens a table needs Premium for a Premium game.
+              </p>
+            </Panel>
+          </Section>
 
-      <Section id="players" title="Players" className="scroll-mt-6">
-        <p className="mb-3 text-sm text-slate">
-          Everyone who appears in a play log.
-          {/* A demo has no Discord to link anyone to */}
-          {!DEMO &&
-            " Link each person to their Discord account so plays posted from here tag them. Anyone @-mentioned in an imported message is linked already, and members are linked when they sign in."}
-        </p>
-        <Panel className="mb-4 divide-y divide-line">
-          {players.map((p) => (
-            <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
-              <span className="min-w-28 flex-1">
-                {p.label}
-                {p.userId && <span className="text-xs text-slate"> (member)</span>}
-                <span className="tabular block text-xs text-slate">{plays.get(p.id) ?? 0} {plays.get(p.id) === 1 ? "play" : "plays"}</span>
-              </span>
-              {!DEMO && (
-                <PlayerDiscordLink
-                  playerId={p.id}
-                  discordId={p.discordId}
-                  isMember={Boolean(p.userId)}
-                  members={discordMembers}
-                />
-              )}
+          <Section id="players" title="Players" className="scroll-mt-6">
+            <p className="mb-3 text-sm text-slate">
+              Everyone who appears in a play log.
+              {/* A demo has no Discord to link anyone to */}
+              {!DEMO &&
+                " Link each person to their Discord account so plays posted from here tag them. Anyone @-mentioned in an imported message is linked already, and members are linked when they sign in."}
+            </p>
+            <Panel className="mb-4 divide-y divide-line">
+              {players.map((p) => (
+                <div key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+                  <span className="min-w-28 flex-1">
+                    {p.label}
+                    {p.userId && <span className="text-xs text-slate"> (member)</span>}
+                    <span className="tabular block text-xs text-slate">{plays.get(p.id) ?? 0} {plays.get(p.id) === 1 ? "play" : "plays"}</span>
+                  </span>
+                  {!DEMO && (
+                    <PlayerDiscordLink
+                      playerId={p.id}
+                      discordId={p.discordId}
+                      isMember={Boolean(p.userId)}
+                      members={discordMembers}
+                    />
+                  )}
+                </div>
+              ))}
+            </Panel>
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-sm font-semibold">Same person, two names?</h3>
+                <p className="mt-1 mb-2 text-sm text-slate">
+                  Old posts might list you as &ldquo;Alex&rdquo; while you signed in as &ldquo;alexb&rdquo;. Merge the old name into you and its plays become yours.
+                </p>
+                <MergePlayersForm players={players.map((p) => ({ id: p.id, name: p.label, isMember: Boolean(p.userId) }))} myPlayerId={me.playerId} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">Two people, one name?</h3>
+                <p className="mt-1 mb-2 text-sm text-slate">
+                  A post that just says &ldquo;Casey&rdquo; goes to the Casey who&apos;s played before, even when it was someone new. Tick the nights that were
+                  someone else and they get their own name and history.
+                </p>
+                <SplitPlayerForm players={players.filter((p) => (plays.get(p.id) ?? 0) > 1).map((p) => ({ id: p.id, name: p.name, label: p.label }))} />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold">Fix a name</h3>
+                <p className="mt-1 mb-2 text-sm text-slate">
+                  For guests and people who haven&apos;t signed in. Old posts that use the previous name still match. Two people with the same name? A last
+                  initial tells them apart.
+                </p>
+                <RenamePlayerForm players={players.filter((p) => !p.userId).map((p) => ({ id: p.id, name: p.name, label: p.label }))} myPlayerId={me.playerId} />
+              </div>
             </div>
-          ))}
-        </Panel>
-        <div className="space-y-5">
-          <div>
-            <h3 className="text-sm font-semibold">Same person, two names?</h3>
-            <p className="mt-1 mb-2 text-sm text-slate">
-              Old posts might list you as &ldquo;Alex&rdquo; while you signed in as &ldquo;alexb&rdquo;. Merge the old name into you and its plays become yours.
-            </p>
-            <MergePlayersForm players={players.map((p) => ({ id: p.id, name: p.label, isMember: Boolean(p.userId) }))} myPlayerId={me.playerId} />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold">Two people, one name?</h3>
-            <p className="mt-1 mb-2 text-sm text-slate">
-              A post that just says &ldquo;Casey&rdquo; goes to the Casey who&apos;s played before, even when it was someone new. Tick the nights that were
-              someone else and they get their own name and history.
-            </p>
-            <SplitPlayerForm players={players.filter((p) => (plays.get(p.id) ?? 0) > 1).map((p) => ({ id: p.id, name: p.name, label: p.label }))} />
-          </div>
-          <div>
-            <h3 className="text-sm font-semibold">Fix a name</h3>
-            <p className="mt-1 mb-2 text-sm text-slate">
-              For guests and people who haven&apos;t signed in. Old posts that use the previous name still match. Two people with the same name? A last
-              initial tells them apart.
-            </p>
-            <RenamePlayerForm players={players.filter((p) => !p.userId).map((p) => ({ id: p.id, name: p.name, label: p.label }))} myPlayerId={me.playerId} />
-          </div>
-        </div>
-      </Section>
+          </Section>
+
+          {CASUAL_NIGHT && (
+            <Section id="preview" title={`See it as a ${inSentence(NIGHT_NAMES.casual)} player`} className="scroll-mt-6">
+              <Panel className="space-y-3 p-4">
+                <p className="text-sm text-slate">
+                  The site as someone with a casual account would see it: their own night, their ratings and collection, and nothing of the{" "}
+                  {inSentence(NIGHT_NAMES.core)}&apos;s. Everything you do while you look is limited the same way. Only you see it, and a bar at the top
+                  brings you back.
+                </p>
+                <form action={previewCasual.bind(null, true)}>
+                  <button className={buttonClass("secondary")}>Preview it</button>
+                </form>
+              </Panel>
+            </Section>
+          )}
+        </>
+      )}
 
       <SignOutButton />
     </div>

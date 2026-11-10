@@ -46,6 +46,7 @@ export function LiveLog({
   canEnd,
   demo,
   collapsed,
+  readOnly = false,
 }: {
   nightId: number;
   night: Night;
@@ -68,6 +69,8 @@ export function LiveLog({
   demo: boolean;
   /** Over and logged: logging more is tucked away */
   collapsed: boolean;
+  /** For a casual account: what's been played, without logging, moving or editing, which are the members' */
+  readOnly?: boolean;
 }) {
   const [seated, setSeated] = useState<Set<number>>(() => new Set(firstSeated));
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -206,37 +209,41 @@ export function LiveLog({
                   </span>
                 )}
               </span>
-              <span className="flex shrink-0 items-center">
-                {plays.length > 1 && (
-                  <>
-                    <MoveButton label={`Move ${p.name} up`} disabled={i === 0} onClick={() => start(async () => void (await movePlay(p.id, -1)))}>
-                      <ArrowUp className="size-4" />
-                    </MoveButton>
-                    <MoveButton label={`Move ${p.name} down`} disabled={i === plays.length - 1} onClick={() => start(async () => void (await movePlay(p.id, 1)))}>
-                      <ArrowDown className="size-4" />
-                    </MoveButton>
-                  </>
-                )}
-                <EditPlayButton
-                  play={{
-                    playId: p.id,
-                    name: p.name,
-                    gameId: p.gameId,
-                    playedOn: p.playedOn,
-                    location: p.location,
-                    notes: p.notes,
-                    playerIds: p.players.map((s) => s.playerId),
-                    night,
-                    discord: p.source === "manual" ? (p.sourceRef ? "app-post" : "none") : "hand-post",
-                  }}
-                />
-                <DeletePlayButton id={p.id} name={p.name} postedByApp={p.source === "manual" && Boolean(p.sourceRef)} />
-              </span>
+              {!readOnly && (
+                <span className="flex shrink-0 items-center">
+                  {plays.length > 1 && (
+                    <>
+                      <MoveButton label={`Move ${p.name} up`} disabled={i === 0} onClick={() => start(async () => void (await movePlay(p.id, -1)))}>
+                        <ArrowUp className="size-4" />
+                      </MoveButton>
+                      <MoveButton label={`Move ${p.name} down`} disabled={i === plays.length - 1} onClick={() => start(async () => void (await movePlay(p.id, 1)))}>
+                        <ArrowDown className="size-4" />
+                      </MoveButton>
+                    </>
+                  )}
+                  <EditPlayButton
+                    play={{
+                      playId: p.id,
+                      name: p.name,
+                      gameId: p.gameId,
+                      playedOn: p.playedOn,
+                      location: p.location,
+                      notes: p.notes,
+                      playerIds: p.players.map((s) => s.playerId),
+                      night,
+                      discord: p.source === "manual" ? (p.sourceRef ? "app-post" : "none") : "hand-post",
+                    }}
+                  />
+                  <DeletePlayButton id={p.id} name={p.name} postedByApp={p.source === "manual" && Boolean(p.sourceRef)} />
+                </span>
+              )}
             </li>
           ))}
         </ol>
       )}
-      {collapsed ? (
+      {readOnly ? (
+        plays.length === 0 && <p className="text-sm text-slate">Nothing logged yet.</p>
+      ) : collapsed ? (
         <details id="log" className="group/log scroll-mt-6 rounded-xl border border-line bg-card">
           <summary className="cursor-pointer list-none px-4 py-3 text-sm font-semibold marker:hidden">
             <span className="group-open/log:hidden">+ Log another game from this night</span>

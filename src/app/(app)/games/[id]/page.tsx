@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import clsx from "clsx";
 import { Suspense } from "react";
 import { CASUAL_NIGHT, DEMO, GROUP_NIGHTS, NIGHT_NAMES } from "@/config";
 import { NightTag } from "@/components/night-row";
 import { PrepLinks } from "@/components/prep-links";
 import { Empty, GameCover, Meeple, Panel, PlayerChip, Section, Skeleton, formatDate, playerRange, playtime } from "@/components/ui";
-import { requireMemberPage } from "@/lib/session";
+import { requireUser } from "@/lib/session";
 import { getBgaGame, getGame, getGamePlaces, getMembers, getMustPlayLeft } from "@/lib/queries";
 import { tierHref } from "../../rankings/tabs";
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
@@ -29,13 +30,16 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
 }
 
 async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) {
-  const me = await requireMemberPage();
+  const me = await requireUser();
+  // A casual account sees the game, their own say on it and their night: not the core group's opinions or plays
+  const limited = me.access !== "member";
   const id = Number((await params).id);
   const [data, members, mustPlayLeft, bga] = await Promise.all([getGame(id), getMembers(), getMustPlayLeft(me.id, id), getBgaGame(id)]);
   if (!data) notFound();
-  const { game: g, owners, opinions, plays } = data;
+  const { game: g, owners, opinions } = data;
+  const plays = limited ? data.plays.filter((p) => p.night === "casual") : data.plays;
   const tier = gameTier(g);
-  const places = await getGamePlaces(g.id, tier, GROUP_NIGHTS);
+  const places = await getGamePlaces(g.id, tier, limited ? ["casual"] : GROUP_NIGHTS);
   const mine = opinions.find((o) => o.userId === me.id);
   const memberById = new Map(members.map((m) => [m.id, m]));
 
@@ -79,7 +83,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
           </p>
           {bga && (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate">
-              <OnlineToggle gameId={g.id} on={mine?.playOnline ?? false} label="Up for it on BGA" />
+              {!limited && <OnlineToggle gameId={g.id} on={mine?.playOnline ?? false} label="Up for it on BGA" />}
               <span>
                 On BGA: {[...bgaFacts(bga), bga.premium && "Premium"].filter(Boolean).join(", ")}
               </span>
@@ -99,16 +103,18 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
               ))}
             </p>
           )}
-          <div className="mt-2">
-            <TierControl
-              gameId={g.id}
-              weight={g.weight}
-              override={g.tier}
-              byWeight={gameTier({ weight: g.weight, tier: null })}
-              cutoff={HEAVY_WEIGHT}
-              labels={TIER_LABEL}
-            />
-          </div>
+          {!limited && (
+            <div className="mt-2">
+              <TierControl
+                gameId={g.id}
+                weight={g.weight}
+                override={g.tier}
+                byWeight={gameTier({ weight: g.weight, tier: null })}
+                cutoff={HEAVY_WEIGHT}
+                labels={TIER_LABEL}
+              />
+            </div>
+          )}
           <div className="mt-5">
             <OpinionControls
               gameId={g.id}
@@ -116,37 +122,40 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
               wantToPlay={mine?.wantToPlay ?? false}
               mustPlay={mine?.mustPlay ?? false}
               mustPlayLeft={mustPlayLeft}
+              explain={!limited}
             />
           </div>
         </div>
       </header>
 
-      <div className="grid gap-10 lg:grid-cols-3">
-        <Section title="What everyone thinks">
-          <Panel className="divide-y divide-line">
-            {members.map((m) => {
-              const o = opinions.find((x) => x.userId === m.id);
-              const owned = owners.find((x) => x.userId === m.id && x.own);
-              return (
-                <div key={m.id} className="flex items-center gap-2.5 px-3 py-2.5 text-sm">
-                  <Meeple color={m.color} />
-                  <span className="flex-1 font-medium">{m.name}</span>
-                  <span className="text-slate">
-                    {[
-                      o?.sentiment && `${SENTIMENT_LABEL[o.sentiment].emoji} ${SENTIMENT_LABEL[o.sentiment].label}`,
-                      o?.mustPlay && "🔥 must play",
-                      o?.wantToPlay && "wants to play",
-                      o?.playOnline && "up for it on BGA",
-                      owned && "owns it",
-                    ]
-                      .filter(Boolean)
-                      .join(", ") || "no opinion yet"}
-                  </span>
-                </div>
-              );
-            })}
-          </Panel>
-        </Section>
+      <div className={clsx("grid gap-10", limited ? "lg:grid-cols-2" : "lg:grid-cols-3")}>
+        {!limited && (
+          <Section title="What everyone thinks">
+            <Panel className="divide-y divide-line">
+              {members.map((m) => {
+                const o = opinions.find((x) => x.userId === m.id);
+                const owned = owners.find((x) => x.userId === m.id && x.own);
+                return (
+                  <div key={m.id} className="flex items-center gap-2.5 px-3 py-2.5 text-sm">
+                    <Meeple color={m.color} />
+                    <span className="flex-1 font-medium">{m.name}</span>
+                    <span className="text-slate">
+                      {[
+                        o?.sentiment && `${SENTIMENT_LABEL[o.sentiment].emoji} ${SENTIMENT_LABEL[o.sentiment].label}`,
+                        o?.mustPlay && "🔥 must play",
+                        o?.wantToPlay && "wants to play",
+                        o?.playOnline && "up for it on BGA",
+                        owned && "owns it",
+                      ]
+                        .filter(Boolean)
+                        .join(", ") || "no opinion yet"}
+                    </span>
+                  </div>
+                );
+              })}
+            </Panel>
+          </Section>
+        )}
 
         <Section title="Who's played it">
           {record.size ? (
@@ -193,7 +202,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
 
       <Section title="Rules and teach">
         <Panel className="max-w-xl px-3 py-2.5">
-          <PrepLinks game={g} links={g.prepLinks} lockLinks={DEMO} />
+          <PrepLinks game={g} links={g.prepLinks} lockLinks={DEMO} readOnly={limited} />
         </Panel>
       </Section>
 
@@ -203,12 +212,12 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
         </Section>
       )}
 
-      {owners.some((o) => o.wishlist) && (
+      {!limited && owners.some((o) => o.wishlist) && (
         <p className="text-sm text-slate">
           On the wishlist of {owners.filter((o) => o.wishlist).map((o) => memberById.get(o.userId)?.name).join(", ")}.
         </p>
       )}
-      <Link href="/shelf" className="text-sm text-accent">Back to the shelf</Link>
+      {!limited && <Link href="/shelf" className="text-sm text-accent">Back to the shelf</Link>}
     </div>
   );
 }
