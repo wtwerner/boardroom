@@ -2,15 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { DEMO } from "@/config";
+import { CASUAL_NIGHT, DEMO, GROUP_NIGHTS, NIGHT_NAMES } from "@/config";
 import { NightTag } from "@/components/night-row";
 import { PrepLinks } from "@/components/prep-links";
 import { Empty, GameCover, Meeple, Panel, PlayerChip, Section, Skeleton, formatDate, playerRange, playtime } from "@/components/ui";
 import { requireUser } from "@/lib/session";
-import { getBgaGame, getGame, getMembers, getMustPlayLeft } from "@/lib/queries";
+import { getBgaGame, getGame, getGamePlaces, getMembers, getMustPlayLeft } from "@/lib/queries";
+import { tierHref } from "../../rankings/tabs";
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
 import { bggUrl } from "@/lib/bgg-links";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
+import { inSentence } from "@/lib/text";
 import { HEAVY_WEIGHT, TIER_LABEL, gameTier } from "@/lib/tier";
 import { OnlineToggle } from "../../online/online-controls";
 import { OpinionControls } from "./opinion-controls";
@@ -32,6 +34,8 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
   const [data, members, mustPlayLeft, bga] = await Promise.all([getGame(id), getMembers(), getMustPlayLeft(me.id, id), getBgaGame(id)]);
   if (!data) notFound();
   const { game: g, owners, opinions, plays } = data;
+  const tier = gameTier(g);
+  const places = await getGamePlaces(g.id, tier, GROUP_NIGHTS);
   const mine = opinions.find((o) => o.userId === me.id);
   const memberById = new Map(members.map((m) => [m.id, m]));
 
@@ -80,6 +84,20 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
                 On BGA: {[...bgaFacts(bga), bga.premium && "Premium"].filter(Boolean).join(", ")}
               </span>
             </div>
+          )}
+          {places.length > 0 && (
+            <p className="mt-2 text-sm text-slate">
+              {places.map((p, i) => (
+                <span key={p.night}>
+                  {i > 0 && " · "}
+                  <Link href={tierHref("/rankings", tier, p.night)} className="underline-offset-4 hover:underline">
+                    #{p.place} of {p.of}
+                    {i === 0 && ` ${inSentence(TIER_LABEL[tier])}`}
+                    {CASUAL_NIGHT ? ` for the ${inSentence(NIGHT_NAMES[p.night])}` : " in the group's list"}
+                  </Link>
+                </span>
+              ))}
+            </p>
           )}
           <div className="mt-2">
             <TierControl

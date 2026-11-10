@@ -103,6 +103,13 @@ export default async function AboutPage() {
               One imaginary 50% vote is added to every game, so a game few people have ranked sits nearer the middle. One person&apos;s #1, and
               nobody else&apos;s, comes out at 75%.
             </p>
+            {CASUAL_NIGHT && (
+              <p>
+                Each kind of event has its own group list, from the rankings of the people who come to it: {core}&apos;s is everyone in the
+                group, and {casual}&apos;s is everyone who&apos;s played at it in the last year. Same games, same scoring, so you can see how
+                the two rooms differ. A game&apos;s page shows where it stands in each.
+              </p>
+            )}
             <p>
               Everything that uses rankings (the group lists, the planner, Discover&apos;s percentages{CLAUDE && ", Claude"}) uses a game&apos;s place in its
               own list. Love it / Like it ratings are a single scale across both.

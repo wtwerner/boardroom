@@ -48,6 +48,23 @@ export function groupRanking(lists: Record<string, number[]>): GroupRank[] {
 }
 
 /**
+ * Each kind of night has its own group list, made from the rankings of the people who come to it.
+ * Someone who's played at the casual night within this many days counts in its crowd.
+ */
+export const CROWD_DAYS = 365;
+
+/** The first date (YYYY-MM-DD) a play can be on and still count someone in a night's crowd, from `today` */
+export function crowdSince(today: string, days = CROWD_DAYS) {
+  const [y, m, d] = today.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d - days)).toISOString().slice(0, 10);
+}
+
+/** Only the lists of the people in a night's crowd */
+export function crowdLists<T>(lists: Record<string, T>, crowd: ReadonlySet<string>): Record<string, T> {
+  return Object.fromEntries(Object.entries(lists).filter(([id]) => crowd.has(id)));
+}
+
+/**
  * Binary insertion by comparison: where a new game goes in a ranked list is found
  * by asking "this or that?" against the middle of the remaining range. Pure so the
  * UI can drive it one answer at a time.

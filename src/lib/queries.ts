@@ -1,11 +1,11 @@
 import "server-only";
-import { and, count, countDistinct, desc, eq, inArray, isNotNull, isNull, max, not, sql } from "drizzle-orm";
+import { and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, max, not, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MUST_PLAY_LIMIT, TIERS, type MeepleColor, type Night, type Sentiment, type Tier } from "@/db/enums";
 import { localDate, recentMonths } from "./nights";
 import { playOrder } from "./log-post";
 import { matchByName, playerLabels } from "./players";
-import { groupRanking } from "./ranking";
+import { crowdLists, crowdSince, groupRanking } from "./ranking";
 import { rankLists } from "./setup";
 import { gameTier } from "./tier";
 
@@ -294,8 +294,43 @@ export async function getGameTiers(ids: number[]) {
   return new Map(rows.map((r) => [r.id, gameTier(r)]));
 }
 
-export async function getGroupRanking(tier: Tier, limit?: number) {
-  const ranked = groupRanking(await getRankingLists(tier));
+/**
+ * Whose rankings make each kind of night's group list: the core group's nights are the members',
+ * and the casual night's are whoever's played at one in the last year (CROWD_DAYS), members
+ * included, so its list is the room it's planned for.
+ */
+export async function getNightCrowd(night: Night): Promise<Set<string>> {
+  if (night === "core") return new Set((await db.select({ id: user.id }).from(user)).map((r) => r.id));
+  const rows = await db
+    .selectDistinct({ id: player.userId })
+    .from(play)
+    .innerJoin(playPlayer, eq(playPlayer.playId, play.id))
+    .innerJoin(player, eq(player.id, playPlayer.playerId))
+    .where(and(eq(play.night, "casual"), isNotNull(player.userId), gte(play.playedOn, crowdSince(localDate(new Date())))));
+  return new Set(rows.map((r) => r.id!));
+}
+
+/** The rankings in one tier of the people in a night's crowd (getNightCrowd) */
+export async function getNightRankingLists(tier: Tier, night: Night) {
+  const [lists, crowd] = await Promise.all([getRankingLists(tier), getNightCrowd(night)]);
+  return crowdLists(lists, crowd);
+}
+
+/** Where a game stands in each kind of night's group list for its tier, for the nights whose list has it */
+export async function getGamePlaces(gameId: number, tier: Tier, nights: readonly Night[]) {
+  const places = await Promise.all(
+    nights.map(async (night) => {
+      const ranked = groupRanking(await getNightRankingLists(tier, night));
+      const i = ranked.findIndex((r) => r.gameId === gameId);
+      return i < 0 ? null : { night, place: i + 1, of: ranked.length, points: ranked[i].points };
+    }),
+  );
+  return places.filter((p) => p !== null);
+}
+
+/** A night's group list in one tier: the core group's unless it says otherwise */
+export async function getGroupRanking(tier: Tier, limit?: number, night: Night = "core") {
+  const ranked = groupRanking(await getNightRankingLists(tier, night));
   const top = limit ? ranked.slice(0, limit) : ranked;
   if (top.length === 0) return [];
   const games = await db
