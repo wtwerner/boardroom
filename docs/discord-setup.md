@@ -18,7 +18,7 @@ You create and own the application, and that needs no permissions on the server.
 3. **Bot** tab:
    - **Reset Token** and keep it in your password manager. It's the bot's password.
    - Turn on **Message Content Intent**. Without it the bot sees empty messages and can't read play logs.
-   - Turn on **Server Members Intent** (optional). It gives Settings a dropdown of server members for linking players to Discord accounts.
+   - Turn on **Server Members Intent** (optional, but People and access needs it to compare). It gives Settings a dropdown of server members for linking players to Discord accounts, and lets People and access show who holds the member role, who's left the server, and where the role and Boardroom disagree. Without it those are left off, and the site logs `Missing Access` each time it tries.
    - Leave **Public Bot** on for now so the owner's invite link works, and leave **Requires OAuth2 Code Grant** off. You can turn Public Bot off once the bot is in the server. Discord first requires **Installation → Install Link** to be set to **None**; the hand-built invite link below still works afterward.
 4. Build the invite link and send it to the owner. It grants View Channel, Send Messages and Read Message History for plays, and Create Public Threads and Send Messages in Threads for nights' threads. The `bot` scope brings slash commands with it.
 
