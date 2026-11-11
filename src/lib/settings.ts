@@ -72,6 +72,8 @@ const SETTINGS = {
   casualNightName: { schema: text(30, "Casual night"), env: "CASUAL_NIGHT_NAME" },
   coreNightTitle: { schema: optionalText(80), env: "CORE_NIGHT_TITLE" },
   casualNightTitle: { schema: optionalText(80), env: "CASUAL_NIGHT_TITLE" },
+  // Newer than the settings page: off until an admin turns it on
+  casualSignIn: { schema: flag, env: () => null },
   heavyWeight: { schema: number(1, 5, 2.75), env: "HEAVY_GAME_WEIGHT" },
   reminderHours: { schema: number(0, 72, 3, "int"), env: "NIGHT_REMINDER_HOURS" },
   // Newer than the settings page, so there's no environment variable to fall back to

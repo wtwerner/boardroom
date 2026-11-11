@@ -21,6 +21,8 @@ export type LoggedPlay = {
   notes: string | null;
   source: "discord" | "manual";
   sourceRef: string | null;
+  /** Who logged it on the site, if anyone: a casual account changes only its own */
+  createdBy: string | null;
   players: { playerId: number; name: string; color: MeepleColor | null }[];
 };
 
@@ -46,6 +48,8 @@ export function LiveLog({
   canEnd,
   demo,
   collapsed,
+  limited = false,
+  meId,
 }: {
   nightId: number;
   night: Night;
@@ -68,6 +72,9 @@ export function LiveLog({
   demo: boolean;
   /** Over and logged: logging more is tucked away */
   collapsed: boolean;
+  /** A casual account logs and reorders, and edits or deletes only the plays it logged */
+  limited?: boolean;
+  meId: string;
 }) {
   const [seated, setSeated] = useState<Set<number>>(() => new Set(firstSeated));
   const [guests, setGuests] = useState<Guest[]>([]);
@@ -217,20 +224,24 @@ export function LiveLog({
                     </MoveButton>
                   </>
                 )}
-                <EditPlayButton
-                  play={{
-                    playId: p.id,
-                    name: p.name,
-                    gameId: p.gameId,
-                    playedOn: p.playedOn,
-                    location: p.location,
-                    notes: p.notes,
-                    playerIds: p.players.map((s) => s.playerId),
-                    night,
-                    discord: p.source === "manual" ? (p.sourceRef ? "app-post" : "none") : "hand-post",
-                  }}
-                />
-                <DeletePlayButton id={p.id} name={p.name} postedByApp={p.source === "manual" && Boolean(p.sourceRef)} />
+                {(!limited || p.createdBy === meId) && (
+                  <>
+                    <EditPlayButton
+                      play={{
+                        playId: p.id,
+                        name: p.name,
+                        gameId: p.gameId,
+                        playedOn: p.playedOn,
+                        location: p.location,
+                        notes: p.notes,
+                        playerIds: p.players.map((s) => s.playerId),
+                        night,
+                        discord: p.source === "manual" ? (p.sourceRef ? "app-post" : "none") : "hand-post",
+                      }}
+                    />
+                    <DeletePlayButton id={p.id} name={p.name} postedByApp={p.source === "manual" && Boolean(p.sourceRef)} />
+                  </>
+                )}
               </span>
             </li>
           ))}

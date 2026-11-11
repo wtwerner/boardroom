@@ -1,4 +1,4 @@
-import { sendLogNudges, sendReminders } from "@/lib/nudge-post";
+import { sendLogNudges, sendRateNudges, sendReminders } from "@/lib/nudge-post";
 import { closeFinishedPolls, decideByDue } from "@/lib/poll-store";
 import { sayDecideBy } from "@/lib/poll-post";
 import { syncNightPost } from "@/lib/night-post";
@@ -28,6 +28,11 @@ export async function GET(request: Request) {
     results.askedToLog = await sendLogNudges();
   } catch (err) {
     results.askedToLog = { error: String(err) };
+  }
+  try {
+    results.askedToRate = await sendRateNudges();
+  } catch (err) {
+    results.askedToRate = { error: String(err) };
   }
   try {
     const closed = await closeFinishedPolls();

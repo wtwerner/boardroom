@@ -1,9 +1,9 @@
 import "server-only";
 import { after } from "next/server";
 import { eq } from "drizzle-orm";
-import { CASUAL_NIGHT, GROUP_NIGHTS, NIGHT_NAMES, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
+import { CASUAL_NIGHT, CASUAL_SIGN_IN, GROUP_NIGHTS, NIGHT_NAMES, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { type DateAnswer, NIGHTS, type Night, POLL_MAX_DATES, type RsvpStatus } from "@/db/enums";
+import { type Access, type DateAnswer, NIGHTS, type Night, POLL_MAX_DATES, type RsvpStatus } from "@/db/enums";
 import { commandName, editInteractionReply, eventsChannel, fetchAppEmoji, playsChannel, postsNights } from "./discord";
 import {
   APPLICATION_COMMAND,
@@ -38,6 +38,7 @@ import { announceDateSetLater, announceFellThroughLater, answeredLater } from ".
 import { buildAnswersPanel, dateChoiceLabel, stayingLine } from "./poll-message";
 import { rankDates, toggleWorks } from "./date-answers";
 import { kindOfChannel } from "./discord-commands";
+import { signInAccess } from "./access";
 import { escape } from "./discord-components";
 import { alreadyIn, canWelcome, welcomeCandidate, welcomeName, welcomeToGroup } from "./welcome";
 import { welcomeSummary } from "./welcome-message";
@@ -80,30 +81,45 @@ export async function handleInteraction(i: Interaction): Promise<object> {
 const notPostedReason = (night: Night) =>
   eventsChannel(night) ? "DISCORD_BOT_TOKEN isn't set" : `Group settings has no events channel${CASUAL_NIGHT ? ` for ${inSentence(NIGHT_NAMES[night])}` : ""}`;
 
-/** Members of the group: anyone in the server, or holders of the member role when Group settings names one */
-function isMember(i: Interaction) {
+/**
+ * What whoever pressed it is, the same as on the site: once someone has an account, it's their
+ * access there, whatever role they hold. Before that it's what their first sign-in would make them
+ * (the member role, or being in the server when there's no role and new people don't start casual),
+ * and anyone else in the server counts as casual.
+ */
+async function accessOf(i: Interaction): Promise<Access> {
+  const id = i.member?.user.id;
+  if (!id) return "casual";
+  const account = await db.query.user.findFirst({ where: eq(schema.user.discordId, id), columns: { access: true } });
+  if (account) return account.access;
   const role = SETTINGS.memberRole;
-  return !role || Boolean(i.member?.roles.includes(role));
+  const first = signInAccess({ inServer: true, hasRole: role ? Boolean(i.member?.roles.includes(role)) : null, existing: null, casualSignIn: CASUAL_SIGN_IN, casualNight: CASUAL_NIGHT });
+  return first.ok ? first.access : "casual";
 }
 
-/** The core group's nights are for members; the casual night is for anyone in the server */
-const mayAnswer = (i: Interaction, night: Night) => night === "casual" || isMember(i);
+const isMember = async (i: Interaction) => (await accessOf(i)) === "member";
+
+/** The core group's nights are for members; the casual night is for anyone in the server an admin hasn't taken off the site */
+async function mayAnswer(i: Interaction, night: Night) {
+  const access = await accessOf(i);
+  return night === "casual" ? access !== "removed" : access === "member";
+}
 
 /**
- * Said to someone without the member role who tries something that needs it. Only reached when
- * there is a role, so it can name it (a mention, which shows the role's name without pinging).
+ * Said to someone who isn't a member and tries something that needs it. The role, when there is
+ * one, is named with a mention, which shows its name without pinging.
  */
-const roleNeeded = () => `<@&${SETTINGS.memberRole}>`;
-const MEMBERS_ONLY = () => `That needs the ${roleNeeded()} role.`;
+const roleNeeded = () => (SETTINGS.memberRole ? `the <@&${SETTINGS.memberRole}> role` : `${SITE_NAME}'s members`);
+const MEMBERS_ONLY = () => `That's for ${roleNeeded()}.`;
 
-/** Everyone's welcome at the casual night; this is a core group's night, and anyone with the role can invite them */
-const NOT_THIS_ONE = () => `This one's for the ${roleNeeded()} role. If you're keen, anyone with it can invite you.`;
+/** Everyone's welcome at the casual night; this is a core group's night, and an admin can invite them */
+const NOT_THIS_ONE = () => `This one's for ${roleNeeded()}. If you're keen, ask one of ${SITE_NAME}'s admins to invite you.`;
 
 async function command(i: Interaction) {
   if (i.data?.name === welcomeName()) return welcomeCommand(i);
   if (i.data?.name !== commandName()) return reply("That command isn't mine.");
   const { sub, values } = commandOptions(i.data.options);
-  if (!isMember(i)) return reply(MEMBERS_ONLY());
+  if (!(await isMember(i))) return reply(MEMBERS_ONLY());
   if (sub === "new") return newNightForm(i, Number(values.seats) || undefined);
   if (sub === "poll") return newPollForm(i);
   const nightId = Number(values.event);
@@ -164,7 +180,7 @@ async function component(i: Interaction) {
   }
 
   if (action.kind === "rsvp") {
-    if (!mayAnswer(i, n.night)) return reply(NOT_THIS_ONE());
+    if (!(await mayAnswer(i, n.night))) return reply(NOT_THIS_ONE());
     const player = await playerForDiscordUser(i.member!.user.id, memberName(i));
     const waiting = await waitingFor(n.id);
     await setRsvp({ nightId: n.id, playerId: player.id, status: action.status, via: "discord" });
@@ -172,7 +188,7 @@ async function component(i: Interaction) {
     return deferUpdate();
   }
   if (action.kind === "for") {
-    if (!mayAnswer(i, n.night)) return reply(NOT_THIS_ONE());
+    if (!(await mayAnswer(i, n.night))) return reply(NOT_THIS_ONE());
     if (n.cancelled) return reply("That event was cancelled.");
     return modal(actionId({ kind: "for", nightId: n.id }), "Answer for someone else", [
       { id: "who", label: "Who", user: true, placeholder: "Someone in the server" },
@@ -180,7 +196,7 @@ async function component(i: Interaction) {
       { id: "answer", label: "Their answer", options: ANSWERS.map((a) => ({ label: a.label, value: a.status })), selected: "going" },
     ]);
   }
-  if (!isMember(i)) return reply(MEMBERS_ONLY());
+  if (!(await isMember(i))) return reply(MEMBERS_ONLY());
   if (action.kind === "edit") return editForm(n);
   if (action.kind === "refind") return refindForm(n);
 
@@ -218,10 +234,15 @@ async function submitted(i: Interaction) {
   const form = formValues(i.data?.components);
   // Like the card's own buttons, anyone may answer on the casual night
   if (action?.kind === "for") return answerFor(i, action.nightId, form);
-  if (!isMember(i)) return reply(MEMBERS_ONLY());
+  // Suggesting a date, like answering, is anyone's who can see the night
+  if (action?.kind === "pollAdd") {
+    const row = await ownPoll(action.pollId);
+    if (!(await mayAnswer(i, row.night))) return reply(NOT_THIS_ONE());
+    return suggestDate(i, action.pollId, form);
+  }
+  if (!(await isMember(i))) return reply(MEMBERS_ONLY());
   if (action?.kind === "new") return newNight(i, form, action.seats ?? null);
   if (action?.kind === "newPoll") return newPoll(i, form);
-  if (action?.kind === "pollAdd") return suggestDate(i, action.pollId, form);
   if (action?.kind === "pollPick") return pickDate(i, action.pollId, form);
   if (action?.kind === "refind") return refindDate(i, action.nightId, form);
   if (action?.kind !== "edit") return reply("That form is from an older version. Try again.");
@@ -289,7 +310,7 @@ const ANSWERS: { status: RsvpStatus; label: string }[] = [
  */
 async function answerFor(i: Interaction, nightId: number, form: Record<string, string>) {
   const n = await ownNight(nightId);
-  if (!mayAnswer(i, n.night)) return reply(NOT_THIS_ONE());
+  if (!(await mayAnswer(i, n.night))) return reply(NOT_THIS_ONE());
   const answer = ANSWERS.find((a) => a.status === form.answer) ?? ANSWERS[0];
   const picked = pickedUser(i, "who");
   if (picked?.bot) return reply("That's a bot. Pick a person, or give their name.");
@@ -308,7 +329,7 @@ async function answerFor(i: Interaction, nightId: number, form: Record<string, s
  * asks first, saying what's about to happen.
  */
 async function welcomeCommand(i: Interaction) {
-  if (!isMember(i)) return reply(MEMBERS_ONLY());
+  if (!(await isSiteAdmin(i))) return reply(ADMINS_ONLY());
   if (!canWelcome()) return reply("Inviting people needs the bot in the server.");
   const target = i.data?.target_id;
   if (!target) return reply("Right-click someone in the server to invite them.");
@@ -323,7 +344,7 @@ async function welcomeCommand(i: Interaction) {
 
 /** The confirm button: giving the role, posting and DMing take a few calls, so the answer replaces the question once they're done */
 async function welcomeConfirmed(i: Interaction, discordId: string) {
-  if (!isMember(i)) return reply(MEMBERS_ONLY());
+  if (!(await isSiteAdmin(i))) return reply(ADMINS_ONLY());
   const by = { name: memberName(i), discordId: i.member!.user.id, userId: await accountFor(i) };
   after(async () => {
     let content: string;
@@ -348,6 +369,19 @@ async function bringAnswer(i: Interaction, action: { planId: number; yes: boolea
   syncNightPostLater(answered.nightId);
   return updateReply(bringAnswered({ yes: action.yes, game: answered.game, night: answered.night }));
 }
+
+/** Whether whoever pressed it is one of the site's admins (or nobody is yet): who's a member is theirs to decide */
+async function isSiteAdmin(i: Interaction) {
+  const id = i.member?.user.id;
+  if (!id) return false;
+  const [me, anyAdmin] = await Promise.all([
+    db.query.user.findFirst({ where: eq(schema.user.discordId, id), columns: { isAdmin: true, access: true } }),
+    db.query.user.findFirst({ where: eq(schema.user.isAdmin, true), columns: { id: true } }),
+  ]);
+  return me?.access === "member" && (me.isAdmin || !anyAdmin);
+}
+
+const ADMINS_ONLY = () => `Only ${SITE_NAME}'s admins can invite people. Ask one of them.`;
 
 /** Making a night needs an account: a night belongs to whoever made it */
 async function accountFor(i: Interaction) {
@@ -519,7 +553,7 @@ async function answersPanel(pollId: number, playerId: number) {
 async function pollButton(i: Interaction, action: PollAction) {
   // Answers are for whoever the night is for: members for the core group's, anyone for the casual one
   const row = action.kind === "pollVote" || action.kind === "pollAns" ? await pollOfDate(action.optionId) : await ownPoll(action.pollId);
-  if (!mayAnswer(i, row.night)) return reply(NOT_THIS_ONE());
+  if (!(await mayAnswer(i, row.night))) return reply(NOT_THIS_ONE());
   const nightId = row.gameNightId;
 
   if (action.kind === "pollVote") {
@@ -551,6 +585,10 @@ async function pollButton(i: Interaction, action: PollAction) {
     if (action.here) return updatePanel(await answersPanel(row.id, player.id));
     return reply("Got it: none of those work for you. If one does after all, tap **Works for me** beside it.");
   }
+
+  // Suggesting a date is anyone's who can answer (checked above); reopening, setting the date and
+  // calling it off are members', as on the site
+  if (action.kind !== "pollAdd" && !(await isMember(i))) return reply(MEMBERS_ONLY());
 
   if (action.kind === "pollReopen") {
     await reopenPoll(row.id);

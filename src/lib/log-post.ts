@@ -1,6 +1,6 @@
 import "server-only";
 import { and, eq, inArray, isNotNull, isNull, like, lte, sql } from "drizzle-orm";
-import { SITE_URL } from "@/config";
+import { CASUAL_SIGN_IN, SITE_URL } from "@/config";
 import { db, schema } from "@/db";
 import type { Night } from "@/db/enums";
 import { deleteMessage, deletePlaysMessage, editMessage, editPlaysMessage, fetchAppEmoji, postMessage, postPlaysMessage } from "./discord";
@@ -37,10 +37,10 @@ const threadOf = (n: Awaited<ReturnType<typeof nightOn>>) => (n?.threadId && !n.
 
 /**
  * The Discord card for a night's games: box art, how often the group has played each, and links back.
- * The casual night's posts don't link here: most of that channel can't sign in.
+ * The casual night's posts link here only while its players can sign in (CASUAL_SIGN_IN).
  */
 export async function playCard(games: NightGame[], shared: SharedDetails, night: Night, opts: { loggedBy?: string; threadId?: string | null; nightId?: number | null } = {}) {
-  const site = night === "core" ? SITE_URL : undefined;
+  const site = night === "core" || CASUAL_SIGN_IN ? SITE_URL : undefined;
   const posted = await Promise.all(
     games.map(async ({ gameId, gameName }) => {
       const [g] = await db.select({ image: schema.game.image, thumbnail: schema.game.thumbnail }).from(schema.game).where(eq(schema.game.id, gameId));

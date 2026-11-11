@@ -4,10 +4,11 @@ import Link from "next/link";
 import { RefreshCw } from "lucide-react";
 import { openCalendarSync } from "@/app/actions";
 import { GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES } from "@/config";
+import type { Night } from "@/db/enums";
 import { Empty, PageHeader, Section, Skeleton, buttonClass } from "@/components/ui";
 import { NightRow, isOn } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
-import { requireUser } from "@/lib/session";
+import { nightsFor, requireUser, seesNight } from "@/lib/session";
 import { getMembers } from "@/lib/queries";
 import { commandName, postsNights } from "@/lib/discord";
 import { getPastNights, getUpcomingNights, loadNight } from "@/lib/events";
@@ -39,19 +40,25 @@ export default function PlanPage(props: PageProps<"/plan">) {
   );
 }
 
-/** Every upcoming night, of every kind together by date, each planned on its own page; then the ones that have happened */
+/**
+ * Every upcoming night of the kinds someone sees, together by date, each planned on its own page;
+ * then the ones that have happened. Making events, and reopening one called off, are the members'.
+ */
 async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["searchParams"] }) {
   const me = await requireUser();
+  const member = me.access === "member";
+  const mine = <T extends { night: Night }>(rows: T[]) => rows.filter((r) => seesNight(me, r.night));
   const shown = Math.max(PAST_STEP, Math.min(500, Number((await searchParams).past) || PAST_STEP));
   const [nights, past, members, polls, calledOff, calendar, times] = await Promise.all([
-    getUpcomingNights(),
-    getPastNights(shown),
-    getMembers(),
-    findingPolls(),
-    findingPolls({ cancelled: true }),
+    getUpcomingNights().then(mine),
+    getPastNights(shown).then((p) => ({ ...p, nights: mine(p.nights) })),
+    getMembers(member ? "core" : "casual"),
+    findingPolls().then(mine),
+    member ? findingPolls({ cancelled: true }) : [],
     calendarSetup(),
     usualTimes(),
   ]);
+  const setup = { nights: nightsFor(me), names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: nightsFor(me).some(postsNights) };
   const colors = Object.fromEntries(members.map((m) => [m.id, m.color]));
   const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
 
@@ -61,11 +68,11 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
   const offNights = await Promise.all(calledOff.map((p) => loadNight(p.nightId)));
   const pollSection = (
     <Section title="Picking a date" id="polls">
-      {pollViews.length === 0 && <p className="mb-3 text-sm text-slate">Not sure when the next one is? Offer a few dates and see which work.</p>}
+      {pollViews.length === 0 && member && <p className="mb-3 text-sm text-slate">Not sure when the next one is? Offer a few dates and see which work.</p>}
       {pollViews.length > 0 && (
         <div className="mb-4 space-y-3">
           {pollViews.map((p) => (
-            <PollCard key={p.id} poll={p} myPlayerId={me.playerId} colors={colors} calendar={calendar} link />
+            <PollCard key={p.id} poll={p} myPlayerId={me.playerId} colors={colors} calendar={calendar} link limited={!member} />
           ))}
         </div>
       )}
@@ -76,7 +83,7 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
           ))}
         </ul>
       )}
-      <PollForm setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: GROUP_NIGHTS.some(postsNights) }} calendar={calendar} times={times} />
+      {member && <PollForm setup={setup} calendar={calendar} times={times} />}
     </Section>
   );
 
@@ -110,17 +117,21 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
           </ul>
         ) : (
           <Empty>
-            {GROUP_NIGHTS.some(postsNights)
-              ? `Nothing coming up. Add the next event below, or with /${commandName()} new in Discord.`
-              : "Nothing coming up. Add the next event below."}
+            {!member
+              ? "Nothing coming up yet. The next one shows up here, and in Discord, once it's planned."
+              : GROUP_NIGHTS.some(postsNights)
+                ? `Nothing coming up. Add the next event below, or with /${commandName()} new in Discord.`
+                : "Nothing coming up. Add the next event below."}
           </Empty>
         )}
-        <div className="mt-4">
-          <NightForm setup={{ nights: GROUP_NIGHTS, names: NIGHT_NAMES, titles: NIGHT_TITLES, discord: GROUP_NIGHTS.some(postsNights) }} />
-        </div>
+        {member && (
+          <div className="mt-4">
+            <NightForm setup={setup} />
+          </div>
+        )}
       </Section>
 
-      {pollViews.length === 0 && pollSection}
+      {pollViews.length === 0 && member && pollSection}
 
       <Section title="Past events" id="past">
         {past.nights.length ? (

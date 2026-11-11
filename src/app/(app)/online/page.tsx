@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { Empty, GameCover, Meeple, PageHeader, Panel, Skeleton, TextLink, formatDate } from "@/components/ui";
+import { Empty, Face, Faces, GameCover, Meeple, PageHeader, Panel, Skeleton, TextLink, formatDate } from "@/components/ui";
+import { topFew } from "@/lib/meeple";
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
-import { type BgaListing, type OnlineGame, getBgaByBggId, getBgaMembers, getOnlineGames } from "@/lib/queries";
+import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
+import { type BgaListing, type OnlineGame, getBgaByBggId, getBgaCasualPlayers, getBgaMembers, getOnlineGames } from "@/lib/queries";
 import { type Candidate, MIN_EVIDENCE, getRecommendations } from "@/lib/recommend";
 import { requireUser } from "@/lib/session";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { describeReason } from "@/lib/taste";
 import { BGA_SYNC_KEY, lastSyncedAt } from "@/lib/sync";
-import type { Sentiment } from "@/db/enums";
+import type { Night, Sentiment } from "@/db/enums";
 import { CollapsibleSection, LoadBgaButton, OnlineToggle } from "./online-controls";
 
 export const metadata: Metadata = { title: "Online" };
@@ -34,16 +36,24 @@ export default function OnlinePage() {
 const SENTIMENT_SCORE: Record<Sentiment, number> = { love: 2, like: 1, meh: -1, nope: -2 };
 const loved = (g: OnlineGame) => g.sentiments.reduce((n, s) => n + SENTIMENT_SCORE[s.sentiment], 0);
 
+/** The group's games on BGA. A casual account's is everyone with an account and the casual night's plays (getOnlineGames) */
 async function Online() {
   const me = await requireUser();
-  const [games, members, syncedAt] = await Promise.all([getOnlineGames(), getBgaMembers(), lastSyncedAt(BGA_SYNC_KEY)]);
+  const member = me.access === "member";
+  const crowd = member ? "core" : "casual";
+  const [games, members, casualPlayers, syncedAt] = await Promise.all([
+    getOnlineGames(crowd),
+    getBgaMembers(crowd),
+    CASUAL_NIGHT && member ? getBgaCasualPlayers() : [],
+    lastSyncedAt(BGA_SYNC_KEY),
+  ]);
   const mine = members.find((m) => m.id === me.id);
 
   if (!syncedAt) {
     return (
       <Empty>
         The list of games on Board Game Arena hasn&apos;t been loaded yet. It refreshes every night.
-        <LoadBgaButton />
+        {member && <LoadBgaButton />}
       </Empty>
     );
   }
@@ -76,6 +86,21 @@ async function Online() {
             ))}
           {members.every((m) => !m.bgaUsername) && <p className="px-3 py-2.5 text-sm text-slate">Nobody has added their BGA name yet.</p>}
         </Panel>
+        {casualPlayers.length > 0 && (
+          <>
+            <h3 className="mt-4 mb-2 text-xs font-semibold text-slate">{NIGHT_NAMES.casual} players</h3>
+            <Panel className="divide-y divide-line">
+              {casualPlayers.map((m) => (
+                <div key={m.id} className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-sm">
+                  <Meeple color={m.color} />
+                  <span className="font-medium">{m.name}</span>
+                  <span className="text-slate">{m.bgaUsername}</span>
+                  {m.bgaPremium && <span className="rounded-full bg-meeple-yellow/25 px-1.5 py-px text-[0.65rem] font-semibold tracking-wide uppercase">Premium</span>}
+                </div>
+              ))}
+            </Panel>
+          </>
+        )}
         <p className="mt-2 text-xs text-slate">
           {members.some((m) => !m.bgaUsername) && <>Not added yet: {members.filter((m) => !m.bgaUsername).map((m) => (m.id === me.id ? "you" : m.name)).join(", ")}. </>}
           <TextLink href="/settings#bga" className="text-xs">{mine?.bgaUsername ? "Change yours in Settings" : "Add yours in Settings"}</TextLink>
@@ -97,7 +122,7 @@ async function Online() {
         </p>
         <Suspense fallback={<Skeleton className="h-64" />}>
           {/* Shown elsewhere on the page: the ones people are up for and the ones on a wishlist or the buy list */}
-          <Recommended members={members} meId={me.id} playerId={me.playerId} listed={[...keen, ...tryFirst].map((g) => g.id)} />
+          <Recommended members={members} meId={me.id} playerId={me.playerId} crowd={crowd} listed={[...keen, ...tryFirst].map((g) => g.id)} />
         </Suspense>
       </CollapsibleSection>
 
@@ -107,9 +132,15 @@ async function Online() {
 
       <CollapsibleSection id="try" title={`Try before you buy (${tryFirst.length})`}>
         <p className="mb-3 text-sm text-slate">
-          On a wishlist or the <TextLink href="/discover">buy list</TextLink>, and nobody owns it yet.
+          {member ? (
+            <>
+              On a wishlist or the <TextLink href="/discover">buy list</TextLink>, and nobody owns it yet.
+            </>
+          ) : (
+            "On someone's wishlist, and nobody owns it yet."
+          )}
         </p>
-        {tryFirst.length ? <GameList games={tryFirst} {...rowProps} /> : <Empty>Nothing on the wishlists or buy list is on BGA.</Empty>}
+        {tryFirst.length ? <GameList games={tryFirst} {...rowProps} /> : <Empty>Nothing on the wishlists{member && " or buy list"} is on BGA.</Empty>}
       </CollapsibleSection>
 
       <p className="text-xs text-slate">
@@ -122,8 +153,8 @@ async function Online() {
 
 const percent = (p: number) => `${Math.round(p * 100)}%`;
 
-async function Recommended({ members, meId, playerId, listed }: { members: Member[]; meId: string; playerId: number | null; listed: number[] }) {
-  const [rec, bga] = await Promise.all([getRecommendations(meId, playerId, { online: true }), getBgaByBggId()]);
+async function Recommended({ members, meId, playerId, crowd, listed }: { members: Member[]; meId: string; playerId: number | null; crowd: Night; listed: number[] }) {
+  const [rec, bga] = await Promise.all([getRecommendations(meId, playerId, { online: true, crowd }), getBgaByBggId()]);
   if (rec.scoredMemberIds.length === 0) {
     return <Empty>Picks start once someone has rated or ranked {MIN_EVIDENCE} games.</Empty>;
   }
@@ -143,6 +174,11 @@ function PickRow({ c, bga, members, meId, scoredIds }: { c: Candidate; bga: BgaL
   const g = c.game;
   const name = (id: string) => (id === meId ? "You" : (members.find((m) => m.id === id)?.name ?? "Someone"));
   const hosts = members.filter((m) => m.bgaPremium);
+  // A big crowd shows who it'd suit best, then how many more
+  const fits = topFew(
+    members.filter((m) => scoredIds.includes(m.id)),
+    (m) => c.fits[m.id].chance,
+  );
   // Why: what the keenest member likes about it, as on Discover
   const keenest = scoredIds.map((id) => ({ id, fit: c.fits[id] })).sort((a, b) => b.fit.chance - a.fit.chance)[0];
   const reasons = keenest.fit.reasons
@@ -170,15 +206,18 @@ function PickRow({ c, bga, members, meId, scoredIds }: { c: Candidate; bga: BgaL
           <span className="block text-[0.7rem] text-slate">{c.group.of > 1 ? "average chance" : "chance of a hit"}</span>
         </span>
         {scoredIds.length > 1 && (
-          <ul aria-label="Chance for each member" className="flex gap-2 text-xs">
-            {members
-              .filter((m) => scoredIds.includes(m.id))
-              .map((m) => (
-                <li key={m.id} className="inline-flex items-center gap-0.5" title={`${m.name}: ${percent(c.fits[m.id].chance)}`}>
-                  <Meeple color={m.color} className="size-3.5" />
-                  <span className="tabular">{percent(c.fits[m.id].chance)}</span>
-                </li>
-              ))}
+          <ul aria-label="Chance for each member" className="flex flex-wrap gap-2 text-xs">
+            {fits.shown.map((m) => (
+              <li key={m.id} className="inline-flex items-center gap-0.5" title={`${m.name}: ${percent(c.fits[m.id].chance)}`}>
+                <Face src={m.image} name={m.name} color={m.color} className="size-4" />
+                <span className="tabular">{percent(c.fits[m.id].chance)}</span>
+              </li>
+            ))}
+            {fits.rest.length > 0 && (
+              <li className="text-slate" title={fits.rest.map((m) => `${m.name}: ${percent(c.fits[m.id].chance)}`).join(", ")}>
+                +{fits.rest.length} more
+              </li>
+            )}
           </ul>
         )}
         <OnlineToggle gameId={g.id} on={false} />
@@ -240,11 +279,7 @@ function GameRow({ g, members, meId }: { g: OnlineGame; members: Member[]; meId:
           </span>
         )}
         {g.playOnline.length > 0 && (
-          <span className="flex items-center" aria-label={`Up for it: ${names(g.playOnline)}`} title={`Up for it: ${names(g.playOnline)}`}>
-            {g.playOnline.map((id) => (
-              <Meeple key={id} color={members.find((m) => m.id === id)?.color ?? null} className="-ml-1 size-4 first:ml-0" />
-            ))}
-          </span>
+          <Faces people={members.filter((m) => g.playOnline.includes(m.id))} label={`Up for it: ${names(g.playOnline)}`} />
         )}
         <OnlineToggle gameId={g.id} on={g.playOnline.includes(meId)} />
         <a

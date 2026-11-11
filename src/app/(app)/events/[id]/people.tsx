@@ -126,7 +126,7 @@ export function People(props: {
 
 function Answered({ a, colors, faded }: { a: Attendee; colors: Record<string, MeepleColor | null>; faded?: boolean }) {
   return (
-    <span className={clsx("inline-flex items-center gap-1", faded && "opacity-70")} title={a.userId ? undefined : "Not a member"}>
+    <span className={clsx("inline-flex items-center gap-1", faded && "opacity-70")} title={a.userId ? undefined : "Not signed up here"}>
       <PlayerChip name={a.guests ? `${a.name} +${a.guests}` : a.name} color={a.userId ? (colors[a.userId] ?? null) : null} />
     </span>
   );

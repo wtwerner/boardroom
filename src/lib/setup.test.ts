@@ -4,6 +4,12 @@ import { RANKED_TO_START, rankLists, setupProgress, setupSteps } from "./setup";
 const fresh = { nameDone: false, needsClaim: false, rateDone: false, rankDone: false, collection: false, bga: false };
 
 describe("setupSteps", () => {
+  it("leaves a casual account out of finding themselves", () => {
+    const casual = setupSteps({ ...fresh, needsClaim: true }, { casual: true });
+    expect(casual.map((s) => s.key)).toEqual(["name", "rate", "rank", "bgg", "bga"]);
+    expect(setupProgress(casual).total).toBe(3);
+  });
+
   it("starts with the name, and asks to find yourself in past plays only while it's needed", () => {
     expect(setupSteps(fresh).map((s) => s.key)).toEqual(["name", "rate", "rank", "bgg", "bga"]);
     expect(setupSteps({ ...fresh, needsClaim: true })[1]).toMatchObject({ key: "claim", done: false, optional: false });

@@ -1,9 +1,8 @@
 import "server-only";
-import { CASUAL_NIGHT, SETTINGS } from "@/config";
+import { CASUAL_NIGHT, CASUAL_SIGN_IN, SETTINGS } from "@/config";
 import type { Night } from "@/db/enums";
 import { botCommands } from "./discord-commands";
 import { type AppEmoji, appEmoji } from "./icons";
-import type { SignInRefusal } from "./sign-in-refusal";
 
 const API = "https://discord.com/api/v10";
 
@@ -64,21 +63,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** The role someone needs to sign in, from Group settings, or null when anyone in the server can */
 const memberRole = () => SETTINGS.memberRole;
 
-/**
- * Why this Discord user may not sign in, or null if they may: they must be in the
- * group's server, and hold the member role when Group settings names one.
- */
-export async function groupMemberRefusal(discordUserId: string): Promise<SignInRefusal | null> {
-  const guildId = process.env.DISCORD_GUILD_ID;
-  if (!guildId) throw new Error("DISCORD_GUILD_ID is not set");
-
-  const member = await discordFetch<GuildMember>(`/guilds/${guildId}/members/${discordUserId}`);
-  if (!member) return "not_in_server";
-
-  const roleId = memberRole();
-  return roleId && !member.roles.includes(roleId) ? "missing_role" : null;
-}
-
 /** The casual night's channels are only used while the group has one */
 const forNight = (night: Night, core: string | null, casual: string | null) => (night === "casual" ? (CASUAL_NIGHT ? casual : null) : core);
 
@@ -125,14 +109,6 @@ export async function getServerMember(discordUserId: string) {
   return { id: m.user.id, name: m.nick || displayName(m.user), bot: Boolean(m.user.bot), hasRole: roleId ? m.roles.includes(roleId) : null };
 }
 
-/** Whether someone in the group's server holds this role. False when they aren't in it. */
-export async function holdsRole(discordUserId: string, roleId: string) {
-  const guildId = process.env.DISCORD_GUILD_ID;
-  if (!guildId) throw new Error("DISCORD_GUILD_ID is not set");
-  const m = await discordFetch<GuildMember>(`/guilds/${guildId}/members/${discordUserId}`);
-  return Boolean(m?.roles.includes(roleId));
-}
-
 /** The member role's name in the server ("Core group"), for messages that say what someone was given */
 export async function memberRoleName() {
   const guildId = process.env.DISCORD_GUILD_ID;
@@ -151,6 +127,17 @@ export async function giveMemberRole(discordUserId: string, reason: string) {
   const roleId = memberRole();
   if (!guildId || !roleId) throw new Error("Group settings has no member role");
   await discordFetch(`/guilds/${guildId}/members/${discordUserId}/roles/${roleId}`, { method: "PUT", reason });
+}
+
+/**
+ * Take the member role from someone, when an admin moves them to casual or off the site. Needs
+ * the same Manage Roles, above the member role, as giving it.
+ */
+export async function takeMemberRole(discordUserId: string, reason: string) {
+  const guildId = process.env.DISCORD_GUILD_ID;
+  const roleId = memberRole();
+  if (!guildId || !roleId) throw new Error("Group settings has no member role");
+  await discordFetch(`/guilds/${guildId}/members/${discordUserId}/roles/${roleId}`, { method: "DELETE", reason });
 }
 
 /** Discord's own error code from a failed call ("Missing Permissions" is 50013, "Cannot send messages to this user" 50007) */
@@ -183,7 +170,8 @@ export async function welcomeChannel() {
  * Anyone in the server can sign in, and everyone signed in can delete and merge. Fine for a
  * server that's just the group; worth a warning in a bigger one.
  */
-export const anyServerMemberCanSignIn = () => Boolean(process.env.DISCORD_GUILD_ID) && !hasMemberRole();
+// With casual sign-in on, people new to the site start as casual accounts, so the server being open doesn't open everything
+export const anyServerMemberCanSignIn = () => Boolean(process.env.DISCORD_GUILD_ID) && !hasMemberRole() && !CASUAL_SIGN_IN;
 
 /**
  * Whether Discord can reach the site with button clicks, slash commands and forms: the

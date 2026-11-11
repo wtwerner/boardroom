@@ -2,15 +2,16 @@
 
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { refresh, updateTag } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
-import { CLAUDE_IDEAS_PER_DAY, DEMO, GROUP_NIGHTS, SETTINGS, SITE_URL, TIME_ZONE } from "@/config";
+import { CASUAL_NIGHT, CLAUDE_IDEAS_PER_DAY, DEMO, GROUP_NIGHTS, NIGHT_NAMES, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
-import { DATE_ANSWERS, MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
+import { ACCESS, type Access, DATE_ANSWERS, MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
-import { canPostToDiscord, discordCode, hasInteractions, holdsRole, registerCommands, sendDirectMessage } from "@/lib/discord";
+import { canPostToDiscord, discordCode, getServerMember, giveMemberRole, hasInteractions, hasMemberRole, registerCommands, sendDirectMessage, takeMemberRole } from "@/lib/discord";
 import type { ParsedPlayer } from "@/lib/play-parser";
 import { isSyncOrigin } from "@/lib/calendar";
 import { feedTokenFor, replaceFeedToken } from "@/lib/calendar-store";
@@ -20,16 +21,18 @@ import { buildGroupContext, buildNightContext } from "@/lib/insights";
 import { describeTaste, getRecommendations, getTasteChances } from "@/lib/recommend";
 import { PICK_COUNT, askFor, choosePicks } from "@/lib/picks";
 import { refreshCatalog } from "@/lib/catalog";
-import { type SeatNight, getGameTiers, getPlayerNights } from "@/lib/queries";
+import { type SeatNight, getGameTiers, getPlayerNights, inCrowd } from "@/lib/queries";
 import { nightsVersion } from "@/lib/events";
 import { replaceTier } from "@/lib/tier";
-import { requireAdmin, requireUser } from "@/lib/session";
+import { type CurrentUser, PREVIEW_COOKIE, requireAdmin, requireMember, requireUser, seesNight } from "@/lib/session";
 import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
 import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
-import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
+import { inSentence } from "@/lib/text";
+import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, leaveNights, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
-import { canWelcome, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
+import { canWelcome, welcomeCandidate, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
+import { accessChangeRefusal } from "@/lib/access";
 import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, setDecideBy, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
 import { announceDateSetLater, announceFellThroughLater, answeredLater, nudgeLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
@@ -126,7 +129,7 @@ export async function saveRanking(tier: Tier, gameIds: number[]) {
 
 /** Rank a game with the other tier's games, or (null) let its BGG weight decide again. */
 export async function setGameTier(gameId: number, tier: Tier | null): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   const value = z.enum(TIERS).nullable().parse(tier);
   await db.update(schema.game).set({ tier: value }).where(eq(schema.game.id, gameId));
   refresh();
@@ -194,11 +197,20 @@ async function withNewGuests<T extends { players: ParsedPlayer[] }>(shared: T, n
 /** "A", "A and B", "A, B and C" */
 const listNames = (names: string[]) => (names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
+/**
+ * A casual account logs plays on the casual night, and changes or deletes only the ones it
+ * logged; the core group's nights and other people's plays are the members'.
+ */
+function casualMayChange(me: CurrentUser, p: { night: Night; createdBy: string | null }, { own = true } = {}) {
+  return me.access === "member" || (p.night === "casual" && (!own || p.createdBy === me.id));
+}
+
 /** Log one game, or a whole night of them with the same date, place and people. */
 export async function logPlay(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
   const me = await requireUser();
   const f = readPlayForm(form);
   if (!f) return { ok: false, error: MISSING_PLAY_FIELDS };
+  if (!casualMayChange(me, { night: f.night, createdBy: me.id })) return { ok: false, error: "That event is gone." };
 
   try {
     const { games, shared } = await nightFromForm(f);
@@ -252,11 +264,15 @@ export async function logPlay(_prev: ActionResult | null, form: FormData): Promi
 
 /** Correct a logged play. If the app posted it to Discord, the post is rewritten to match. */
 export async function updatePlay(playId: number, form: FormData): Promise<ActionResult> {
-  await requireUser();
+  const me = await requireUser();
   const existing = await db.query.play.findFirst({ where: eq(schema.play.id, playId) });
   if (!existing) return { ok: false, error: "That play is gone." };
   const f = readPlayForm(form);
   if (!f) return { ok: false, error: MISSING_PLAY_FIELDS };
+  // Their own play, staying on the casual night
+  if (!casualMayChange(me, existing) || !casualMayChange(me, { night: f.night, createdBy: existing.createdBy })) {
+    return { ok: false, error: "You can only change plays you logged." };
+  }
   if (f.gameIds.length > 1) return { ok: false, error: "A play is one game. Log the others as new plays." };
 
   try {
@@ -283,7 +299,11 @@ export async function updatePlay(playId: number, form: FormData): Promise<Action
 }
 
 export async function deletePlay(id: number) {
-  await requireUser();
+  const me = await requireUser();
+  if (me.access !== "member") {
+    const p = await db.query.play.findFirst({ where: eq(schema.play.id, id), columns: { night: true, createdBy: true } });
+    if (!p || !casualMayChange(me, p)) throw new Error("You can only delete plays you logged.");
+  }
   const [deleted] = await db.delete(schema.play).where(eq(schema.play.id, id)).returning();
   if (deleted?.source === "discord") await rememberDeletedDiscordPlays([deleted.sourceRef]);
   // Take the play out of the message the app posted for it (or the whole message, if it was the only one)
@@ -295,9 +315,11 @@ export async function deletePlay(id: number) {
 
 /** Move a play up or down its night's order, and its log post in Discord with it */
 export async function movePlay(id: number, by: -1 | 1): Promise<ActionResult> {
-  await requireUser();
+  const me = await requireUser();
   const p = await db.query.play.findFirst({ where: eq(schema.play.id, id) });
   if (!p) return { ok: false, error: "That play is gone." };
+  // The order is the night's, so anyone logging the casual night can fix it
+  if (!casualMayChange(me, p, { own: false })) return { ok: false, error: "That play is gone." };
   try {
     const night = await db
       .select({ id: schema.play.id, source: schema.play.source, sourceRef: schema.play.sourceRef })
@@ -325,11 +347,11 @@ export async function movePlay(id: number, by: -1 | 1): Promise<ActionResult> {
  * shows what was played and how it went against the plan, and it leaves the nights coming up.
  */
 export async function endNight(id: number): Promise<ActionResult> {
-  await requireUser();
+  const me = await requireUser();
   // Everyone trying the demo shares its night that's on
   if (DEMO) return { ok: false, error: "The night can't be ended on the demo, so it's still on for the next person." };
   const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, id) });
-  if (!n) return { ok: false, error: "That's gone: it was deleted." };
+  if (!n || (me.access !== "member" && n.night !== "casual")) return { ok: false, error: "That's gone: it was deleted." };
   if (n.startsAt.getTime() > Date.now()) return { ok: false, error: "It hasn't started yet." };
   await db.update(schema.gameNight).set({ endedAt: new Date() }).where(and(eq(schema.gameNight.id, id), isNull(schema.gameNight.endedAt)));
   refresh();
@@ -338,7 +360,7 @@ export async function endNight(id: number): Promise<ActionResult> {
 
 /** Point every unmatched play logged as `gameName` at a BGG game. */
 export async function resolveGameName(gameName: string, gameIdOrUrl: string): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   const id = Number(/(\d+)/.exec(gameIdOrUrl)?.[1]);
   if (!id) return { ok: false, error: "Pick a game or paste a BGG link." };
   try {
@@ -359,7 +381,7 @@ export async function resolveGameName(gameName: string, gameIdOrUrl: string): Pr
 }
 
 export async function ignoreGameName(gameName: string) {
-  await requireUser();
+  await requireMember();
   const deleted = await db
     .delete(schema.play)
     .where(and(eq(schema.play.gameName, gameName), eq(schema.play.needsReview, true)))
@@ -369,7 +391,7 @@ export async function ignoreGameName(gameName: string) {
 }
 
 export async function syncDiscordNow(): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   try {
     const r = await syncDiscordPlays();
     refresh();
@@ -434,7 +456,7 @@ export async function saveBgaProfile(_prev: ActionResult | null, form: FormData)
 
 /** Load BGA's game list now rather than waiting for the nightly sync. */
 export async function loadBgaGames(): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   try {
     const { games } = await syncBgaGames();
     refresh();
@@ -453,19 +475,10 @@ export type GroupSettingsResult = ActionResult | { ok: false; error: string; fie
 /** Save Group settings. Fields the form didn't show (the casual night's, with it off) keep what they were. */
 export async function saveGroupSettings(_prev: GroupSettingsResult | null, form: FormData): Promise<GroupSettingsResult> {
   try {
-    const me = await requireAdmin();
+    await requireAdmin();
     const input = Object.fromEntries(SETTING_KEYS.filter((key) => form.has(key)).map((key) => [key, form.get(key)]));
     const checked = checkSettings(input, SETTINGS);
     if (!checked.ok) return { ok: false, error: "Some of those need fixing first.", fields: checked.errors };
-
-    // Signing in needs the member role, so an admin without it would lock themselves out
-    const role = checked.settings.memberRole;
-    if (role && role !== SETTINGS.memberRole) {
-      const row = await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } });
-      if (row?.discordId && !(await holdsRole(row.discordId, role))) {
-        return { ok: false, error: "Some of those need fixing first.", fields: { memberRole: "You don't have this role, so you couldn't sign in again. Take it in Discord first." } };
-      }
-    }
 
     const welcomeBefore = welcomeName();
     await saveSettings(checked.settings);
@@ -494,7 +507,12 @@ export async function setAdmin(userId: string, admin: boolean): Promise<ActionRe
       const admins = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.isAdmin, true));
       if (admins.length === 1 && admins[0].id === userId) return { ok: false, error: "Make someone else an admin first." };
     }
-    const [row] = await db.update(schema.user).set({ isAdmin: admin }).where(eq(schema.user.id, userId)).returning({ name: schema.user.name });
+    // Only a member can be an admin
+    const [row] = await db
+      .update(schema.user)
+      .set({ isAdmin: admin })
+      .where(and(eq(schema.user.id, userId), eq(schema.user.access, "member")))
+      .returning({ name: schema.user.name });
     if (!row) return { ok: false, error: "They aren't a member." };
     refresh();
     return { ok: true, message: admin ? `${row.name} is an admin.` : `${row.name} isn't an admin anymore.` };
@@ -506,6 +524,19 @@ export async function setAdmin(userId: string, admin: boolean): Promise<ActionRe
 // ---------------------------------------------------------------------------
 // Players
 // ---------------------------------------------------------------------------
+
+/**
+ * A member sees the site as a casual account would, and back: the same pages and the same limits,
+ * so what the group checks is what casual players get. It's a cookie, so it's only their browser.
+ */
+export async function previewCasual(on: boolean) {
+  const me = await requireUser();
+  if (me.access !== "member" && !me.previewing) throw new Error("That isn't something you can do here.");
+  const jar = await cookies();
+  if (on) jar.set(PREVIEW_COOKIE, "on", { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 7 });
+  else jar.delete(PREVIEW_COOKIE);
+  redirect(on ? "/" : "/settings");
+}
 
 export async function setMyColor(color: string) {
   const me = await requireUser();
@@ -534,7 +565,7 @@ export async function newCalendarLink(): Promise<ActionResult> {
 
 /** Tie a player to a Discord account so posts from the app can @-tag them. */
 export async function setPlayerDiscord(playerId: number, discordId: string | null): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   const id = discordId?.trim() || null;
   if (id && !/^\d{15,21}$/.test(id)) return { ok: false, error: "That doesn't look like a Discord user id." };
   const p = await db.query.player.findFirst({ where: eq(schema.player.id, playerId) });
@@ -550,9 +581,10 @@ export async function setPlayerDiscord(playerId: number, discordId: string | nul
 }
 
 /** Fold one player into another — for "Sammy" vs "Sam" in old logs, or claiming yourself. */
-/** Members rename themselves; anyone can tidy up a non-member's name. */
+/** Members rename themselves; anyone can tidy up a non-member's name. A casual account only renames themselves. */
 export async function renamePlayer(playerId: number, rawName: string): Promise<ActionResult> {
   const me = await requireUser();
+  if (me.access !== "member" && playerId !== me.playerId) return { ok: false, error: "You can only change your own name." };
   const name = rawName.trim().replace(/\s+/g, " ").slice(0, 40);
   if (!name) return { ok: false, error: "Enter a name." };
   const target = await db.query.player.findFirst({ where: eq(schema.player.id, playerId) });
@@ -588,7 +620,7 @@ const sharedName = (name: string) =>
 
 /** The nights a player is in the plays for, for splitting off the ones that were someone else */
 export async function playerNightsFor(playerId: number): Promise<SeatNight[]> {
-  await requireUser();
+  await requireMember();
   return getPlayerNights(Number(playerId));
 }
 
@@ -598,7 +630,7 @@ export async function playerNightsFor(playerId: number): Promise<SeatNight[]> {
  * wrong person.
  */
 export async function splitPlayer(fromId: number, nightKeys: string[], rawName: string): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   const name = rawName.trim().replace(/\s+/g, " ").slice(0, 40);
   if (!name) return { ok: false, error: "Give the other person's name." };
   const from = await db.query.player.findFirst({ where: eq(schema.player.id, fromId) });
@@ -632,7 +664,7 @@ export async function splitPlayer(fromId: number, nightKeys: string[], rawName: 
  * that name is theirs.
  */
 export async function settleWhich(night: Night, playedOn: string, name: string, playerId: number): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   const to = await db.query.player.findFirst({ where: eq(schema.player.id, playerId) });
   if (!to) return { ok: false, error: "Pick who it was." };
   const seats = await db
@@ -654,7 +686,7 @@ export async function settleWhich(night: Night, playedOn: string, name: string, 
 }
 
 export async function mergePlayers(fromId: number, intoId: number): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   if (fromId === intoId) return { ok: false, error: "Pick two different players." };
   const [from, into] = await Promise.all([
     db.query.player.findFirst({ where: eq(schema.player.id, fromId) }),
@@ -691,7 +723,8 @@ export async function mergePlayers(fromId: number, intoId: number): Promise<Acti
 
 /** Bring someone from the Discord server into the group: the member role, a hello and a DM with how to get set up */
 export async function welcomeToGroup(discordId: string): Promise<ActionResult> {
-  const me = await requireUser();
+  // Who's a member is the admins' to decide
+  const me = await requireAdmin();
   const id = z.string().regex(/^\d{15,20}$/).safeParse(discordId);
   if (!id.success) return { ok: false, error: "Pick someone from the list." };
   try {
@@ -701,6 +734,98 @@ export async function welcomeToGroup(discordId: string): Promise<ActionResult> {
     return { ok: true, message: welcomeSummary(result, () => "Discord") };
   } catch (err) {
     return fail(err);
+  }
+}
+
+/**
+ * An admin moves someone up to member, down to casual, or off the site (src/lib/access.ts), and
+ * Discord's member role follows. Moving down takes them off the core group's upcoming events (their
+ * answers, the dates they said work, their votes), and off the site takes them off every upcoming
+ * event and ends their sessions. Moving up someone without the role is an invite: the role, the
+ * hello in the channel and the DM. Boardroom changes first; if Discord won't, the message says so
+ * and People and access shows it until it's settled.
+ */
+export async function setAccess(userId: string, to: Access): Promise<ActionResult> {
+  try {
+    const me = await requireAdmin();
+    if (!ACCESS.includes(to)) return { ok: false, error: "Pick member, casual or removed." };
+    if (to === "casual" && !CASUAL_NIGHT) return { ok: false, error: 'Turn on "A casual night too" on Group settings first: without it, there\'s nothing for them to see.' };
+    const target = await db.query.user.findFirst({ where: eq(schema.user.id, userId) });
+    if (!target) return { ok: false, error: "They're not on the site." };
+    const refusal = accessChangeRefusal(me.id, target, to);
+    if (refusal) return { ok: false, error: refusal };
+    if (target.access === to) return { ok: true };
+
+    await db
+      .update(schema.user)
+      .set({ access: to, ...(to === "removed" && { isAdmin: false }) })
+      .where(eq(schema.user.id, userId));
+    // Off the site means now, not when their session runs out
+    if (to === "removed") await db.delete(schema.session).where(eq(schema.session.userId, userId));
+    // Someone no longer a member isn't coming to the core group's nights; someone off the site, to any
+    const left = to === "member" ? [] : await leaveNights(userId, { offSite: to === "removed" });
+    for (const { nightId, waiting } of left) syncNightPostLater(nightId, { waiting });
+    refresh();
+
+    const names = { core: inSentence(NIGHT_NAMES.core), casual: inSentence(NIGHT_NAMES.casual) };
+    const said = {
+      member: `${target.name} is a member.`,
+      casual: `${target.name} now sees only the ${names.casual}.`,
+      removed: `${target.name} is off the site.`,
+    }[to];
+    const events = left.length ? ` Took them off ${left.length} upcoming ${left.length === 1 ? "event" : "events"}.` : "";
+
+    // Moving up someone without the role invites them, as People's invite does
+    if (to === "member" && target.discordId && canWelcome()) {
+      const candidate = await welcomeCandidate(target.discordId).catch(() => null);
+      if (candidate && !candidate.already) {
+        const row = await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } });
+        try {
+          const result = await welcome(target.discordId, { name: me.name, userId: me.id, discordId: row?.discordId ?? null });
+          return { ok: true, message: welcomeSummary(result, () => "Discord") };
+        } catch (err) {
+          console.error(`Couldn't invite ${target.discordId}`, err);
+          return { ok: true, message: `${said} Discord didn't give them the member role: try Match Discord in a minute.` };
+        }
+      }
+    }
+
+    const discord = await matchRole(target.discordId, to, me.name);
+    return { ok: true, message: [said + events, discord].filter(Boolean).join(" ") };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Give or take Discord's member role to match someone's access here, for a mismatch on People and access */
+export async function matchDiscordRole(userId: string): Promise<ActionResult> {
+  try {
+    const me = await requireAdmin();
+    const target = await db.query.user.findFirst({ where: eq(schema.user.id, userId), columns: { name: true, discordId: true, access: true } });
+    if (!target) return { ok: false, error: "They're not on the site." };
+    const discord = await matchRole(target.discordId, target.access, me.name);
+    refresh();
+    return discord ? { ok: false, error: discord } : { ok: true, message: `Discord matches for ${target.name}.` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Make Discord's member role match `access`; a sentence when it couldn't, null when it's done or there's no role */
+async function matchRole(discordId: string | null, access: Access, by: string): Promise<string | null> {
+  if (!discordId || !hasMemberRole() || !process.env.DISCORD_BOT_TOKEN) return null;
+  try {
+    const member = await getServerMember(discordId);
+    if (!member) return null;
+    const reason = `${access === "member" ? "Made a member" : access === "casual" ? "Made casual" : "Taken off"} by ${by} on ${SITE_NAME}`;
+    if (access === "member" && !member.hasRole) await giveMemberRole(discordId, reason);
+    if (access !== "member" && member.hasRole) await takeMemberRole(discordId, reason);
+    return null;
+  } catch (err) {
+    console.error(`Couldn't match ${discordId}'s member role`, err);
+    return discordCode(err) === 50013 || /→ 403/.test(String(err))
+      ? "The bot can't change their role in Discord: give its role Manage Roles, above the member role."
+      : "Discord didn't change their role. Try Match Discord in a minute.";
   }
 }
 
@@ -723,7 +848,7 @@ const NightInput = z.object({
 const NIGHT_INPUT_ERROR = "It needs a name, a date and a time, and seats (if any) between 1 and 100.";
 
 export async function addNight(input: z.infer<typeof NightInput>): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   const parsed = NightInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: NIGHT_INPUT_ERROR };
   const { night, title, date, time, location, capacity } = parsed.data;
@@ -739,7 +864,7 @@ export async function addNight(input: z.infer<typeof NightInput>): Promise<Actio
 }
 
 export async function updateNight(id: number, input: z.infer<typeof NightInput>): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   const parsed = NightInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: NIGHT_INPUT_ERROR };
   try {
@@ -763,7 +888,7 @@ const DetailsInput = z.object({ title: z.string().trim().max(100), location: z.s
 
 /** A night finding its date: its name (or none yet, for the template's once it has a date) and place */
 export async function updateNightDetails(id: number, input: z.infer<typeof DetailsInput>): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   const parsed = DetailsInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "The name fits 100 characters, and the place 200." };
   try {
@@ -779,7 +904,7 @@ export async function updateNightDetails(id: number, input: z.infer<typeof Detai
 }
 
 export async function deleteNight(id: number): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   try {
     const n = await removeNight(id);
     after(() => removePost(n).catch((err) => console.error("Couldn't take the night's post down", err)));
@@ -809,7 +934,7 @@ async function mentionMe(me: { id: string; name: string }) {
 
 /** A night without a date yet, offering a few: its page opens, where everyone says which work */
 export async function startPoll(input: z.infer<typeof PollInput>): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   const parsed = PollInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: `Give between one and ${POLL_MAX_DATES} dates, each with a time.` };
   const { night, title, location, dates, decideBy } = parsed.data;
@@ -823,11 +948,37 @@ export async function startPoll(input: z.infer<typeof PollInput>): Promise<Actio
   redirect(`/events/${nightId}`);
 }
 
+/**
+ * The signed-in person, if they can take part in a night of this kind: members in any, casual
+ * accounts only in the casual night's. The core group's nights don't exist for a casual account,
+ * so it's answered as if the night were gone.
+ */
+/** The signed-in person, on a kind of night they see (seesNight): anything else answers as if it were gone */
+async function requireNight(night: Night | null | undefined): Promise<CurrentUser> {
+  const me = await requireUser();
+  if (!seesNight(me, night)) throw new Error("That event is gone.");
+  return me;
+}
+
+const planKind = async (planId: number) =>
+  (await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, planId), columns: { night: true } }))?.night;
+
+const nightKind = async (nightId: number) =>
+  (await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { night: true } }))?.night;
+
+const pollKind = async (pollId: number) =>
+  (await db.query.datePoll.findFirst({ where: eq(schema.datePoll.id, pollId), columns: { night: true } }))?.night;
+
+async function optionKind(optionId: number) {
+  const option = await db.query.datePollOption.findFirst({ where: eq(schema.datePollOption.id, optionId), columns: { pollId: true } });
+  return option ? pollKind(option.pollId) : undefined;
+}
+
 const Answer = z.enum(DATE_ANSWERS).nullable();
 
 /** My answer to one of the dates on offer: it works, it does if I have to, I can't, or none (null) */
 export async function answerDate(optionId: number, answer: z.infer<typeof Answer>): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireNight(await optionKind(optionId));
   const parsed = Answer.safeParse(answer);
   if (!parsed.success) return { ok: false, error: "That isn't an answer." };
   try {
@@ -843,7 +994,7 @@ export async function answerDate(optionId: number, answer: z.infer<typeof Answer
 
 /** None of the dates on offer work for me */
 export async function noDatesWork(pollId: number): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireNight(await pollKind(pollId));
   try {
     const { nightId } = await saveNoDates(pollId, await playerForUser(me));
     answeredLater(nightId, pollId);
@@ -855,7 +1006,8 @@ export async function noDatesWork(pollId: number): Promise<ActionResult> {
 }
 
 export async function suggestPollDate(pollId: number, input: z.infer<typeof DateTime>): Promise<ActionResult> {
-  const me = await requireUser();
+  // Adding a date to choose from is anyone's on a night they see; setting one is the members'
+  const me = await requireNight(await pollKind(pollId));
   const parsed = DateTime.safeParse(input);
   if (!parsed.success) return { ok: false, error: "It needs a date and a time." };
   try {
@@ -873,7 +1025,7 @@ const NewDates = z.array(DateTime).max(POLL_MAX_DATES);
 
 /** A night whose date fell through goes back to finding one, with every answer and its games kept */
 export async function findNewDate(nightId: number, dates: z.infer<typeof NewDates>): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   const parsed = NewDates.safeParse(dates);
   if (!parsed.success) return { ok: false, error: `Give up to ${POLL_MAX_DATES} dates, each with a time.` };
   try {
@@ -888,7 +1040,7 @@ export async function findNewDate(nightId: number, dates: z.infer<typeof NewDate
 
 /** Set the night's date to one on offer: everyone's down as they answered it */
 export async function setNightDate(pollId: number, optionId: number): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   try {
     const { night, going, maybe } = await saveDate(pollId, optionId);
     const card = (x: { name: string; discordId: string | null }) => ({ name: x.name, discordId: x.discordId });
@@ -902,7 +1054,7 @@ export async function setNightDate(pollId: number, optionId: number): Promise<Ac
 
 /** Ping the members who haven't said which dates work, in the night's thread */
 export async function nudgeForDates(pollId: number): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   try {
     const poll = await ownPoll(pollId);
     const n = await ownNight(poll.gameNightId);
@@ -918,7 +1070,7 @@ export async function nudgeForDates(pollId: number): Promise<ActionResult> {
 
 /** Call off a night that's finding its date */
 export async function callOffPoll(pollId: number): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   try {
     const poll = await ownPoll(pollId);
     await cancelNight(poll.gameNightId);
@@ -932,7 +1084,7 @@ export async function callOffPoll(pollId: number): Promise<ActionResult> {
 
 /** Back on after being called off, answers and all */
 export async function reopenPoll(pollId: number): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   try {
     const n = await saveReopened(pollId);
     syncNightPostLater(n.id, { say: `↩️ ${await mentionMe(me)} reopened it.` });
@@ -960,7 +1112,8 @@ export async function setRsvp(
   status: RsvpStatus | null,
   opts: { guests?: number; playerId?: number; name?: string; isNew?: boolean } = {},
 ): Promise<ActionResult> {
-  const me = await requireUser();
+  // Anyone on a night they see can answer for themselves or for someone they're bringing
+  const me = await requireNight(await nightKind(nightId));
   if (status !== null && !RSVP_STATUSES.includes(status)) return { ok: false, error: "Pick going, maybe or can't." };
   try {
     const playerId =
@@ -977,7 +1130,7 @@ export async function setRsvp(
 
 /** Others coming to a night added here who aren't named, counted by hand */
 export async function setOthersComing(id: number, others: number): Promise<ActionResult> {
-  await requireUser();
+  await requireNight(await nightKind(id));
   try {
     const n = await ownNight(id);
     const waiting = await waitingFor(n.id);
@@ -997,7 +1150,7 @@ export async function setOthersComing(id: number, others: number): Promise<Actio
 export async function addGameToNight(nightId: number, gameId: number): Promise<ActionResult> {
   const me = await requireUser();
   const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId) });
-  if (!n) return { ok: false, error: "That event is gone." };
+  if (!n || !seesNight(me, n.night)) return { ok: false, error: "That event is gone." };
   const existing = await db.query.gamePlan.findFirst({
     where: and(eq(schema.gamePlan.gameNightId, n.id), eq(schema.gamePlan.gameId, gameId)),
   });
@@ -1091,7 +1244,7 @@ export async function answerBringAsk(planId: number, yes: boolean): Promise<Acti
 
 /** "I'd play this" on a core night's proposal */
 export async function setPlanVote(planId: number, on: boolean) {
-  const me = await requireUser();
+  const me = await requireNight(await planKind(planId));
   if (on) await db.insert(schema.planVote).values({ planId, userId: me.id }).onConflictDoNothing();
   else await db.delete(schema.planVote).where(and(eq(schema.planVote.planId, planId), eq(schema.planVote.userId, me.id)));
   await syncPlanNight(planId);
@@ -1106,7 +1259,7 @@ async function syncPlanNight(planId: number) {
 
 /** Lock in a core night's game (one per night), or unlock it */
 export async function choosePlan(planId: number, chosen: boolean) {
-  await requireUser();
+  await requireMember();
   const plan = await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, planId) });
   if (!plan?.gameNightId) return;
   await db.transaction(async (tx) => {
@@ -1130,6 +1283,7 @@ const DEMO_LINKS = "You can't add or remove prep links on the demo.";
 
 /** A prep link is the game's, so it's there on the game's page and for every night it's locked in */
 export async function addPrepLink(gameId: number, rawUrl: string, rawLabel: string): Promise<ActionResult> {
+  // Adding is anyone's; links aren't kept by who added them, so taking one off is the members'
   await requireUser();
   if (DEMO) return { ok: false, error: DEMO_LINKS };
   let url: URL;
@@ -1149,7 +1303,7 @@ export async function addPrepLink(gameId: number, rawUrl: string, rawLabel: stri
 }
 
 export async function removePrepLink(gameId: number, url: string) {
-  await requireUser();
+  await requireMember();
   if (DEMO) throw new Error(DEMO_LINKS);
   const game = await db.query.game.findFirst({ where: eq(schema.game.id, gameId), columns: { prepLinks: true } });
   if (!game) return;
@@ -1158,7 +1312,7 @@ export async function removePrepLink(gameId: number, url: string) {
 }
 
 export async function setPrepped(planId: number, ready: boolean) {
-  const me = await requireUser();
+  const me = await requireNight(await planKind(planId));
   if (ready) await db.insert(schema.planReady).values({ planId, userId: me.id }).onConflictDoNothing();
   else await db.delete(schema.planReady).where(and(eq(schema.planReady.planId, planId), eq(schema.planReady.userId, me.id)));
   refresh();
@@ -1166,8 +1320,16 @@ export async function setPrepped(planId: number, ready: boolean) {
 
 /** Take a game off a night: a proposal withdrawn, or no longer bringing it */
 export async function dropPlan(id: number) {
-  await requireUser();
-  const plan = await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, id), columns: { gameNightId: true, chosen: true } });
+  const me = await requireUser();
+  const plan = await db.query.gamePlan.findFirst({
+    where: eq(schema.gamePlan.id, id),
+    columns: { gameNightId: true, chosen: true, night: true, bringerId: true, askedId: true, createdBy: true },
+  });
+  // A casual account takes back only their own: a game they said they'd bring, or someone they asked
+  if (me.access !== "member") {
+    const own = plan?.bringerId === me.id || (plan?.askedId && plan.createdBy === me.id);
+    if (plan?.night !== "casual" || !own) throw new Error("That isn't something you can do here.");
+  }
   await dropPlanRows([id]);
   // Dropping the locked-in game unlocks it, which a title with the game in it follows
   if (plan?.gameNightId) syncNightPostLater(plan.gameNightId, { renamed: plan.chosen && (await titleForGame(plan.gameNightId)) });
@@ -1185,7 +1347,8 @@ export async function askClaudeForNight(input: {
   minutes: number | null;
   candidateIds: number[];
 }): Promise<{ ok: true; picks: NightPicks } | { ok: false; error: string }> {
-  await requireUser();
+  // Its context is the night's own (buildGroupContext), so it's for anyone who sees the night
+  await requireNight(input.night);
   if (!claudeReady()) return { ok: false, error: "Claude's picks are off. An admin can turn them on in Group settings, once the site has an ANTHROPIC_API_KEY." };
   const night: Night = input.night === "casual" ? "casual" : "core";
   try {
@@ -1198,7 +1361,7 @@ export async function askClaudeForNight(input: {
 
 /** Fill the discovery catalog now rather than waiting for the nightly sync. */
 export async function loadCatalog(): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   if (!hasBggToken()) return { ok: false, error: "This needs the site's BGG API token." };
   try {
     const { hot, top } = await refreshCatalog();
@@ -1211,7 +1374,7 @@ export async function loadCatalog(): Promise<ActionResult> {
 
 /** "I'd buy this": puts a game on the buy list with my vote. */
 export async function wantGame(gameId: number): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   const g = await db.query.game.findFirst({ where: eq(schema.game.id, gameId) });
   if (!g) return { ok: false, error: "Game not found." };
   let s = await db.query.suggestion.findFirst({ where: eq(schema.suggestion.bggId, gameId) });
@@ -1237,7 +1400,7 @@ export async function wantGame(gameId: number): Promise<ActionResult> {
  * a Claude pick stays in Claude's list, which it only left the buy list for.
  */
 export async function unwantGame(gameId: number): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   const s = await db.query.suggestion.findFirst({ where: eq(schema.suggestion.bggId, gameId) });
   if (!s) return { ok: true };
   await db.delete(schema.suggestionVote).where(and(eq(schema.suggestionVote.suggestionId, s.id), eq(schema.suggestionVote.userId, me.id)));
@@ -1252,7 +1415,7 @@ export async function unwantGame(gameId: number): Promise<ActionResult> {
  * the list. A Claude pick stays in Claude's list, which is where it came from.
  */
 export async function takeOffBuyList(suggestionId: number): Promise<ActionResult> {
-  await requireUser();
+  await requireMember();
   const s = await db.query.suggestion.findFirst({ where: eq(schema.suggestion.id, suggestionId) });
   if (!s) return { ok: true };
   await db.transaction(async (tx) => {
@@ -1269,7 +1432,7 @@ export async function takeOffBuyList(suggestionId: number): Promise<ActionResult
  * confident replace the list. Earlier picks someone wanted stay on the buy list.
  */
 export async function askClaudeForPicks(scope: "group" | "me", nightInput: Night = "core"): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   if (!claudeReady()) return { ok: false, error: "Claude's picks are off. An admin can turn them on in Group settings, once the site has an ANTHROPIC_API_KEY." };
   if (!hasBggToken()) return { ok: false, error: "Picks need the BGG API token, so each one can be checked and scored." };
   try {
@@ -1323,13 +1486,13 @@ export async function askClaudeForPicks(scope: "group" | "me", nightInput: Night
     const [chances, owned, turnedDown] = await Promise.all([
       getTasteChances(ids),
       ids.length
-        ? db.selectDistinct({ id: schema.collectionItem.gameId }).from(schema.collectionItem).where(and(eq(schema.collectionItem.own, true), inArray(schema.collectionItem.gameId, ids)))
+        ? db.selectDistinct({ id: schema.collectionItem.gameId }).from(schema.collectionItem).where(and(eq(schema.collectionItem.own, true), inArray(schema.collectionItem.gameId, ids), inCrowd(schema.collectionItem.userId)))
         : [],
       ids.length
         ? db
             .selectDistinct({ id: schema.opinion.gameId })
             .from(schema.opinion)
-            .where(and(eq(schema.opinion.sentiment, "nope"), inArray(schema.opinion.gameId, ids), forUserId ? eq(schema.opinion.userId, forUserId) : undefined))
+            .where(and(eq(schema.opinion.sentiment, "nope"), inArray(schema.opinion.gameId, ids), forUserId ? eq(schema.opinion.userId, forUserId) : inCrowd(schema.opinion.userId)))
         : [],
     ]);
     // A night's list has to seat its usual table and be its kind of game, by weight
@@ -1416,7 +1579,7 @@ async function findOnBgg(name: string, year: number | null) {
 }
 
 export async function addSuggestion(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   const name = String(form.get("name") ?? "").trim();
   const reason = String(form.get("reason") ?? "").trim() || null;
   if (!name) return { ok: false, error: "Which game?" };

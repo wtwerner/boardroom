@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { asc, count } from "drizzle-orm";
+import { asc, count, eq } from "drizzle-orm";
 import { DEMO, SETTINGS } from "@/config";
 import { db, schema } from "@/db";
 import { DemoNote, PageHeader, Panel, Section, Skeleton } from "@/components/ui";
 import { hasAnthropicKey } from "@/lib/ai";
 import { hasInteractions, listGuildChannels, listGuildRoles } from "@/lib/discord";
-import { canManageGroup, requireUser } from "@/lib/session";
+import { canManageGroup, requireMemberPage } from "@/lib/session";
 import { AdminList, GroupSettingsForm } from "./group-forms";
 
 export const metadata: Metadata = { title: "Group settings" };
@@ -24,12 +24,16 @@ export default function GroupSettingsPage() {
 }
 
 async function GroupSettings() {
-  const me = await requireUser();
+  const me = await requireMemberPage();
   const discord = Boolean(process.env.DISCORD_GUILD_ID && process.env.DISCORD_BOT_TOKEN);
   const [canManage, members, [saved], channels, roles] = await Promise.all([
     canManageGroup(),
     // Everyone who has signed in
-    db.select({ id: schema.user.id, name: schema.user.name, isAdmin: schema.user.isAdmin }).from(schema.user).orderBy(asc(schema.user.name)),
+    db
+      .select({ id: schema.user.id, name: schema.user.name, isAdmin: schema.user.isAdmin })
+      .from(schema.user)
+      .where(eq(schema.user.access, "member"))
+      .orderBy(asc(schema.user.name)),
     db.select({ n: count() }).from(schema.setting),
     discord ? listGuildChannels() : [],
     discord ? listGuildRoles() : [],

@@ -18,7 +18,7 @@ You create and own the application, and that needs no permissions on the server.
 3. **Bot** tab:
    - **Reset Token** and keep it in your password manager. It's the bot's password.
    - Turn on **Message Content Intent**. Without it the bot sees empty messages and can't read play logs.
-   - Turn on **Server Members Intent** (optional). It gives Settings a dropdown of server members for linking players to Discord accounts.
+   - Turn on **Server Members Intent** (optional, but People and access needs it to compare). It gives Settings a dropdown of server members for linking players to Discord accounts, and lets People and access show who holds the member role, who's left the server, and where the role and Boardroom disagree. Without it those are left off, and the site logs `Missing Access` each time it tries.
    - Leave **Public Bot** on for now so the owner's invite link works, and leave **Requires OAuth2 Code Grant** off. You can turn Public Bot off once the bot is in the server. Discord first requires **Installation → Install Link** to be set to **None**; the hand-built invite link below still works afterward.
 4. Build the invite link and send it to the owner. It grants View Channel, Send Messages and Read Message History for plays, and Create Public Threads and Send Messages in Threads for nights' threads. The `bot` scope brings slash commands with it.
 
@@ -78,9 +78,9 @@ Boardroom can post each night to an events channel: a card with when and where, 
 
 ## Part 5: inviting people to the core group's nights (optional)
 
-Everyone in the server can come to the casual night. When one of them wants in on the core group's nights too, any member can invite them: from **People → Invite someone to …** on the site, or by right-clicking them in Discord and picking **Apps → Invite to …** (named for the core group's night, like *Invite to Game night events*, or for the site when there's no casual night). Boardroom then:
+Everyone in the server can come to the casual night. When one of them wants in on the core group's nights too, an admin of the site invites them: from **People → Invite someone to …** on the site, or by right-clicking them in Discord and picking **Apps → Invite to …** (named for the core group's night, like *Invite to Game night events*, or for the site when there's no casual night). Boardroom then:
 
-- gives them the member role from Group settings, so they can sign in and see the core group's channels (skipped when the group has no role);
+- gives them the member role from Group settings, so they see the core group's channels, and makes them a member on the site (the role is skipped when the group has no role);
 - says hi in the core group's channel, pinging only them, with a **Get set up** button;
 - DMs them the setup steps and a link to the site's setup page (`/welcome`);
 - lists them on People as invited until they sign in, when their plays from the logs come with them.
@@ -95,7 +95,9 @@ To turn it on:
 
 2. Optional: pick the channel to say hi in as the **Welcome channel** on Group settings. Without it, the hello goes in the core group's events channel, or its plays channel if there's no events channel. It's never posted in one of the casual night's channels.
 3. Register the commands again, so **Invite to …** shows up on the right-click menu (Part 4, step 4). After that, saving a new site or night name on Group settings renames it. The site's form works without this; the right-click command also needs `DISCORD_PUBLIC_KEY` and the Interactions Endpoint URL from Part 4.
-4. At first only people with **Manage Roles** see it, so it isn't on everyone's menu. To let every member use it, the owner opens **Server Settings → Integrations → Boardroom → Invite to …** and adds the member role. Any member can invite people from the site's People page either way.
+4. At first only people with **Manage Roles** see it, so it isn't on everyone's menu, and it only works for the site's admins whoever sees it. The owner can open **Server Settings → Integrations → Boardroom → Invite to …** to show it to others, such as the site's admins without Manage Roles.
+
+The same Manage Roles lets the bot take the role back when an admin moves someone to a casual account or off the site on **Settings → People and access**.
 
 The messages keep it light: getting the role is an extra (the heavier nights and a few more channels), not joining a group, since everyone's already at the casual night.
 
@@ -116,7 +118,7 @@ Set the test application's endpoint to `https://<tunnel>/api/discord/interaction
 | Symptom | Likely cause |
 | --- | --- |
 | "That Discord account isn't in the group's server" on sign-in | The bot isn't in the server yet, or `DISCORD_GUILD_ID` is wrong |
-| "Couldn't sign you in with that Discord account" | The account lacks the member role on Group settings |
+| "Couldn't sign you in with that Discord account" | Signing in for the first time without the member role while casual sign-in is off, or an admin took them off the site |
 | Group settings asks for channel ids instead of listing them | The bot isn't in the server yet, or can't see its channels (Part 2) |
 | Sync says `403` / Missing Access | The bot's role can't see one of the plays channels (Part 2, step 4) |
 | Sync runs but imports nothing | Message Content Intent is off (Part 1, step 3) |

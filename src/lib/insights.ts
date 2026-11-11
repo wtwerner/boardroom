@@ -1,33 +1,37 @@
 import "server-only";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
 import { db, schema } from "@/db";
 import { MUST_PLAY_LIMIT, type Night, TIERS } from "@/db/enums";
 import { inSentence } from "./text";
 import { HEAVY_WEIGHT, TIER_LABEL } from "./tier";
-import { getGroupRanking, getMembers, getPlays, getShelf, getTieredRankingLists } from "./queries";
+import { getGroupRanking, getMembers, getPlays, getShelf, getTieredRankingLists, inCrowd } from "./queries";
 import { playerRange, playtime } from "@/components/ui";
 
 /**
  * Plain-text snapshot of the group for Claude: who's in it, what they own,
  * what they've played, and how each person feels about it.
  */
-export async function buildGroupContext({ forPurchases = false, currentPicks = [] as string[] } = {}) {
+export async function buildGroupContext({ forPurchases = false, currentPicks = [] as string[], night = "core" as Night } = {}) {
+  // The casual night's is its own: everyone with an account, its plays and its group list, and
+  // nothing of the core group's, since a casual player can read what Claude says from it
+  const casual = night === "casual";
   const [members, shelf, plays, lists, group, opinions, wishlist, suggestions] = await Promise.all([
-    getMembers(),
-    getShelf(),
-    getPlays({ limit: 60 }),
-    getTieredRankingLists(),
-    Promise.all([getGroupRanking("heavy", 12), getGroupRanking("light", 8)]),
+    getMembers(night),
+    casual ? getShelf({ everyone: true }) : getShelf(),
+    getPlays({ limit: 60, night: casual ? "casual" : undefined }),
+    getTieredRankingLists(night),
+    Promise.all([getGroupRanking("heavy", 12, night), getGroupRanking("light", 8, night)]),
     db
       .select({ userId: schema.opinion.userId, sentiment: schema.opinion.sentiment, wantToPlay: schema.opinion.wantToPlay, mustPlay: schema.opinion.mustPlay, name: schema.game.name })
       .from(schema.opinion)
-      .innerJoin(schema.game, eq(schema.game.id, schema.opinion.gameId)),
+      .innerJoin(schema.game, eq(schema.game.id, schema.opinion.gameId))
+      .where(inCrowd(schema.opinion.userId, night)),
     db
       .selectDistinct({ name: schema.game.name })
       .from(schema.collectionItem)
       .innerJoin(schema.game, eq(schema.game.id, schema.collectionItem.gameId))
-      .where(eq(schema.collectionItem.wishlist, true)),
+      .where(and(eq(schema.collectionItem.wishlist, true), inCrowd(schema.collectionItem.userId, night))),
     db.select({ name: schema.suggestion.name }).from(schema.suggestion).orderBy(desc(schema.suggestion.createdAt)),
   ]);
 
@@ -42,17 +46,19 @@ export async function buildGroupContext({ forPurchases = false, currentPicks = [
   );
   const lines: string[] = [];
 
-  lines.push("## Members", ...members.map((m) => `- ${m.name}`));
+  lines.push(casual ? "## People with accounts" : "## Members", ...members.map((m) => `- ${m.name}`));
 
   // The group's own table; the casual night's is bigger and has guests
-  const seats = plays.filter((p) => p.night === "core").map((p) => p.players.length).filter(Boolean);
+  const seats = plays.filter((p) => p.night === night).map((p) => p.players.length).filter(Boolean);
   if (seats.length) {
     const avg = seats.reduce((a, b) => a + b, 0) / seats.length;
     lines.push("", `Typical table: ${avg.toFixed(1)} players (range ${Math.min(...seats)}–${Math.max(...seats)}).`);
   }
 
   lines.push("", "## Recent plays (newest first)");
-  if (CASUAL_NIGHT) {
+  if (casual) {
+    lines.push(`All from ${inSentence(NIGHT_NAMES.casual)}, a lighter night with guests.`);
+  } else if (CASUAL_NIGHT) {
     lines.push(
       `Most are from ${inSentence(NIGHT_NAMES.core)}, the group's planned nights. Those marked (${inSentence(NIGHT_NAMES.casual)}) are from a separate, lighter night with guests and casual players who aren't members.`,
     );
@@ -95,7 +101,7 @@ export async function buildGroupContext({ forPurchases = false, currentPicks = [
     }
   }
 
-  lines.push("", "## Shared collection (owned)");
+  lines.push("", casual ? "## Everyone's games (owned)" : "## Shared collection (owned)");
   for (const g of shelf) {
     const bits = [
       g.year,
@@ -110,7 +116,7 @@ export async function buildGroupContext({ forPurchases = false, currentPicks = [
   }
 
   if (forPurchases) {
-    if (wishlist.length) lines.push("", "## On members' BGG wishlists", wishlist.map((w) => w.name).join(", "));
+    if (wishlist.length) lines.push("", casual ? "## On people's BGG wishlists" : "## On members' BGG wishlists", wishlist.map((w) => w.name).join(", "));
     // The list being replaced is told apart, so Claude can keep a pick that still fits best
     const keepable = new Set(currentPicks);
     const suggested = suggestions.filter((s) => !keepable.has(s.name));
@@ -128,7 +134,8 @@ export async function buildNightContext(input: {
   minutes: number | null;
   candidateIds: number[];
 }) {
-  const members = await getMembers();
+  // Anyone with an account who's coming, whatever their account
+  const members = await getMembers("casual");
   const coming = members.filter((m) => input.presentUserIds.includes(m.id)).map((m) => m.name);
   const ids = input.candidateIds.slice(0, 20);
   const candidates = ids.length
@@ -136,7 +143,7 @@ export async function buildNightContext(input: {
     : [];
 
   return [
-    await buildGroupContext(),
+    await buildGroupContext({ night: input.night }),
     "",
     `## The next ${CASUAL_NIGHT ? inSentence(NIGHT_NAMES[input.night]) : "game night"}`,
     `Coming: ${coming.join(", ") || "no members"}${input.others ? `, plus ${input.others} ${input.others === 1 ? "other" : "others"} who aren't members` : ""} (${coming.length + input.others} players).`,

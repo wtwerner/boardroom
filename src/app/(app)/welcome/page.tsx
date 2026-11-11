@@ -4,7 +4,7 @@ import { Suspense, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import clsx from "clsx";
 import { eq } from "drizzle-orm";
-import { SITE_NAME } from "@/config";
+import { NIGHT_NAMES, SITE_NAME } from "@/config";
 import { db, schema } from "@/db";
 import { Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass } from "@/components/ui";
 import { channelUrl, commandName, eventsChannel, postsNights } from "@/lib/discord";
@@ -34,15 +34,18 @@ export default function WelcomePage() {
 
 async function Welcome() {
   const me = await requireUser();
+  // A casual account sets up for their night: no finding themselves in past plays, no Board Game Arena
+  const limited = me.access !== "member";
+  const night = limited ? "casual" : "core";
+  const casual = inSentence(NIGHT_NAMES.casual);
   const [status, players, [profile]] = await Promise.all([
     getSetupStatus(me),
     getPlayers(),
     db.select({ bga: schema.user.bgaUsername, premium: schema.user.bgaPremium }).from(schema.user).where(eq(schema.user.id, me.id)),
   ]);
-  const steps = setupSteps(status);
+  const steps = setupSteps(status, { casual: limited });
   const progress = setupProgress(steps);
-  const takenColors = players.filter((p) => p.id !== me.playerId && p.color).map((p) => p.color!);
-  const events = postsNights("core") ? eventsChannel("core") : null;
+  const events = postsNights(night) ? eventsChannel(night) : null;
   const eventsUrl = events && channelUrl(events);
 
   const body: Record<SetupStep["key"], ReactNode> = {
@@ -97,8 +100,11 @@ async function Welcome() {
           <a href="https://boardgamegeek.com" target="_blank" rel="noreferrer" className="text-accent underline-offset-4 hover:underline">
             BoardGameGeek
           </a>{" "}
-          (BGG) is where a lot of people keep track of the games they own. Add your username there and your games join the shared shelf, so the
-          planner knows what&apos;s in reach and Discover knows what you don&apos;t need. Not on BGG? Skip this one. You can also{" "}
+          (BGG) is where a lot of people keep track of the games they own.{" "}
+          {limited
+            ? `Add your username there and your games can go on the ${casual}'s bring list, so you can say you'll bring one and others can ask you to.`
+            : "Add your username there and your games join the shared shelf, so the planner knows what's in reach and Discover knows what you don't need."}{" "}
+          Not on BGG? Skip this one. You can also{" "}
           <TextLink href="/settings#bgg">import a CSV</TextLink> from BGG instead of a username.
         </p>
         <BggForm username={me.bggUsername} />
@@ -123,8 +129,9 @@ async function Welcome() {
       <header>
         <h1 className="font-display text-3xl sm:text-4xl">{progress.complete ? `You're set up, ${me.name}` : `Welcome, ${me.name}`}</h1>
         <p className="mt-2 text-slate">
-          {SITE_NAME} keeps the group&apos;s plays, what everyone thinks of each game, and a shelf built from everyone&apos;s collections. A few minutes
-          here make the planner and Discover&apos;s suggestions work for you.
+          {limited
+            ? `${SITE_NAME} is where the ${casual} gets planned: who's coming, who's bringing what, and the games people like best. A few minutes here help pick games you'll enjoy.`
+            : `${SITE_NAME} keeps the group's plays, what everyone thinks of each game, and a shelf built from everyone's collections. A few minutes here make the planner and Discover's suggestions work for you.`}
         </p>
         <div className="mt-4 flex items-center gap-3 text-sm">
           <ProgressBar done={progress.done} total={progress.total} label="Setup progress" />
@@ -151,8 +158,8 @@ async function Welcome() {
         <Panel className="divide-y divide-line text-sm">
           <div className="space-y-3 p-4">
             <h3 className="font-semibold">Your meeple color</h3>
-            <p className="text-slate">It marks you on plays, charts and rankings.</p>
-            <ColorPicker current={me.color} taken={takenColors} />
+            <p className="text-slate">It goes beside your name on plays and rankings, and around your picture. Others can pick the same one.</p>
+            <ColorPicker current={me.color} />
           </div>
           <div className="space-y-1 p-4">
             <h3 className="font-semibold">Events</h3>
@@ -163,8 +170,21 @@ async function Welcome() {
                   <a href={discordAppUrl(eventsUrl) ?? eventsUrl} className="text-accent underline-offset-4 hover:underline">
                     the events channel
                   </a>{" "}
-                  in Discord, with a thread. Tap <strong>Going</strong> on a post (or answer on <TextLink href="/plan">Plan</TextLink>), and make one
-                  with <code className="text-xs">/{commandName()} new</code>.
+                  in Discord, with a thread.{" "}
+                  {limited ? (
+                    <>
+                      Tap <strong>Going</strong> on a post, or answer on <TextLink href="/plan">Plan</TextLink>.
+                    </>
+                  ) : (
+                    <>
+                      Tap <strong>Going</strong> on a post (or answer on <TextLink href="/plan">Plan</TextLink>), and make one with{" "}
+                      <code className="text-xs">/{commandName()} new</code>.
+                    </>
+                  )}
+                </>
+              ) : limited ? (
+                <>
+                  They&apos;re on <TextLink href="/plan">Plan</TextLink>: say whether you&apos;re going, and what you&apos;ll bring.
                 </>
               ) : (
                 <>

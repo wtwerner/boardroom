@@ -2,15 +2,17 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { DEMO } from "@/config";
+import { CASUAL_NIGHT, DEMO, GROUP_NIGHTS, NIGHT_NAMES } from "@/config";
 import { NightTag } from "@/components/night-row";
 import { PrepLinks } from "@/components/prep-links";
 import { Empty, GameCover, Meeple, Panel, PlayerChip, Section, Skeleton, formatDate, playerRange, playtime } from "@/components/ui";
 import { requireUser } from "@/lib/session";
-import { getBgaGame, getGame, getMembers, getMustPlayLeft } from "@/lib/queries";
+import { getBgaGame, getGame, getGamePlaces, getMembers, getMustPlayLeft } from "@/lib/queries";
+import { tierHref } from "../../rankings/tabs";
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
 import { bggUrl } from "@/lib/bgg-links";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
+import { inSentence } from "@/lib/text";
 import { HEAVY_WEIGHT, TIER_LABEL, gameTier } from "@/lib/tier";
 import { OnlineToggle } from "../../online/online-controls";
 import { OpinionControls } from "./opinion-controls";
@@ -28,12 +30,28 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
 
 async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) {
   const me = await requireUser();
+  // A casual account sees everything about the game but the core group's: its nights' plays and
+  // places, and moving it between ranking lists, which is the members' housekeeping
+  const limited = me.access !== "member";
   const id = Number((await params).id);
-  const [data, members, mustPlayLeft, bga] = await Promise.all([getGame(id), getMembers(), getMustPlayLeft(me.id, id), getBgaGame(id)]);
+  const [data, everyone, members, mustPlayLeft, bga] = await Promise.all([
+    getGame(id, me.id),
+    getMembers("casual"),
+    limited ? [] : getMembers(),
+    getMustPlayLeft(me.id, id),
+    getBgaGame(id),
+  ]);
   if (!data) notFound();
-  const { game: g, owners, opinions, plays } = data;
-  const mine = opinions.find((o) => o.userId === me.id);
-  const memberById = new Map(members.map((m) => [m.id, m]));
+  const { game: g, owners, opinions, mine } = data;
+  // What everyone thinks: every member for a member, and anyone else who's said something or owns it.
+  // A casual account sees only the people who have, so the list doesn't spell out the core group
+  const said = new Set([...opinions.filter((o) => o.sentiment || o.mustPlay || o.wantToPlay || o.playOnline).map((o) => o.userId), ...owners.filter((o) => o.own).map((o) => o.userId)]);
+  const coreIds = new Set(members.map((m) => m.id));
+  const thinkers = everyone.filter((m) => coreIds.has(m.id) || said.has(m.id));
+  const plays = limited ? data.plays.filter((p) => p.night === "casual") : data.plays;
+  const tier = gameTier(g);
+  const places = await getGamePlaces(g.id, tier, limited ? ["casual"] : GROUP_NIGHTS);
+  const memberById = new Map(everyone.map((m) => [m.id, m]));
 
   // How many times each player has played it
   const record = new Map<number, { name: string; color: (typeof plays)[number]["players"][number]["color"]; plays: number }>();
@@ -81,16 +99,32 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
               </span>
             </div>
           )}
-          <div className="mt-2">
-            <TierControl
-              gameId={g.id}
-              weight={g.weight}
-              override={g.tier}
-              byWeight={gameTier({ weight: g.weight, tier: null })}
-              cutoff={HEAVY_WEIGHT}
-              labels={TIER_LABEL}
-            />
-          </div>
+          {places.length > 0 && (
+            <p className="mt-2 text-sm text-slate">
+              {places.map((p, i) => (
+                <span key={p.night}>
+                  {i > 0 && " · "}
+                  <Link href={tierHref("/rankings", tier, p.night)} className="underline-offset-4 hover:underline">
+                    #{p.place} of {p.of}
+                    {i === 0 && ` ${inSentence(TIER_LABEL[tier])}`}
+                    {CASUAL_NIGHT ? ` for the ${inSentence(NIGHT_NAMES[p.night])}` : " in the group's list"}
+                  </Link>
+                </span>
+              ))}
+            </p>
+          )}
+          {!limited && (
+            <div className="mt-2">
+              <TierControl
+                gameId={g.id}
+                weight={g.weight}
+                override={g.tier}
+                byWeight={gameTier({ weight: g.weight, tier: null })}
+                cutoff={HEAVY_WEIGHT}
+                labels={TIER_LABEL}
+              />
+            </div>
+          )}
           <div className="mt-5">
             <OpinionControls
               gameId={g.id}
@@ -104,31 +138,33 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
       </header>
 
       <div className="grid gap-10 lg:grid-cols-3">
-        <Section title="What everyone thinks">
-          <Panel className="divide-y divide-line">
-            {members.map((m) => {
-              const o = opinions.find((x) => x.userId === m.id);
-              const owned = owners.find((x) => x.userId === m.id && x.own);
-              return (
-                <div key={m.id} className="flex items-center gap-2.5 px-3 py-2.5 text-sm">
-                  <Meeple color={m.color} />
-                  <span className="flex-1 font-medium">{m.name}</span>
-                  <span className="text-slate">
-                    {[
-                      o?.sentiment && `${SENTIMENT_LABEL[o.sentiment].emoji} ${SENTIMENT_LABEL[o.sentiment].label}`,
-                      o?.mustPlay && "🔥 must play",
-                      o?.wantToPlay && "wants to play",
-                      o?.playOnline && "up for it on BGA",
-                      owned && "owns it",
-                    ]
-                      .filter(Boolean)
-                      .join(", ") || "no opinion yet"}
-                  </span>
-                </div>
-              );
-            })}
-          </Panel>
-        </Section>
+        {thinkers.length > 0 && (
+          <Section title="What everyone thinks">
+            <Panel className="divide-y divide-line">
+              {thinkers.map((m) => {
+                const o = opinions.find((x) => x.userId === m.id);
+                const owned = owners.find((x) => x.userId === m.id && x.own);
+                return (
+                  <div key={m.id} className="flex items-center gap-2.5 px-3 py-2.5 text-sm">
+                    <Meeple color={m.color} />
+                    <span className="flex-1 font-medium">{m.name}</span>
+                    <span className="text-slate">
+                      {[
+                        o?.sentiment && `${SENTIMENT_LABEL[o.sentiment].emoji} ${SENTIMENT_LABEL[o.sentiment].label}`,
+                        o?.mustPlay && "🔥 must play",
+                        o?.wantToPlay && "wants to play",
+                        o?.playOnline && "up for it on BGA",
+                        owned && "owns it",
+                      ]
+                        .filter(Boolean)
+                        .join(", ") || "no opinion yet"}
+                    </span>
+                  </div>
+                );
+              })}
+            </Panel>
+          </Section>
+        )}
 
         <Section title="Who's played it">
           {record.size ? (
@@ -175,7 +211,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
 
       <Section title="Rules and teach">
         <Panel className="max-w-xl px-3 py-2.5">
-          <PrepLinks game={g} links={g.prepLinks} lockLinks={DEMO} />
+          <PrepLinks game={g} links={g.prepLinks} lockLinks={DEMO} canRemove={!limited} />
         </Panel>
       </Section>
 

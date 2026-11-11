@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import type { MeepleColor } from "@/db/enums";
-import { Empty, GameCover, Meeple, PageHeader, Panel, Section, Skeleton, TextLink } from "@/components/ui";
+import { Empty, Face, GameCover, Meeple, PageHeader, Panel, Section, Skeleton, TextLink } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { MIN_EVIDENCE, type TasteInsights, getTasteInsights } from "@/lib/recommend";
 import { Chips, alike, whoLikes } from "@/components/taste";
@@ -10,7 +10,7 @@ import { PeopleTabs } from "../tabs";
 
 export const metadata: Metadata = { title: "Group taste" };
 
-type Member = { id: string; name: string; color: MeepleColor | null };
+type Member = { id: string; name: string; image: string | null; color: MeepleColor | null };
 
 export default function GroupTastePage() {
   return (
@@ -25,10 +25,11 @@ export default function GroupTastePage() {
   );
 }
 
+/** The taste of the people of the nights someone sees: the members', or the casual night's people */
 async function GroupTaste() {
-  await requireUser();
-  const { members, insights } = await getTasteInsights();
-  return <Taste insights={insights} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} />;
+  const me = await requireUser();
+  const { members, insights } = await getTasteInsights(me.access === "member" ? "core" : "casual");
+  return <Taste insights={insights} members={members.map((m) => ({ id: m.id, name: m.name, image: m.image, color: m.color }))} />;
 }
 
 function Taste({ insights: i, members }: { insights: TasteInsights; members: Member[] }) {
@@ -152,7 +153,7 @@ function GameList({ title, games, members, empty }: { title: string; games: Tast
                     const who = members.find((x) => x.id === id);
                     return (
                       <span key={id} className="inline-flex items-center gap-0.5" title={`${who?.name}: ${v > 0 ? "above" : "below"} their average`}>
-                        <Meeple color={who?.color ?? null} className="size-3.5" />
+                        <Face src={who?.image ?? null} name={who?.name ?? "?"} color={who?.color ?? null} className="size-4" />
                         {v > 0.15 ? "▲" : v < -0.15 ? "▼" : "–"}
                       </span>
                     );

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import { CASUAL_NIGHT, CLAUDE, CLAUDE_IDEAS_PER_DAY, MIN_PEOPLE, NIGHT_NAMES } from "@/config";
 import { MUST_PLAY_LIMIT, SENTIMENTS } from "@/db/enums";
-import { PageHeader, Panel, TextLink } from "@/components/ui";
+import { PageHeader, Panel, Skeleton, TextLink } from "@/components/ui";
 import { MIN_EVIDENCE } from "@/lib/recommend";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { inSentence } from "@/lib/text";
-import { loadSettings } from "@/lib/settings-store";
+import { requireUser } from "@/lib/session";
 import { HEAVY_WEIGHT, TIER_LABEL } from "@/lib/tier";
 import { UPCOMING_PER_GROUP } from "@/lib/upcoming";
 
@@ -28,11 +28,21 @@ const SECTIONS = [
 ] as const;
 
 /** What every number on the site means and where it comes from, in one place. */
-export default async function AboutPage() {
-  await loadSettings();
+export default function AboutPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-96" />}>
+      <About />
+    </Suspense>
+  );
+}
+
+/** The whole of it for members. It explains the core group's nights too, so a casual account gets their own night's part */
+async function About() {
+  const me = await requireUser();
   // The nights by the names this group gives them, for use mid-sentence
   const core = inSentence(NIGHT_NAMES.core);
   const casual = inSentence(NIGHT_NAMES.casual);
+  if (me.access !== "member") return <CasualAbout casual={casual} />;
   return (
     <>
       <PageHeader title="How it works" />
@@ -103,6 +113,13 @@ export default async function AboutPage() {
               One imaginary 50% vote is added to every game, so a game few people have ranked sits nearer the middle. One person&apos;s #1, and
               nobody else&apos;s, comes out at 75%.
             </p>
+            {CASUAL_NIGHT && (
+              <p>
+                Each kind of event has its own group list, from the rankings of the people who come to it: {core}&apos;s is everyone in the
+                group, and {casual}&apos;s is everyone who&apos;s played at it in the last year. Same games, same scoring, so you can see how
+                the two rooms differ. A game&apos;s page shows where it stands in each.
+              </p>
+            )}
             <p>
               Everything that uses rankings (the group lists, the planner, Discover&apos;s percentages{CLAUDE && ", Claude"}) uses a game&apos;s place in its
               own list. Love it / Like it ratings are a single scale across both.
@@ -221,10 +238,13 @@ export default async function AboutPage() {
               is can&apos;t make it. If that date falls through, it stays on the list crossed out, with those answers, and every other answer stays as it was.
             </p>
             <p>
-              It waits on the members. A date where every member can come says so; otherwise the best date is marked, as long as enough can come and no other date is level with it (
+              {CASUAL_NIGHT
+                ? `A poll for ${core} waits on the members, and one for ${casual} on its people: everyone who's played at one in the last year, and everyone with an account for it. `
+                : "It waits on the members. "}
+              A date where everyone it waits on can come says so; otherwise the best date is marked, as long as enough can come and no other date is level with it (
               {MIN_PEOPLE.core}
               {CASUAL_NIGHT && MIN_PEOPLE.casual !== MIN_PEOPLE.core ? ` for ${core}, ${MIN_PEOPLE.casual} for ${casual}` : ""}, counting guests too), and a date
-              with fewer says too few. Once the last member answers, whoever started it is pinged in its thread to set the date.
+              with fewer says too few. Once the last of them answers, whoever started it is pinged in its thread to set the date.
             </p>
           </Part>
 
@@ -287,6 +307,85 @@ export default async function AboutPage() {
             />
           </Part>
         </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * How it works for a casual account: rating, ranking and the Beats score, their night's list,
+ * and how their ratings and collection plan their night. Nothing of the core group's.
+ */
+function CasualAbout({ casual }: { casual: string }) {
+  return (
+    <>
+      <PageHeader title="How it works" />
+      <div className="max-w-2xl space-y-12 text-sm leading-relaxed">
+        <Part id="votes" title="Ratings and votes">
+          <p>Each game has three things you can set, from its page or from Rankings → Rate games.</p>
+          <Facts
+            rows={[
+              ["Rating", <>How much you like it: {SENTIMENTS.map((s) => `${SENTIMENT_LABEL[s].emoji} ${SENTIMENT_LABEL[s].label}`).join(", ")}.</>],
+              ["Want to play", "You'd like it on the table soon, whether you've played it or not. It clears once you play the game."],
+              ["🔥 Must play", `The few games you really want next. You hold ${MUST_PLAY_LIMIT} at a time, and a vote comes back once you play its game.`],
+            ]}
+          />
+        </Part>
+
+        <Part id="rankings" title="Rankings">
+          <p>
+            You keep two rankings, so games are only compared with their own kind: <strong>{TIER_LABEL.heavy}</strong>, the longer, heavier ones
+            (BGG weight {HEAVY_WEIGHT} and up), and <strong>{TIER_LABEL.light}</strong>, everything lighter. Each is every game of that kind
+            you&apos;ve played, best first. A new game is placed with a few &ldquo;which would you rather play?&rdquo; questions; drag to adjust.
+          </p>
+          <p>
+            The group list is {casual}&apos;s: the rankings of everyone who&apos;s played at it in the last year. Its <strong>Beats</strong> score
+            is, for each person who ranked a game, the share of their other games it&apos;s ranked above, averaged across them. 100% is the top of
+            every list, 50% the middle. One imaginary 50% vote is added to every game, so a game few people have ranked sits nearer the middle.
+          </p>
+        </Part>
+
+        <Part id="dates" title="Picking a date">
+          <p>
+            An event that&apos;s still picking a date offers a few, and you say which work: <strong>Works</strong>, <strong>If I have to</strong> or{" "}
+            <strong>Can&apos;t</strong>. Anyone can suggest another date. Whoever runs the event sets it, and everyone&apos;s then down as they
+            answered: works is going, if I have to is a maybe.
+          </p>
+          <p>
+            A poll for {casual} waits on its people: everyone who&apos;s played at one in the last year, and everyone with an account for it. Once
+            they&apos;ve all answered, whoever started it is told.
+          </p>
+        </Part>
+
+        <Part id="discover" title="Discover's percentages">
+          <p>
+            A percentage on <TextLink href="/discover">Discover</TextLink> is the chance someone would rank a game above their usual game: the top
+            half of what they&apos;ve rated. It comes from the mechanics, categories and weight they tend to rate highly, plus BGG&apos;s rating,
+            and 50% means no idea either way. The big number on a card is the average for {casual}&apos;s people; people count once they&apos;ve
+            rated or ranked {MIN_EVIDENCE} games.
+          </p>
+        </Part>
+
+        <Part id="online" title="Playing online">
+          <p>
+            <TextLink href="/online">Online</TextLink> lists everyone&apos;s games that Board Game Arena has, and BGA games that would go down
+            well. Tick <strong>Up for it on BGA</strong> on a game you&apos;d play there, and add your BGA name in Settings so the others can
+            find you.
+          </p>
+        </Part>
+
+        <Part id="plan" title="Planning an event">
+          <p>
+            On an event you&apos;re going to, your ratings, rankings and votes count toward the games it suggests, like everyone else&apos;s
+            there, and the games in your BGG collection are ones you can say you&apos;ll bring. Anyone going can ask someone who owns a game to
+            bring it, answer for a friend they&apos;re bringing, or count others coming. <TextLink href="/shelf">Shelf</TextLink> has everyone&apos;s
+            games; pick {casual}&apos;s regulars to see what could come.
+          </p>
+          <p>
+            After the event, log what was played on its page. The morning after, the bot messages you in Discord with any games you played and
+            haven&apos;t rated yet.
+          </p>
+        </Part>
       </div>
     </>
   );

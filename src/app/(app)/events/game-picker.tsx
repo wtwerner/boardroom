@@ -56,6 +56,8 @@ export function GamePicker(props: {
   chances: Record<number, Record<string, number>>;
   today: string;
   aiEnabled: boolean;
+  /** How it works is the members' for now, so a casual account isn't sent there */
+  explain?: boolean;
 }) {
   const start = START[props.night];
   const [present, setPresent] = useState<Set<string>>(() => new Set(props.going?.memberIds ?? props.members.map((m) => m.id)));
@@ -261,9 +263,11 @@ export function GamePicker(props: {
             games they haven&apos;t rated. Best at this player count helps; played in the last month, or a &ldquo;not for me&rdquo;,
             drops it. Legacy games are left out.
             {props.night === "casual" && ` Only ${inSentence(props.nightName)} plays count here, its regulars get a nudge, and a game nobody coming has played drops, since someone has to teach it.`}{" "}
-            <Link href="/about#plan" className="font-medium text-accent underline-offset-4 hover:underline">
-              The points
-            </Link>
+            {props.explain !== false && (
+              <Link href="/about#plan" className="font-medium text-accent underline-offset-4 hover:underline">
+                The points
+              </Link>
+            )}
           </p>
         )}
         {scored.length === 0 ? (

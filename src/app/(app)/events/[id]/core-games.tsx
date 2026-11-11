@@ -7,10 +7,10 @@ import clsx from "clsx";
 import type { MeepleColor } from "@/db/enums";
 import type { PlannedGame } from "@/lib/events";
 import { choosePlan, dropPlan, setPlanVote } from "@/app/actions";
-import { GameCover, Meeple, buttonClass, playerRange, playtime } from "@/components/ui";
+import { Face, GameCover, buttonClass, playerRange, playtime } from "@/components/ui";
 import { PrepCard } from "../plan-card";
 
-type Member = { id: string; name: string; color: MeepleColor | null };
+type Member = { id: string; name: string; image: string | null; color: MeepleColor | null };
 
 /**
  * A core night's game: proposals that everyone going backs or doesn't, then the one
@@ -65,7 +65,7 @@ function Proposal({ plan, going, meId }: { plan: PlannedGame; going: Member[]; m
       <span className="flex flex-1 items-center gap-1 sm:flex-none" aria-label={`${votes.length} ${votes.length === 1 ? "vote" : "votes"}`}>
         {going.map((m) => (
           <span key={m.id} title={`${m.name}: ${votes.includes(m.id) ? "would play it" : "hasn't voted for it"}`}>
-            <Meeple color={votes.includes(m.id) ? m.color : null} className={clsx("size-4", !votes.includes(m.id) && "opacity-30")} />
+            <Face src={m.image} name={m.name} color={votes.includes(m.id) ? m.color : null} className={clsx(!votes.includes(m.id) && "opacity-30 grayscale")} />
           </span>
         ))}
         {notGoing > 0 && <span className="text-xs text-slate">+{notGoing}</span>}

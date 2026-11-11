@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Empty, PageHeader, Skeleton, TextLink } from "@/components/ui";
 import { requireUser } from "@/lib/session";
-import { getRankingLists, getRankingPool } from "@/lib/queries";
+import { getMyRanking, getRankingPool } from "@/lib/queries";
 import { inSentence } from "@/lib/text";
 import { TIER_LABEL } from "@/lib/tier";
 import { RankingTabs, TierSwitch, tierHref, tierParam } from "../tabs";
@@ -26,8 +26,7 @@ export default function ReplayPage(props: PageProps<"/rankings/replay">) {
 async function Replay({ searchParams }: { searchParams: PageProps<"/rankings/replay">["searchParams"] }) {
   const me = await requireUser();
   const tier = tierParam((await searchParams).tier);
-  const lists = await getRankingLists(tier);
-  const mine = lists[me.id] ?? [];
+  const mine = await getMyRanking(me.id, tier);
   const games = await getRankingPool(me.id, me.playerId, mine, tier);
 
   return (

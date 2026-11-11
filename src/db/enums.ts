@@ -1,7 +1,11 @@
 // Shared by the schema and client components — keep free of drizzle imports.
 
-// Order matters: adjacent colors are validated to stay distinguishable (incl. color-blind).
-export const MEEPLE_COLORS = ["red", "blue", "yellow", "green", "purple", "orange"] as const;
+/**
+ * Meeple colors to pick from. They can repeat, so a color is never the only thing saying who
+ * someone is: a name or their face (Face in components/ui.tsx) does that. New ones go on the end,
+ * since a player's color is stored by name.
+ */
+export const MEEPLE_COLORS = ["red", "blue", "yellow", "green", "purple", "orange", "black", "white", "pink", "teal", "brown"] as const;
 export type MeepleColor = (typeof MEEPLE_COLORS)[number];
 
 export const SENTIMENTS = ["love", "like", "meh", "nope"] as const;
@@ -38,3 +42,13 @@ export const POLL_MAX_DATES = 8;
  */
 export const TIERS = ["heavy", "light"] as const;
 export type Tier = (typeof TIERS)[number];
+
+/**
+ * What someone signed in can do. A member is in the core group: every page and action. A casual
+ * account comes to the casual night only: their own ratings, rankings and collection, and that
+ * night's answers, bring list and plays. Nothing about the core group's nights is shown to them.
+ * Removed is someone an admin took off the site: they can't sign in, and count for nothing.
+ * Boardroom decides it (src/lib/access.ts); Discord's member role follows.
+ */
+export const ACCESS = ["member", "casual", "removed"] as const;
+export type Access = (typeof ACCESS)[number];

@@ -5,29 +5,30 @@ import clsx from "clsx";
 import { twMerge } from "tailwind-merge";
 import type { MeepleColor } from "@/db/enums";
 
-const MEEPLE_FILL: Record<MeepleColor, string> = {
-  red: "fill-meeple-red",
-  blue: "fill-meeple-blue",
-  yellow: "fill-meeple-yellow",
-  green: "fill-meeple-green",
-  purple: "fill-meeple-purple",
-  orange: "fill-meeple-orange",
-};
-
-const MEEPLE_BG: Record<MeepleColor, string> = {
-  red: "bg-meeple-red",
-  blue: "bg-meeple-blue",
-  yellow: "bg-meeple-yellow",
-  green: "bg-meeple-green",
-  purple: "bg-meeple-purple",
-  orange: "bg-meeple-orange",
+/**
+ * Each color's classes, written out so Tailwind finds them. Black and white meeples get an outline,
+ * being about the color of a card in one theme or the other; `light` ones take a dark letter in either theme.
+ */
+const MEEPLE_CLASS: Record<MeepleColor, { fill: string; bg: string; border: string; light?: boolean }> = {
+  red: { fill: "fill-meeple-red", bg: "bg-meeple-red", border: "border-meeple-red" },
+  blue: { fill: "fill-meeple-blue", bg: "bg-meeple-blue", border: "border-meeple-blue" },
+  yellow: { fill: "fill-meeple-yellow", bg: "bg-meeple-yellow", border: "border-meeple-yellow", light: true },
+  green: { fill: "fill-meeple-green", bg: "bg-meeple-green", border: "border-meeple-green" },
+  purple: { fill: "fill-meeple-purple", bg: "bg-meeple-purple", border: "border-meeple-purple" },
+  orange: { fill: "fill-meeple-orange", bg: "bg-meeple-orange", border: "border-meeple-orange", light: true },
+  black: { fill: "fill-meeple-black stroke-slate", bg: "bg-meeple-black", border: "border-meeple-black" },
+  white: { fill: "fill-meeple-white stroke-slate", bg: "bg-meeple-white", border: "border-meeple-white", light: true },
+  pink: { fill: "fill-meeple-pink", bg: "bg-meeple-pink", border: "border-meeple-pink" },
+  teal: { fill: "fill-meeple-teal", bg: "bg-meeple-teal", border: "border-meeple-teal" },
+  brown: { fill: "fill-meeple-brown", bg: "bg-meeple-brown", border: "border-meeple-brown" },
 };
 
 export function Meeple({ color, className }: { color: MeepleColor | null; className?: string }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden className={clsx("shrink-0", className ?? "size-4")}>
       <path
-        className={color ? MEEPLE_FILL[color] : "fill-slate/50"}
+        className={color ? MEEPLE_CLASS[color].fill : "fill-slate/50"}
+        strokeWidth={1}
         d="M12 2c2.486 0 3.713 1.766 3.955 4.1l.01.124l.129.036c3.17.928 5.754 2.487 5.9 4.556L22 11c0 1.427-1.297 2.322-2.871 2.733l-.201.049l.026.03c.244.276.532.603.7.797l.057.066c.49.573.884 1.073 1.216 1.56C21.617 17.245 22 18.139 22 19a2 2 0 0 1-2 2h-5c-1.043 0-1.344-.453-2.394-2.553c-.29-.58-.448-.882-.593-1.118L12 17.307l-.013.022c-.129.21-.268.472-.5.935l-.093.183C10.344 20.547 10.043 21 9 21H4a2 2 0 0 1-2-2c0-.86.384-1.755 1.073-2.765a18 18 0 0 1 1.216-1.56c.152-.178.482-.553.757-.863l.025-.03l-.2-.049c-1.506-.393-2.758-1.23-2.864-2.55L2 11c0-2.16 2.643-3.785 5.906-4.74l.128-.036l.011-.124c.235-2.26 1.394-3.99 3.726-4.095z"
       />
     </svg>
@@ -56,16 +57,71 @@ export function PlayerChip({
   );
 }
 
+/** Someone's picture by their name (People, their page, the menu): a Face, bigger */
 export function Avatar({ src, name, color, className }: { src: string | null; name: string; color: MeepleColor | null; className?: string }) {
+  return <Face src={src} name={name} color={color} className={twMerge("size-8 border-2", className)} />;
+}
+
+/**
+ * Someone's face, for where nothing else says who they are: a stack of owners, a chance for each
+ * person. Their Discord picture in a ring of their meeple color, or without one their initial on
+ * it. Colors repeat, so a meeple alone only does beside a name (PlayerChip).
+ */
+export function Face({ src, name, color, className }: { src: string | null; name: string; color: MeepleColor | null; className?: string }) {
+  const c = color ? MEEPLE_CLASS[color] : null;
   return (
-    <span className={clsx("relative inline-block shrink-0 rounded-full", className ?? "size-8")}>
+    <span
+      className={twMerge(
+        "inline-block size-5 shrink-0 overflow-hidden rounded-full border-[1.5px]",
+        c ? c.border : "border-slate/50",
+        !src && (c ? c.bg : "bg-slate/50"),
+        className,
+      )}
+    >
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt="" className="size-full rounded-full object-cover" />
       ) : (
-        <span className="grid size-full place-items-center rounded-full bg-felt-soft text-xs font-semibold">{name[0]}</span>
+        // Drawn, so the letter scales with the face
+        <svg viewBox="0 0 20 20" aria-hidden className={clsx("size-full", c?.light ? "fill-black/75" : "fill-white")}>
+          <text x="10" y="10" dominantBaseline="central" textAnchor="middle" fontSize="11" fontWeight="600">
+            {name.trim()[0]?.toUpperCase()}
+          </text>
+        </svg>
       )}
-      <span className={clsx("absolute -right-0.5 -bottom-0.5 size-3 rounded-full border-2 border-card", color ? MEEPLE_BG[color] : "bg-slate")} />
+    </span>
+  );
+}
+
+/**
+ * Faces overlapping, the first few and then how many more, all named on hover and for screen readers.
+ * `className` sizes each face (size-5 by default).
+ */
+export function Faces({
+  people,
+  max = 4,
+  label,
+  className,
+}: {
+  people: { id: string; name: string; image: string | null; color: MeepleColor | null }[];
+  max?: number;
+  /** What the stack says, when it's more than their names ("Owned by …") */
+  label?: string;
+  className?: string;
+}) {
+  const shown = people.length > max ? people.slice(0, max - 1) : people;
+  const more = people.length - shown.length;
+  const said = label ?? people.map((p) => p.name).join(", ");
+  return (
+    <span role="img" aria-label={said} title={said} className="flex shrink-0 items-center">
+      {shown.map((p) => (
+        <Face key={p.id} src={p.image} name={p.name} color={p.color} className={twMerge("-ml-1.5 ring-2 ring-card first:ml-0", className)} />
+      ))}
+      {more > 0 && (
+        <span className={twMerge("-ml-1.5 grid size-5 shrink-0 place-items-center rounded-full bg-felt-soft text-[0.6rem] font-semibold tabular ring-2 ring-card", className)}>
+          +{more}
+        </span>
+      )}
     </span>
   );
 }

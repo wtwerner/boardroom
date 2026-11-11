@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answer, compareIndex, groupRanking, rankShare, startPlacement } from "./ranking";
+import { answer, compareIndex, crowdLists, crowdSince, groupRanking, rankShare, startPlacement } from "./ranking";
 
 describe("groupRanking", () => {
   it("scores by the share of each list a game beats, so long and short lists count the same", () => {
@@ -48,5 +48,18 @@ describe("placement", () => {
 
   it("puts a tie right after the game it matched", () => {
     expect(place([90, 70, 50], 70)).toEqual([90, 70, 70, 50]);
+  });
+});
+
+describe("a night's crowd", () => {
+  it("counts back a year from today", () => {
+    expect(crowdSince("2026-11-10")).toBe("2025-11-10");
+    expect(crowdSince("2024-03-01", 1)).toBe("2024-02-29");
+  });
+
+  it("keeps only the lists of the people who come", () => {
+    const lists = { "u-sam": [1, 2], "u-alex": [2, 1], "u-casey": [3] };
+    expect(crowdLists(lists, new Set(["u-sam", "u-casey"]))).toEqual({ "u-sam": [1, 2], "u-casey": [3] });
+    expect(groupRanking(crowdLists(lists, new Set(["u-alex"])))[0].gameId).toBe(2);
   });
 });

@@ -3,10 +3,12 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Empty, GameCover, Meeple, PageHeader, Panel, Section, Skeleton, TextLink } from "@/components/ui";
 import { requireUser } from "@/lib/session";
-import { getGroupRanking, getMembers, getNewToRank, getRankingLists, getRankingPool } from "@/lib/queries";
+import { getGroupRanking, getMembers, getMyRanking, getNewToRank, getNightRankingLists, getRankingPool } from "@/lib/queries";
+import { NightSwitch, nightParam } from "@/components/night-switch";
+import { inSentence } from "@/lib/text";
 import { RankingEditor } from "./ranking-editor";
 import { HEAVY_WEIGHT } from "@/lib/tier";
-import { CASUAL_NIGHT } from "@/config";
+import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
 import { TIERS, type Tier } from "@/db/enums";
 import { TIER_LABEL } from "@/lib/tier";
 import { RankingTabs, TierSwitch, tierHref, tierParam } from "./tabs";
@@ -28,11 +30,21 @@ export default function RankingsPage(props: PageProps<"/rankings">) {
 
 async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">["searchParams"] }) {
   const me = await requireUser();
-  const tier = tierParam((await searchParams).tier);
-  const [lists, group, members, toRank] = await Promise.all([getRankingLists(tier), getGroupRanking(tier), getMembers(), getNewToRank(me.id, me.playerId)]);
-  const mine = lists[me.id] ?? [];
+  const params = await searchParams;
+  const tier = tierParam(params.tier);
+  // Each kind of night has its own group list, from the people who come to it. A casual account
+  // only has theirs: the core group's list isn't there for them, and neither is the switch
+  const member = me.access === "member";
+  const night = !member ? "casual" : CASUAL_NIGHT ? (nightParam(params.night) ?? "core") : "core";
+  const [mine, crowdLists, group, members, toRank] = await Promise.all([
+    getMyRanking(me.id, tier),
+    getNightRankingLists(tier, night),
+    getGroupRanking(tier, undefined, night),
+    getMembers(night),
+    getNewToRank(me.id, me.playerId),
+  ]);
   const games = await getRankingPool(me.id, me.playerId, mine, tier);
-  const voters = members.filter((m) => lists[m.id]?.length);
+  const voters = members.filter((m) => crowdLists[m.id]?.length);
   const waiting = Object.fromEntries(TIERS.map((t) => [t, toRank.filter((g) => g.tier === t).length])) as Record<Tier, number>;
   // Each list is ranked on its own, so finishing one is easy to mistake for finishing both
   const other = TIERS.find((t) => t !== tier)!;
@@ -44,19 +56,20 @@ async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">
           current={tier}
           path="/rankings"
           waiting={waiting}
+          night={night}
         />
         {waiting[tier] === 0 && waiting[other] > 0 && (
           <p className="w-fit rounded-lg border border-meeple-yellow/70 bg-meeple-yellow/10 px-3 py-2 text-sm">
             Nothing new to place here, but {waiting[other] === 1 ? "a game you've played is" : `${waiting[other]} games you've played are`} waiting
             in <strong className="font-semibold">{TIER_LABEL[other]}</strong>.{" "}
-            <TextLink href={tierHref("/rankings", other)}>Rank {waiting[other] === 1 ? "it" : "them"} next</TextLink>
+            <TextLink href={tierHref("/rankings", other, night)}>Rank {waiting[other] === 1 ? "it" : "them"} next</TextLink>
           </p>
         )}
         <p className="max-w-2xl text-sm text-slate">
           {tier === "heavy"
             ? `BGG weight ${HEAVY_WEIGHT} and up${CASUAL_NIGHT ? ", whichever kind of event they were played at" : ""}.`
             : `Under BGG weight ${HEAVY_WEIGHT}.`}{" "}
-          A game in the wrong list can be moved from its page.
+          {member && "A game in the wrong list can be moved from its page."}
         </p>
       </div>
     <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
@@ -71,13 +84,27 @@ async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">
       </Section>
 
       <Section title="The group's list">
+        {CASUAL_NIGHT && member && (
+          <div className="mb-3 space-y-2">
+            <NightSwitch current={night} href={(n) => tierHref("/rankings", tier, n)} />
+            <p className="text-sm text-slate">
+              {night === "casual"
+                ? `Everyone who's played at the ${inSentence(NIGHT_NAMES.casual)} in the last year.`
+                : "Everyone in the group."}
+            </p>
+          </div>
+        )}
         <p className="mb-3 text-sm text-slate">
           <strong className="font-semibold text-ink">Beats</strong> is how much of each person&apos;s list a game is ranked above, on average:
           100% tops every list, 50% is the middle. Games few people have ranked are pulled toward 50%.{" "}
           <TextLink href="/about#rankings">How it works</TextLink>
         </p>
         {group.length === 0 ? (
-          <Empty>Once people rank their favorites, the combined list shows up here.</Empty>
+          <Empty>
+            {night === "casual"
+              ? `Once people who come to the ${inSentence(NIGHT_NAMES.casual)} rank games, its list shows up here.`
+              : "Once people rank their favorites, the combined list shows up here."}
+          </Empty>
         ) : (
           <Panel className="overflow-x-auto">
             <table className="w-full text-sm">

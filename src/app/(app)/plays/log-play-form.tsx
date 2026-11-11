@@ -51,7 +51,8 @@ export function LogPlayForm({
   );
   const setGame = (i: number, patch: Partial<GameRow>) =>
     setDraft((d) => ({ ...d, games: d.games.map((g, j) => (j === i ? { ...g, ...patch } : g)) }));
-  const [night, setNight] = useState<Night>(editing?.night ?? "core");
+  // A new play starts on the first kind of night offered: the core group's, or a casual account's only one
+  const [night, setNight] = useState<Night>(editing?.night ?? (Object.keys(canPost)[0] as Night | undefined) ?? "core");
   // A play from a night the group no longer has (the casual night turned off) can still be edited
   const nights = [...new Set([...(Object.keys(canPost) as Night[]), night])];
   // A play already in Discord belongs to the channel it's in

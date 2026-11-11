@@ -10,7 +10,7 @@ import { findingPolls } from "@/lib/poll-store";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { Avatar, Empty, GameCover, Meeple, PlayerChip, Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass, formatDate } from "@/components/ui";
 import { dayWord, localDate } from "@/lib/nights";
-import { requireUser } from "@/lib/session";
+import { type CurrentUser, requireUser } from "@/lib/session";
 import {
   getAttendance,
   getGroupRanking,
@@ -32,6 +32,7 @@ import { TIER_LABEL, TIER_TAG } from "@/lib/tier";
 import { listNames } from "@/lib/discord-components";
 import { setupProgress, setupSteps } from "@/lib/setup";
 import { tierHref } from "./rankings/tabs";
+import { inSentence } from "@/lib/text";
 
 export default function HomePage() {
   return (
@@ -43,6 +44,8 @@ export default function HomePage() {
 
 async function Home() {
   const me = await requireUser();
+  // A casual account's Home is their night's
+  if (me.access !== "member") return <CasualHome me={me} />;
   const upcoming = getUpcomingNights();
   const [stats, lastNight, mostPlayed, attendance, months, group, shame, wanted, review, setup, members, plans, newMembers, taste, toRank, toAnswer] = await Promise.all([
     getHeadlineStats(),
@@ -386,6 +389,43 @@ async function datesToAnswer(userId: string) {
   });
 }
 
+/**
+ * For a casual account: the casual night's events still picking a date, whether or not they've
+ * answered, since polls only wait on members (poll-store.ts)
+ */
+async function casualDatesToAnswer(playerId: number | null) {
+  const polls = (await findingPolls()).filter((p) => p.night === "casual");
+  const nights = await Promise.all(polls.map((p) => loadNight(p.nightId)));
+  return polls.flatMap((p, i) => {
+    const n = nights[i];
+    if (!n) return [];
+    const offered = p.dates.filter((d) => !d.past && !d.fellThrough).length;
+    return [{ id: n.id, title: n.title, offered, answered: p.answered.length, mine: p.answered.some((a) => a.playerId === playerId) }];
+  });
+}
+
+function CasualDatesToAnswer({ events }: { events: Awaited<ReturnType<typeof casualDatesToAnswer>> }) {
+  return (
+    <Section title="Picking a date">
+      <ul className="grid gap-3 lg:grid-cols-2">
+        {events.map((e) => (
+          <li key={e.id}>
+            <Link href={`/events/${e.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/60">
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{e.title}</span>
+                <span className="block text-sm text-slate">
+                  Date TBD · {e.offered} {e.offered === 1 ? "date" : "dates"} on offer · {e.answered} answered{e.mine && ", you included"}
+                </span>
+              </span>
+              <span className={buttonClass(e.mine ? "secondary" : "primary", "px-2.5 py-1.5 text-xs")}>{e.mine ? "Change" : "Answer"}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
 /** Events picking a date, each a tap from saying which dates work */
 function DatesToAnswer({ events }: { events: Awaited<ReturnType<typeof datesToAnswer>> }) {
   return (
@@ -409,11 +449,11 @@ function DatesToAnswer({ events }: { events: Awaited<ReturnType<typeof datesToAn
   );
 }
 
-function UpNext({ nights, members }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[] }) {
+function UpNext({ nights, members, plan = true }: { nights: NightDetail[]; members: { id: string; name: string; color: MeepleColor | null }[]; plan?: boolean }) {
   const colors = Object.fromEntries(members.map((m) => [m.id, m.color]));
   const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
   return (
-    <Section title="Coming up" action={<TextLink href="/plan">All events</TextLink>}>
+    <Section title="Coming up" action={plan && <TextLink href="/plan">All events</TextLink>}>
       <ul className="grid gap-3 lg:grid-cols-2">
         {nights.map((n) => (
           <li key={n.id}>
@@ -430,8 +470,8 @@ function UpNext({ nights, members }: { nights: NightDetail[]; members: { id: str
  * setup page a tap away. Once they're set up, the games they've played since they last ranked,
  * by name, so a new one is hard to miss.
  */
-function SetupNudge({ name, status, toRank }: { name: string; status: SetupStatus; toRank: Awaited<ReturnType<typeof getNewToRank>> }) {
-  const progress = setupProgress(setupSteps(status));
+function SetupNudge({ name, status, toRank, casual = false }: { name: string; status: SetupStatus; toRank: Awaited<ReturnType<typeof getNewToRank>>; casual?: boolean }) {
+  const progress = setupProgress(setupSteps(status, { casual }));
   if (!progress.complete) {
     return (
       <Link
@@ -485,6 +525,95 @@ function SetupNudge({ name, status, toRank }: { name: string; status: SetupStatu
         Rank {one ? "it" : "them"}
       </Link>
     </section>
+  );
+}
+
+/**
+ * Home for a casual account: their night and nothing of the core group's. What's coming up and on
+ * now, what was played last time, how the people who come rank games, and their own setup.
+ */
+async function CasualHome({ me }: { me: CurrentUser }) {
+  const [nights, picking, crowd, setup, toRank, favorites] = await Promise.all([
+    getUpcomingNights().then((all) => all.filter((n) => n.night === "casual")),
+    casualDatesToAnswer(me.playerId),
+    getMembers("casual"),
+    getSetupStatus(me),
+    getNewToRank(me.id, me.playerId),
+    Promise.all([getGroupRanking("light", 5, "casual"), getGroupRanking("heavy", 3, "casual")]),
+  ]);
+  const onNow = nights.filter(isOn);
+  const comingUp = nights.filter((n) => !isOn(n));
+  const last = await getLastNight(onNow, "casual");
+  const lastId = last && (await getNightsByDate([{ night: "casual", date: last.date }])).get(`casual:${last.date}`)?.id;
+  const games = last ? [...new Map(last.plays.map((p) => [p.gameId ?? `p${p.id}`, p])).values()] : [];
+  const casual = inSentence(NIGHT_NAMES.casual);
+
+  return (
+    <div className="space-y-10">
+      <SetupNudge name={me.name} status={setup} toRank={toRank} casual />
+      {onNow.length > 0 && <HappeningNow nights={onNow} members={crowd} />}
+      {picking.length > 0 && <CasualDatesToAnswer events={picking} />}
+      {comingUp.length > 0 ? (
+        <UpNext nights={comingUp.slice(0, 3)} members={crowd} plan={false} />
+      ) : (
+        picking.length === 0 && (
+          <Section title="Coming up">
+            <Empty>Nothing&apos;s on the calendar yet. The next {casual} shows up here, and in Discord, once it&apos;s planned.</Empty>
+          </Section>
+        )
+      )}
+
+      {last && games.length > 0 && (
+        <Section title={`Last ${casual}`} action={lastId && <TextLink href={`/events/${lastId}`}>See the event</TextLink>}>
+          <p className="-mt-1 mb-3 text-sm text-slate">{formatDate(last.date, { weekday: "long", month: "long", day: "numeric" })}</p>
+          <ul className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-6">
+            {games.slice(0, 6).map((p) => (
+              <li key={p.gameId ?? `p${p.id}`}>
+                {p.gameId ? (
+                  <Link href={`/games/${p.gameId}`} className="group block">
+                    <GameCover src={p.thumbnail} image={p.image} name={p.name} size="fluid" sizes="(min-width: 640px) 15vw, 30vw" />
+                    <span className="mt-1.5 block truncate text-xs font-medium group-hover:underline">{p.name}</span>
+                  </Link>
+                ) : (
+                  <>
+                    <GameCover src={p.thumbnail} image={p.image} name={p.name} size="fluid" sizes="(min-width: 640px) 15vw, 30vw" />
+                    <span className="mt-1.5 block truncate text-xs font-medium">{p.name}</span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      <Section title="Favorites" action={<TextLink href={tierHref("/rankings", "light")}>Rank yours</TextLink>}>
+        {favorites.some((list) => list.length) ? (
+          <div className="grid gap-6 sm:grid-cols-2">
+            {favorites.map((list, t) =>
+              list.length ? (
+                <div key={t}>
+                  <h3 className="mb-1.5 text-xs font-medium text-slate">{TIER_LABEL[t === 0 ? "light" : "heavy"]}</h3>
+                  <ol className="space-y-2">
+                    {list.map((g, i) => (
+                      <GameRow
+                        key={g.gameId}
+                        id={g.gameId}
+                        name={g.game.name}
+                        thumb={g.game.thumbnail}
+                        lead={<span className="font-display w-5 text-accent tabular">{i + 1}</span>}
+                        meta={`beats ${g.points}%`}
+                      />
+                    ))}
+                  </ol>
+                </div>
+              ) : null,
+            )}
+          </div>
+        ) : (
+          <Empty>Once people who come rank the games they&apos;ve played, the favorites show up here.</Empty>
+        )}
+      </Section>
+    </div>
   );
 }
 

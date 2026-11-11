@@ -4,11 +4,13 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { and, eq } from "drizzle-orm";
-import { SITE_URL } from "@/config";
+import { CASUAL_NIGHT, CASUAL_SIGN_IN, SITE_URL } from "@/config";
 import { db, schema } from "@/db";
-import { MEEPLE_COLORS } from "@/db/enums";
-import { groupMemberRefusal } from "./discord";
+import type { Access } from "@/db/enums";
+import { signInAccess } from "./access";
+import { getServerMember } from "./discord";
 import { discordAccountEmail } from "./discord-email";
+import { pickColor } from "./meeple";
 import { matchByName } from "./players";
 import { loadSettings } from "./settings-store";
 import type { SignInRefusal } from "./sign-in-refusal";
@@ -18,14 +20,37 @@ const REFUSAL_MESSAGE: Record<SignInRefusal, string> = {
   missing_role: "Couldn't sign you in with that Discord account.",
 };
 
-async function assertGroupMember(discordId: string | null | undefined) {
-  // The member role is set on Group settings
+/**
+ * What someone signs in as (src/lib/access.ts), or a refusal. `existing` is their access if
+ * they've signed in before; the first time, it's null and the member role decides.
+ */
+async function signInAs(discordId: string | null | undefined, existing: Access | null) {
+  // The member role and casual sign-in are set on Group settings
   await loadSettings({ fresh: true });
-  const refusal = discordId ? await groupMemberRefusal(discordId) : "not_in_server";
-  if (refusal) {
+  const member = discordId ? await getServerMember(discordId) : null;
+  const decision = signInAccess({
+    inServer: Boolean(member && !member.bot),
+    hasRole: member?.hasRole ?? null,
+    existing,
+    casualSignIn: CASUAL_SIGN_IN,
+    casualNight: CASUAL_NIGHT,
+  });
+  if (!decision.ok) {
     // With a code, Better Auth redirects the OAuth callback to /sign-in?error=<code>; without one it answers with raw JSON
-    throw new APIError("FORBIDDEN", { code: refusal, message: REFUSAL_MESSAGE[refusal] });
+    throw new APIError("FORBIDDEN", { code: decision.refusal, message: REFUSAL_MESSAGE[decision.refusal] });
   }
+  return decision.access;
+}
+
+/**
+ * Accounts whose first sign-in was just checked, so the session made right after it doesn't ask
+ * Discord again. Both hooks run in the same request; a check more than a minute old doesn't count.
+ */
+const justChecked = new Map<string, number>();
+function checkedJustNow(userId: string) {
+  const at = justChecked.get(userId);
+  justChecked.delete(userId);
+  return at !== undefined && Date.now() - at < 60_000;
 }
 
 /**
@@ -33,13 +58,12 @@ async function assertGroupMember(discordId: string | null | undefined) {
  * that was @-mentioned with their Discord account (or, failing that, is the only
  * one with their name), or start a fresh one. Two players with their name could
  * be either, so they start fresh and merge their history in. Either way they get
- * the first free meeple color.
+ * a meeple color if they don't have one (pickColor).
  */
 async function linkPlayer(userId: string, name: string, discordId: string | null) {
   const players = await db.select().from(schema.player);
   if (players.some((p) => p.userId === userId)) return;
-  const taken = new Set(players.map((p) => p.color).filter(Boolean));
-  const color = MEEPLE_COLORS.find((c) => !taken.has(c)) ?? null;
+  const color = pickColor(players.map((p) => p.color));
   const byName = matchByName(
     players.filter((p) => !p.userId && !p.discordId),
     name,
@@ -60,6 +84,14 @@ async function linkPlayer(userId: string, name: string, discordId: string | null
   }
 }
 
+/** Anyone who first signed in once the first six colors were taken went without one: they get one on their next sign-in */
+async function colorIfNone(userId: string) {
+  const mine = await db.query.player.findFirst({ where: eq(schema.player.userId, userId), columns: { id: true, color: true } });
+  if (!mine || mine.color) return;
+  const used = await db.select({ color: schema.player.color }).from(schema.player);
+  await db.update(schema.player).set({ color: pickColor(used.map((p) => p.color)) }).where(eq(schema.player.id, mine.id));
+}
+
 export const auth = betterAuth({
   baseURL: SITE_URL,
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
@@ -78,6 +110,7 @@ export const auth = betterAuth({
       discordId: { type: "string", required: false, input: false },
       bggUsername: { type: "string", required: false, input: false },
       isAdmin: { type: "boolean", required: false, input: false },
+      access: { type: "string", required: false, input: false },
     },
   },
   session: {
@@ -89,8 +122,12 @@ export const auth = betterAuth({
   databaseHooks: {
     account: {
       create: {
+        // The first sign-in: the member role decides whether they're a member or a casual account
         before: async (account) => {
-          if (account.providerId === "discord") await assertGroupMember(account.accountId);
+          if (account.providerId !== "discord") return;
+          const access = await signInAs(account.accountId, null);
+          await db.update(schema.user).set({ access }).where(eq(schema.user.id, account.userId));
+          justChecked.set(account.userId, Date.now());
         },
         // Only after the membership check passed: record the id and give them a player
         after: async (account) => {
@@ -106,13 +143,21 @@ export const auth = betterAuth({
     },
     session: {
       create: {
-        // Re-checked on every sign-in so people who leave the server (or lose the role) lose access
+        // Re-checked on every sign-in: someone who leaves the server, or an admin removed, can't get back in.
+        // After the first time Boardroom says what they are, not the role
         before: async (session) => {
-          const row = await db.query.account.findFirst({
-            where: and(eq(schema.account.userId, session.userId), eq(schema.account.providerId, "discord")),
-            columns: { accountId: true },
-          });
-          await assertGroupMember(row?.accountId);
+          if (checkedJustNow(session.userId)) return;
+          const [row, u] = await Promise.all([
+            db.query.account.findFirst({
+              where: and(eq(schema.account.userId, session.userId), eq(schema.account.providerId, "discord")),
+              columns: { accountId: true },
+            }),
+            db.query.user.findFirst({ where: eq(schema.user.id, session.userId), columns: { access: true } }),
+          ]);
+          await signInAs(row?.accountId, u?.access ?? null);
+        },
+        after: async (session) => {
+          await colorIfNone(session.userId);
         },
       },
     },

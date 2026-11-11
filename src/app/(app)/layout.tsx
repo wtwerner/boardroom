@@ -1,8 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Suspense, cache } from "react";
-import { DEMO, SITE_NAME } from "@/config";
+import { DEMO, NIGHT_NAMES, SITE_NAME } from "@/config";
 import { MoreMenu, type NavBadges, SideNav, TabBar } from "@/components/nav";
+import { previewCasual } from "@/app/actions";
+import { inSentence } from "@/lib/text";
 import { Avatar, DemoNote, Meeple } from "@/components/ui";
 import { getNewToRank } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
@@ -44,6 +46,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
       <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-10 md:pb-16 lg:px-10">
         {DEMO && <DemoBanner />}
+        <Suspense fallback={null}>
+          <PreviewBanner />
+        </Suspense>
         {children}
         <BggCredit className="mt-12 text-xs text-slate hover:text-ink md:hidden" />
       </main>
@@ -99,6 +104,23 @@ async function WithBadges({ nav: Nav }: { nav: typeof SideNav }) {
   const toRank = await countToRank();
   const badges: NavBadges = toRank ? { "/rankings": { count: toRank, label: toRank === 1 ? "game to rank" : "games to rank" } } : {};
   return <Nav badges={badges} />;
+}
+
+/** While a member previews the casual side, a bar on every page says so and brings them back */
+async function PreviewBanner() {
+  const me = await requireUser();
+  if (!me.previewing) return null;
+  return (
+    <form
+      action={previewCasual.bind(null, false)}
+      className="-mt-2 mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border border-meeple-yellow/70 bg-meeple-yellow/15 px-3 py-2 text-sm md:-mt-4"
+    >
+      <span>
+        You&apos;re seeing the site as a {inSentence(NIGHT_NAMES.casual)} player with an account would. What you do counts as you, with their limits.
+      </span>
+      <button className="font-semibold text-accent underline-offset-4 hover:underline">Back to the full site</button>
+    </form>
+  );
 }
 
 async function HeaderAvatar() {

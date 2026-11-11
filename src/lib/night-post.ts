@@ -1,7 +1,7 @@
 import "server-only";
 import { after } from "next/server";
 import { and, asc, eq, gte, inArray, isNotNull, isNull, like, lt, or } from "drizzle-orm";
-import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
+import { CASUAL_NIGHT, CASUAL_SIGN_IN, NIGHT_NAMES, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { type AllowedMentions, type MessageBody, addToThread, announceChannel, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
 import { buildNightAnnouncement, buildPollAnnouncement } from "./announce-message";
@@ -381,8 +381,8 @@ async function card(n: NightDetail): Promise<NightCard> {
               asked: g.askedId ? (bringerOf.get(g.askedId) ?? null) : null,
             })),
           },
-    // Most of the casual night's channel can't open the site, as with play posts
-    planUrl: SITE_URL && n.night === "core" ? `${SITE_URL}/events/${n.id}` : null,
+    // The casual night's channel can open the site only while its players can sign in, as with play posts
+    planUrl: SITE_URL && (n.night === "core" || CASUAL_SIGN_IN) ? `${SITE_URL}/events/${n.id}` : null,
     siteName: SITE_NAME,
     emoji: await fetchAppEmoji(),
   };

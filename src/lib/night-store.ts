@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { NIGHT_TITLES, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import type { Night, RsvpStatus } from "@/db/enums";
@@ -134,6 +134,60 @@ export async function deleteNight(id: number) {
     await tx.delete(schema.gameNight).where(eq(schema.gameNight.id, n.id));
   });
   return n;
+}
+
+/**
+ * Takes someone off upcoming nights, for an admin moving them down (the core group's nights) or
+ * off the site (every night): their answers, the dates they said work, their votes and prep, and
+ * off the site, the games they said they'd bring or were asked to. Nights that have started keep
+ * everything: they're history, or they're there tonight. Returns each night changed, with who was
+ * waiting for a seat before, for its post.
+ */
+export async function leaveNights(userId: string, { offSite }: { offSite: boolean }) {
+  const nights: Night[] = offSite ? ["core", "casual"] : ["core"];
+  const n = schema.gameNight;
+  const [players, upcoming] = await Promise.all([
+    db.select({ id: schema.player.id }).from(schema.player).where(eq(schema.player.userId, userId)),
+    db.select({ id: n.id, startsAt: n.startsAt, findingDate: n.findingDate }).from(n).where(and(inArray(n.night, nights), eq(n.cancelled, false))),
+  ]);
+  const playerIds = players.map((p) => p.id);
+  const changed: { nightId: number; waiting: number[] }[] = [];
+  const now = Date.now();
+  for (const night of upcoming.filter((x) => x.findingDate || x.startsAt.getTime() > now)) {
+    const waiting = await waitingFor(night.id);
+    const plans = db.select({ id: schema.gamePlan.id }).from(schema.gamePlan).where(eq(schema.gamePlan.gameNightId, night.id));
+    const options = db
+      .select({ id: schema.datePollOption.id })
+      .from(schema.datePollOption)
+      .innerJoin(schema.datePoll, eq(schema.datePoll.id, schema.datePollOption.pollId))
+      .where(eq(schema.datePoll.gameNightId, night.id));
+    const removed = await db.transaction(async (tx) => {
+      const counts: unknown[][] = [];
+      if (playerIds.length) {
+        counts.push(await tx.delete(schema.nightRsvp).where(and(eq(schema.nightRsvp.gameNightId, night.id), inArray(schema.nightRsvp.playerId, playerIds))).returning());
+        counts.push(await tx.delete(schema.datePollVote).where(and(inArray(schema.datePollVote.optionId, options), inArray(schema.datePollVote.playerId, playerIds))).returning());
+      }
+      counts.push(await tx.delete(schema.planVote).where(and(inArray(schema.planVote.planId, plans), eq(schema.planVote.userId, userId))).returning());
+      counts.push(await tx.delete(schema.planReady).where(and(inArray(schema.planReady.planId, plans), eq(schema.planReady.userId, userId))).returning());
+      // Off the site: a game they'd bring isn't coming, and nobody's waiting on their answer
+      if (offSite) {
+        const theirs = await tx
+          .select({ id: schema.gamePlan.id })
+          .from(schema.gamePlan)
+          .where(and(eq(schema.gamePlan.gameNightId, night.id), or(eq(schema.gamePlan.bringerId, userId), eq(schema.gamePlan.askedId, userId))));
+        if (theirs.length) {
+          const ids = theirs.map((t) => t.id);
+          await tx.delete(schema.planVote).where(inArray(schema.planVote.planId, ids));
+          await tx.delete(schema.planReady).where(inArray(schema.planReady.planId, ids));
+          await tx.delete(schema.gamePlan).where(inArray(schema.gamePlan.id, ids));
+          counts.push(theirs);
+        }
+      }
+      return counts.some((c) => c.length);
+    });
+    if (removed) changed.push({ nightId: night.id, waiting });
+  }
+  return changed;
 }
 
 /**

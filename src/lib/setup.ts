@@ -31,11 +31,15 @@ const STEP_TITLE: Record<SetupStepKey, string> = {
   bga: "Add your Board Game Arena name",
 };
 
-/** The steps in order. Finding yourself only shows while it's needed; the integrations are optional. */
-export function setupSteps(f: SetupFacts): SetupStep[] {
+/**
+ * The steps in order. Finding yourself only shows while it's needed; the integrations are optional.
+ * A casual account skips finding yourself (merging players is the members'): their name, ratings,
+ * ranking, collection and Board Game Arena name are theirs.
+ */
+export function setupSteps(f: SetupFacts, { casual = false } = {}): SetupStep[] {
   const steps: Omit<SetupStep, "title">[] = [
     { key: "name", done: f.nameDone, optional: false },
-    ...(f.needsClaim ? [{ key: "claim" as const, done: false, optional: false }] : []),
+    ...(f.needsClaim && !casual ? [{ key: "claim" as const, done: false, optional: false }] : []),
     { key: "rate", done: f.rateDone, optional: false },
     { key: "rank", done: f.rankDone, optional: false },
     { key: "bgg", done: f.collection, optional: true },

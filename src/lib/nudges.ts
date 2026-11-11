@@ -1,7 +1,8 @@
 /**
- * The two nudges around a night Boardroom runs: a reminder in its channel a few hours before it
- * starts, pinging whoever's going or a maybe, and a DM the morning after asking whoever made it
- * to log what was played. When each is due and what it says; pure, so it's tested. nudge-post.ts
+ * The nudges around a night Boardroom runs: a reminder in its channel a few hours before it
+ * starts, pinging whoever's going or a maybe, a DM the morning after asking whoever made it to
+ * log what was played, and after a casual night, a DM asking everyone with an account who played
+ * to rate the games they haven't. When each is due and what it says; pure, so it's tested. nudge-post.ts
  * sends them.
  */
 
@@ -84,6 +85,37 @@ export function logNudgeDm(n: { title: string; url: string | null; siteName: str
     content: [
       `How did **${escape(n.title)}** go? Nothing's logged for it yet.`,
       n.url ? `[Log what you played](<${n.url}>). ${how}` : `Log what you played on its page in ${escape(n.siteName)}. ${how}`,
+    ].join("\n"),
+  };
+}
+
+/**
+ * After a casual night, who to ask to rate what they played: everyone with an account at its
+ * plays, with the games (each once, in the order played) they haven't rated. Anyone who's rated
+ * them all isn't asked. `rated` is each person's games with a rating.
+ */
+export function rateNudges(plays: { gameId: number | null; name: string; userIds: string[] }[], rated: Map<string, Set<number>>) {
+  const asks = new Map<string, Map<number, string>>();
+  for (const p of plays) {
+    if (p.gameId === null) continue;
+    for (const userId of p.userIds) {
+      if (rated.get(userId)?.has(p.gameId)) continue;
+      const games = asks.get(userId) ?? new Map<number, string>();
+      games.set(p.gameId, p.name);
+      asks.set(userId, games);
+    }
+  }
+  return [...asks].map(([userId, games]) => ({ userId, games: [...games.values()] }));
+}
+
+/** The DM asking someone to rate the games they played at a casual night */
+export function rateNudgeDm(n: { title: string; games: string[]; url: string | null; siteName: string }) {
+  const them = n.games.length === 1 ? "it" : "them";
+  const why = "A tap each, so the next one is planned with what you like in mind.";
+  return {
+    content: [
+      `Thanks for coming to **${escape(n.title)}**. What did you think of ${andList(n.games.map(escape))}?`,
+      n.url ? `[Rate ${them}](<${n.url}>). ${why}` : `Rate ${them} on ${escape(n.siteName)}. ${why}`,
     ].join("\n"),
   };
 }

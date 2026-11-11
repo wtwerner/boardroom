@@ -126,10 +126,10 @@ const NIGHT_BRIEF: Record<Night, string> = {
     "balance what people love against variety (avoid what was played very recently unless it's clearly wanted), " +
     "and say in each reason what makes it worth committing an evening to.",
   casual:
-    `This is the ${casual()}, the group's casual night: some of the members above, plus more casual players and guests who don't use this site ` +
-    `and haven't read any rules. It's usually at a bar, several games in an evening. Plays marked (${casual()}) show what ` +
+    `This is the ${casual()}, the group's casual night: some of the people above, plus guests who don't use this site ` +
+    `and haven't read any rules. It's usually at a bar, several games in an evening. The plays above show what ` +
     "it has played before. What matters is a quick teach, rules that click in a few minutes, and a game newcomers enjoy " +
-    "from the first round; members' opinions still count, but nobody should feel lost. Pick up to 4 games from the " +
+    "from the first round; everyone's opinions count, but nobody should feel lost. Pick up to 4 games from the " +
     "candidate list only, best first, and say in each reason why it works for a mixed table. The note can suggest an order " +
     "for the evening.",
 };

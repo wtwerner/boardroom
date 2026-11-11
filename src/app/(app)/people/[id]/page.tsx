@@ -7,6 +7,8 @@ import { localDate } from "@/lib/nights";
 import { TIERS } from "@/db/enums";
 import { TIER_LABEL } from "@/lib/tier";
 import { requireUser } from "@/lib/session";
+import { NIGHT_NAMES } from "@/config";
+import { inSentence } from "@/lib/text";
 import { getPerson, isNewMember } from "@/lib/queries";
 
 export const metadata: Metadata = { title: "Person" };
@@ -23,7 +25,9 @@ type ListGame = { id: number; name: string; thumbnail: string | null };
 
 async function Person({ params }: { params: PageProps<"/people/[id]">["params"] }) {
   const me = await requireUser();
-  const data = await getPerson((await params).id);
+  // Someone who only sees the casual night sees what was played at it
+  const member = me.access === "member";
+  const data = await getPerson((await params).id, member ? undefined : "casual");
   if (!data) notFound();
   const { member: m, collection, wishlist, top, keen, played } = data;
   const isMe = m.id === me.id;
@@ -73,7 +77,7 @@ async function Person({ params }: { params: PageProps<"/people/[id]">["params"] 
             empty="Nothing marked yet."
           />
         </Section>
-        <Section title="Played most with the group">
+        <Section title={member ? "Played most with the group" : `Played most at the ${inSentence(NIGHT_NAMES.casual)}`}>
           <GameList games={played.map((g) => ({ ...g, meta: `${g.plays}×` }))} empty="No plays logged yet." />
         </Section>
       </div>
