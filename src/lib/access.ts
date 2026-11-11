@@ -122,7 +122,7 @@ export function capabilities(names: { core: string; casual: string }): Capabilit
       casual: "no",
       actions: ["syncDiscordNow", "resolveGameName", "ignoreGameName", "setPlayerDiscord", "playerNightsFor", "splitPlayer", "settleWhich", "mergePlayers"],
     },
-    { area: "Group", what: "The shelf (each kind of event has its own)", admin: "yes", member: "yes", casual: "casual", actions: [] },
+    { area: "Group", what: "The shelf: everyone's games, and who owns them", admin: "yes", member: "yes", casual: "yes", actions: [] },
     { area: "Group", what: "People, Discover, Online and Plays pages", admin: "yes", member: "yes", casual: "no", actions: [] },
     { area: "Group", what: `Counted in the ${names.core}'s rankings and Discover`, admin: "yes", member: "yes", casual: "no", actions: [] },
     { area: "Group", what: `Counted in the ${names.casual}'s list and planner`, admin: "yes", member: "yes", casual: "yes", actions: [], aboutCasual: true },

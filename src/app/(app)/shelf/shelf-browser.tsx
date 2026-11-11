@@ -31,7 +31,8 @@ export function ShelfBrowser({
   initialOwner,
   shame,
   initialShame,
-  linkPeople,
+  groups,
+  linkIds,
   limited,
 }: {
   games: ShelfGame[];
@@ -43,8 +44,10 @@ export function ShelfBrowser({
   /** The shelf of shame, best bets first, with the group's chance of liking each */
   shame: { id: number; chance: number | null }[];
   initialShame: boolean;
-  /** Owners' names open their People page (the core group's members have one) */
-  linkPeople: boolean;
+  /** Whose games to narrow to as a group, beside one person's: the casual night's regulars, and for members the core group */
+  groups: { id: string; label: string; ownerIds: string[] }[];
+  /** Owners whose names open their People page: the core group's members, for a member */
+  linkIds: string[];
   /** A casual account: the games carry only their own ratings, so there's no group view to sort or show */
   limited: boolean;
 }) {
@@ -74,6 +77,12 @@ export function ShelfBrowser({
   };
   const q = useDeferredValue(query.trim().toLowerCase());
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+  // The owner filter is one person's id, or `group:<id>` for a group of them
+  const ownerSet = useMemo(() => {
+    const group = owner?.startsWith("group:") ? groups.find((g) => `group:${g.id}` === owner) : null;
+    return group ? new Set(group.ownerIds) : owner ? new Set([owner]) : null;
+  }, [owner, groups]);
+  const linkable = useMemo(() => new Set(linkIds), [linkIds]);
 
   const shown = useMemo(() => {
     const out = games.filter(
@@ -84,7 +93,7 @@ export function ShelfBrowser({
             ? (g.bestPlayers ?? []).includes(players.count)
             : (g.minPlayers ?? 1) <= players.count && (g.maxPlayers ?? 99) >= players.count)) &&
         (minutes === null || (g.minPlaytime ?? 0) <= minutes) &&
-        (owner === null || g.ownerIds.includes(owner)) &&
+        (ownerSet === null || g.ownerIds.some((id) => ownerSet.has(id))) &&
         (!unrated || !g.sentiments.some((s) => s.userId === myId)) &&
         (!bgaOnly || onBga.has(g.id)) &&
         (!shameOnly || shameRank.has(g.id)),
@@ -100,7 +109,7 @@ export function ShelfBrowser({
       bet: (a, b) => (shameRank.get(a.id) ?? Infinity) - (shameRank.get(b.id) ?? Infinity),
     };
     return out.sort((a, b) => cmp[sort](a, b) || a.name.localeCompare(b.name));
-  }, [games, q, players, minutes, owner, sort, unrated, bgaOnly, onBga, myId, shameOnly, shameRank]);
+  }, [games, q, players, minutes, ownerSet, sort, unrated, bgaOnly, onBga, myId, shameOnly, shameRank]);
 
   const select = "min-w-0 rounded-lg border border-line bg-card px-2.5 py-2 text-sm";
 
@@ -141,8 +150,19 @@ export function ShelfBrowser({
           {[30, 45, 60, 90, 120, 180].map((m) => <option key={m} value={m}>Under {m >= 120 ? `${m / 60} hours` : `${m} min`}</option>)}
         </select>
         <select aria-label="Owner" className={select} value={owner ?? ""} onChange={(e) => setOwner(e.target.value || null)}>
-          <option value="">Anyone&apos;s</option>
-          {members.map((m) => <option key={m.id} value={m.id}>{m.id === myId ? "Mine" : `${m.name}'s`}</option>)}
+          <option value="">Everyone&apos;s</option>
+          {groups.length > 0 ? (
+            <>
+              <optgroup label="Groups">
+                {groups.map((g) => <option key={g.id} value={`group:${g.id}`}>{g.label}</option>)}
+              </optgroup>
+              <optgroup label="People">
+                {members.map((m) => <option key={m.id} value={m.id}>{m.id === myId ? "Mine" : `${m.name}'s`}</option>)}
+              </optgroup>
+            </>
+          ) : (
+            members.map((m) => <option key={m.id} value={m.id}>{m.id === myId ? "Mine" : `${m.name}'s`}</option>)
+          )}
         </select>
         <select aria-label="Sort" className={select} value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
           <option value="name">A–Z</option>
@@ -233,7 +253,7 @@ export function ShelfBrowser({
           ))}
         </ul>
       ) : (
-        <ShelfTable games={shown} memberById={memberById} chances={shameOnly ? chanceOf : null} linkPeople={linkPeople} limited={limited} />
+        <ShelfTable games={shown} memberById={memberById} chances={shameOnly ? chanceOf : null} linkable={linkable} limited={limited} />
       )}
     </div>
   );
@@ -243,13 +263,13 @@ function ShelfTable({
   games,
   memberById,
   chances,
-  linkPeople,
+  linkable,
   limited,
 }: {
   games: ShelfGame[];
   memberById: Map<string, Member>;
   chances: Map<number, number | null> | null;
-  linkPeople: boolean;
+  linkable: Set<string>;
   limited: boolean;
 }) {
   const th = "px-2 py-2 text-left text-xs font-medium text-slate";
@@ -301,7 +321,7 @@ function ShelfTable({
                         {memberById.get(id)?.name}
                       </>
                     );
-                    return linkPeople ? (
+                    return linkable.has(id) ? (
                       <Link key={id} href={`/people/${id}`} className="inline-flex items-center gap-1 hover:underline">
                         {who}
                       </Link>

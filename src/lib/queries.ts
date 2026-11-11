@@ -224,7 +224,14 @@ export type ShelfGame = Awaited<ReturnType<typeof getShelf>>[number];
  * Every game someone owns, with who owns it and how the group feels about it. Its plays
  * and last play are on either night, or just one when `night` is given (for planning that night).
  */
-export async function getShelf(opts: { night?: Night } = {}) {
+/**
+ * Games someone owns, with their owners, plays and opinions. By default the core group's (inCrowd);
+ * `night` keeps to one kind of night's people and plays, and `everyone` is every account's games,
+ * with plays from every kind of night, for the Shelf page.
+ */
+export async function getShelf(opts: { night?: Night; everyone?: boolean } = {}) {
+  // Every account but one taken off the site is the casual night's crowd (inCrowd)
+  const crowd = opts.everyone ? "casual" : opts.night;
   const games = await db
     .selectDistinct({
       id: game.id,
@@ -243,20 +250,20 @@ export async function getShelf(opts: { night?: Night } = {}) {
       mechanics: game.mechanics,
     })
     .from(game)
-    .innerJoin(collectionItem, and(eq(collectionItem.gameId, game.id), eq(collectionItem.own, true), inCrowd(collectionItem.userId, opts.night)))
+    .innerJoin(collectionItem, and(eq(collectionItem.gameId, game.id), eq(collectionItem.own, true), inCrowd(collectionItem.userId, crowd)))
     .orderBy(game.name);
 
   const [owners, plays, opinions] = await Promise.all([
     db
       .select({ gameId: collectionItem.gameId, userId: collectionItem.userId })
       .from(collectionItem)
-      .where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId, opts.night))),
+      .where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId, crowd))),
     db
       .select({ gameId: play.gameId, plays: count(), lastPlayed: max(play.playedOn) })
       .from(play)
       .where(and(isNotNull(play.gameId), opts.night ? eq(play.night, opts.night) : undefined))
       .groupBy(play.gameId),
-    db.select().from(opinion).where(inCrowd(opinion.userId, opts.night)),
+    db.select().from(opinion).where(inCrowd(opinion.userId, crowd)),
   ]);
 
   const playMap = new Map(plays.map((p) => [p.gameId, p]));
@@ -274,36 +281,19 @@ export async function getShelf(opts: { night?: Night } = {}) {
 }
 
 /**
- * A night's shelf, for the Shelf page, with whose it is. The core group's is the members' games
- * (getShelf). The casual night's is the games of the people who come to it: everyone who's played
- * at one in the last year (getCasualCrowd) and every casual account, so it's what could come to
- * the table there. Its owners, ratings and votes are theirs alone.
+ * The Shelf page's: every account's games (getShelf with `everyone`), everyone with an account, and
+ * the casual night's regulars, so it can show what could come there: everyone who's played at one
+ * in the last year (getCasualCrowd) and every casual account.
  */
-export async function getNightShelf(night: Night) {
-  if (night === "core") {
-    const [games, people] = await Promise.all([getShelf(), getMembers()]);
-    return { games, people };
-  }
-  const [games, everyone, played, casual] = await Promise.all([
-    getShelf({ night: "casual" }),
+export async function getWholeShelf() {
+  const [games, people, played, casual] = await Promise.all([
+    getShelf({ everyone: true }),
     getMembers("casual"),
     getCasualCrowd(),
     db.select({ id: user.id }).from(user).where(eq(user.access, "casual")),
   ]);
-  const crowd = new Set([...played, ...casual.map((c) => c.id)]);
-  const theirs = (ids: string[]) => ids.filter((id) => crowd.has(id));
-  return {
-    games: games
-      .map((g) => ({
-        ...g,
-        ownerIds: theirs(g.ownerIds),
-        sentiments: g.sentiments.filter((o) => crowd.has(o.userId)),
-        wantToPlay: theirs(g.wantToPlay),
-        mustPlay: theirs(g.mustPlay),
-      }))
-      .filter((g) => g.ownerIds.length > 0),
-    people: everyone.filter((m) => crowd.has(m.id)),
-  };
+  const regulars = new Set([...played, ...casual.map((c) => c.id)]);
+  return { games, people, regulars: people.filter((p) => regulars.has(p.id)).map((p) => p.id) };
 }
 
 export async function getWantToPlay(limit = 6) {

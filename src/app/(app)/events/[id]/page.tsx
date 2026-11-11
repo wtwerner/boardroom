@@ -82,15 +82,22 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   }
 
   const addToCalendar = n.findingDate || n.cancelled ? null : `/calendar/${await nightKey(n.id)}`;
-  const [[everything, shelf, chances], members, rankings, opinions, playedBy, players, stayingDates, poll, calendar] = await Promise.all([
-    // Recency and "never played" come from this kind of night's plays only
-    getShelf({ night: n.night }).then(async (all) => {
-      const s = all.filter((g) => !isLegacy(g));
-      return [all, s, await getTasteChances(s.map((g) => g.id), { night: n.night })] as const;
+  const table = tableFor(n.going, n.guests);
+  const [[everything, shelf, chances, members], rankings, opinions, playedBy, players, stayingDates, poll, calendar] = await Promise.all([
+    // Every account's games, with recency and "never played" from this kind of night's plays only,
+    // kept to the night's people (below): its crowd, and anyone with an account who's coming
+    Promise.all([getShelf({ night: n.night, everyone: true }), getMembers(n.night), getMembers("casual")]).then(async ([all, crowd, accounts]) => {
+      const ids = new Set([...crowd.map((m) => m.id), ...table.memberIds]);
+      const theirs = all.flatMap((g) => {
+        const ownerIds = g.ownerIds.filter((id) => ids.has(id));
+        return ownerIds.length ? [{ ...g, ownerIds }] : [];
+      });
+      const s = theirs.filter((g) => !isLegacy(g));
+      // Everyone's taste: the planner scores for whoever's coming, whatever their account
+      return [theirs, s, await getTasteChances(s.map((g) => g.id), { night: "casual" }), accounts.filter((m) => ids.has(m.id))] as const;
     }),
-    // Who counts is the night's crowd: on a casual night, casual players coming count like members
-    getMembers(n.night),
-    getTieredRankingLists(n.night),
+    // Whoever's coming counts, whatever their account; the planner keeps to the ones coming
+    getTieredRankingLists("casual"),
     db.select().from(schema.opinion),
     getPlayedBy(),
     db.select({ id: schema.player.id, name: schema.player.name }).from(schema.player).orderBy(schema.player.name),
@@ -102,7 +109,6 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   const staying = stayingDates.map((d) => dateChoiceLabel(d.startsAt, d.votes, TIME_ZONE));
   const people = members.map((m) => ({ id: m.id, name: m.name, color: m.color }));
   const byId = new Map(people.map((p) => [p.id, p]));
-  const table = tableFor(n.going, n.guests);
   const going = table.memberIds.flatMap((uid) => byId.get(uid) ?? []);
   const headcount = table.memberIds.length + table.others;
   // Where a game on the bring list stands, for the recommendations and search

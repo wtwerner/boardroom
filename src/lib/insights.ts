@@ -129,7 +129,8 @@ export async function buildNightContext(input: {
   minutes: number | null;
   candidateIds: number[];
 }) {
-  const members = await getMembers(input.night);
+  // Anyone with an account who's coming, whatever their account
+  const members = await getMembers("casual");
   const coming = members.filter((m) => input.presentUserIds.includes(m.id)).map((m) => m.name);
   const ids = input.candidateIds.slice(0, 20);
   const candidates = ids.length
