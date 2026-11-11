@@ -6,7 +6,8 @@ import clsx from "clsx";
 import { CASUAL_NIGHT, CLAUDE, NIGHT_NAMES } from "@/config";
 import type { MeepleColor, Night } from "@/db/enums";
 import { nightParam } from "@/components/night-switch";
-import { Empty, GameCover, Meeple, PageHeader, Section, Skeleton, TextLink, playerRange, playtime } from "@/components/ui";
+import { Empty, Face, GameCover, PageHeader, Section, Skeleton, TextLink, playerRange, playtime } from "@/components/ui";
+import { topFew } from "@/lib/meeple";
 import { requireUser } from "@/lib/session";
 import { hasAnthropicKey } from "@/lib/ai";
 import { hasBggToken } from "@/lib/bgg";
@@ -25,7 +26,7 @@ export const metadata: Metadata = { title: "Discover" };
 // Finding ideas asks Claude, then checks each one on BGG
 export const maxDuration = 300;
 
-type Member = { id: string; name: string; color: MeepleColor | null };
+type Member = { id: string; name: string; image: string | null; color: MeepleColor | null };
 
 export default function DiscoverPage(props: PageProps<"/discover">) {
   return (
@@ -51,7 +52,7 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
   if (params.view === "taste") redirect("/people/taste");
   const twoPlayer = params.two === "1";
   const [rec, bga] = await Promise.all([getRecommendations(me.id, me.playerId, { twoPlayer, crowd: member ? "core" : "casual" }), getBgaByBggId()]);
-  const members: Member[] = rec.members.map((m) => ({ id: m.id, name: m.name, color: m.color }));
+  const members: Member[] = rec.members.map((m) => ({ id: m.id, name: m.name, image: m.image, color: m.color }));
   const canFind = hasAnthropicKey() && hasBggToken();
   const evidenceCount = Object.values(rec.insights.evidence).reduce((a, b) => a + b, 0);
   const cardProps = { members, meId: me.id, scoredIds: rec.scoredMemberIds, bga, limited: !member };
@@ -265,6 +266,8 @@ function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga, limi
   const names = (ids: string[]) => ids.map(name).join(" & ");
   const mine = c.fits[meId];
 
+  // A big crowd shows who it'd suit best, then how many more; anyone not counted yet goes last
+  const fitsShown = topFew(members, (m) => (scoredIds.includes(m.id) ? c.fits[m.id].chance : -1));
   // Why: for the group, what the keenest member likes and what the least keen one doesn't; for you, your own reasons
   const reasons =
     mode === "me"
@@ -367,7 +370,7 @@ function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga, limi
         <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-2">
           {mode === "group" && scoredIds.length > 1 && !c.unscored ? (
             <ul aria-label="Fit for each member" className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-              {members.map((m) => {
+              {fitsShown.shown.map((m) => {
                 const counted = scoredIds.includes(m.id);
                 return (
                   <li
@@ -381,11 +384,16 @@ function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga, limi
                     }
                     className={clsx("inline-flex items-center gap-1", !counted && "opacity-40")}
                   >
-                    <Meeple color={m.color} className="size-3.5" />
+                    <Face src={m.image} name={m.name} color={m.color} className="size-4" />
                     <span className="tabular">{!counted ? "?" : c.fits[m.id].known ? KNOWN_MARK[leaning(c.fits[m.id].chance)] : percent(c.fits[m.id].chance)}</span>
                   </li>
                 );
               })}
+              {fitsShown.rest.length > 0 && (
+                <li className="text-slate" title={fitsShown.rest.map((m) => `${m.name}: ${scoredIds.includes(m.id) ? percent(c.fits[m.id].chance) : "?"}`).join(", ")}>
+                  +{fitsShown.rest.length} more
+                </li>
+              )}
             </ul>
           ) : (
             <span />

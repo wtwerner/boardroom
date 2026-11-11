@@ -45,7 +45,6 @@ async function Welcome() {
   ]);
   const steps = setupSteps(status, { casual: limited });
   const progress = setupProgress(steps);
-  const takenColors = players.filter((p) => p.id !== me.playerId && p.color).map((p) => p.color!);
   const events = postsNights(night) ? eventsChannel(night) : null;
   const eventsUrl = events && channelUrl(events);
 
@@ -159,8 +158,8 @@ async function Welcome() {
         <Panel className="divide-y divide-line text-sm">
           <div className="space-y-3 p-4">
             <h3 className="font-semibold">Your meeple color</h3>
-            <p className="text-slate">It marks you on plays, charts and rankings.</p>
-            <ColorPicker current={me.color} taken={takenColors} />
+            <p className="text-slate">It goes beside your name on plays and rankings, and around your picture. Others can pick the same one.</p>
+            <ColorPicker current={me.color} />
           </div>
           <div className="space-y-1 p-4">
             <h3 className="font-semibold">Events</h3>

@@ -21,6 +21,12 @@
   --meeple-green: #3e9a5b;
   --meeple-purple: #7a52a3;
   --meeple-orange: #e07b39;
+  /* Black and white sit near the card's own color, so meeples in them get an outline (MEEPLE_CLASS) */
+  --meeple-black: #2a2d31;
+  --meeple-white: #ece8df;
+  --meeple-pink: #d9628f;
+  --meeple-teal: #1f8f8f;
+  --meeple-brown: #8a5a36;
   /* Chart series for the two nights, checked for color-blind separation and contrast on --card */
   --night-core: #1f8058;
   --night-casual: #c0801a;
@@ -45,6 +51,11 @@
     --meeple-green: #3a9a6a;
     --meeple-purple: #9572c0;
     --meeple-orange: #d0702f;
+    --meeple-black: #0b0d0c;
+    --meeple-white: #e8e6e0;
+    --meeple-pink: #e07aa3;
+    --meeple-teal: #2aa6a3;
+    --meeple-brown: #a06c45;
     --night-core: #249a6c;
     --night-casual: #bd7a10;
   }
@@ -61,13 +72,18 @@
   --color-felt-soft: var(--felt-soft);
   --color-accent: var(--accent);
 
-  /* Meeple colors — one per person, used everywhere they appear */
+  /* Meeple colors: each person's pick, which others can share */
   --color-meeple-red: var(--meeple-red);
   --color-meeple-blue: var(--meeple-blue);
   --color-meeple-yellow: var(--meeple-yellow);
   --color-meeple-green: var(--meeple-green);
   --color-meeple-purple: var(--meeple-purple);
   --color-meeple-orange: var(--meeple-orange);
+  --color-meeple-black: var(--meeple-black);
+  --color-meeple-white: var(--meeple-white);
+  --color-meeple-pink: var(--meeple-pink);
+  --color-meeple-teal: var(--meeple-teal);
+  --color-meeple-brown: var(--meeple-brown);
 
   /* The core group's nights and the casual night, wherever they're told apart */
   --color-night-core: var(--night-core);
