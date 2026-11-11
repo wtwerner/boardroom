@@ -7,6 +7,7 @@
  */
 
 import { ACCENT, ACTION_ROW, BUTTON, COMPONENTS_V2, CONTAINER, LINK_BUTTON_STYLE, TEXT, type Component, escape } from "./discord-components";
+import { inSentence } from "./text";
 
 export type Welcome = {
   /** Who's being invited */
@@ -25,6 +26,8 @@ export type Welcome = {
   command: string;
   /** The core group's night, when the group has a casual night too: what the role gets them into */
   coreNight: string | null;
+  /** The casual night's name, when there is one: their plays from it come with them */
+  casualNight: string | null;
 };
 
 const who = (p: { name: string; discordId?: string | null }) => (p.discordId ? `<@${p.discordId}>` : `**${escape(p.name)}**`);
@@ -32,7 +35,7 @@ const who = (p: { name: string; discordId?: string | null }) => (p.discordId ? `
 /** "Sam gave you the Strategy role, so Strategy events are open to you now too, plus a few more channels." */
 function whatChanged(w: Welcome, by: string) {
   if (!w.roleName) return `${by} added you.`;
-  const extra = w.coreNight ? `, so **${escape(w.coreNight)}** events are open to you now too, plus a few more channels` : "";
+  const extra = w.coreNight ? `, so **${escape(inSentence(w.coreNight))}** events are open to you now too, plus a few more channels` : "";
   return `${by} gave you the **${escape(w.roleName)}** role${extra}.`;
 }
 
@@ -58,7 +61,7 @@ export function welcomePost(w: Welcome) {
 /** The DM: what getting set up takes, step by step, with the link */
 export function welcomeDm(w: Welcome) {
   const steps = [
-    `1. **Sign in with Discord.** Plays you've been tagged in come with you${w.coreNight ? ", casual night ones too" : ""}.`,
+    `1. **Sign in with Discord.** Plays you've been tagged in come with you${w.casualNight ? `, ${escape(inSentence(w.casualNight))} ones too` : ""}.`,
     "2. **Rate the games you've played.** One tap each.",
     '3. **Rank them** with a few quick "this or that?" questions.',
     "4. **Add your BGG username** if you have one, so your games show up on the shared shelf.",
