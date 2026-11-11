@@ -106,6 +106,13 @@
       "when": 1794342235403,
       "tag": "0014_icy_william_stryker",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1794431158878,
+      "tag": "0015_right_the_anarchist",
+      "breakpoints": true
     }
   ]
 }

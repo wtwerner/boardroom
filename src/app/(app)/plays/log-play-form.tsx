@@ -8,7 +8,7 @@ import { DateInput } from "@/components/date-input";
 import type { Night } from "@/db/enums";
 import { Meeple, buttonClass } from "@/components/ui";
 import { formatPlayMessage } from "@/lib/play-parser";
-import { inSentence } from "@/lib/text";
+import { inSentence, withYear } from "@/lib/text";
 import type { Person } from "@/lib/queries";
 
 export type PlayerOption = Person & { discordId: string | null };
@@ -33,7 +33,7 @@ export function LogPlayForm({
   editing,
   onDone,
 }: {
-  games: { id: number; name: string }[];
+  games: { id: number; name: string; year: number | null }[];
   players: PlayerOption[];
   /** One entry for each kind of night the group has: whether the app can post to its channel */
   canPost: Partial<Record<Night, boolean>>;
@@ -131,7 +131,7 @@ export function LogPlayForm({
               >
                 <option value="">Choose…</option>
                 {games.map((g) => (
-                  <option key={g.id} value={g.id}>{g.name}</option>
+                  <option key={g.id} value={g.id}>{withYear(g)}</option>
                 ))}
               </select>
               {draft.games.length > 1 && (

@@ -15,6 +15,7 @@ import {
   searchGames,
 } from "./bgg";
 import { fetchBgaGames } from "./bga";
+import { normalizeTitle } from "./editions";
 import { type DiscordMessage, compareSnowflakes, fetchChannelMessagesAfter, playsChannel, snowflakeAt } from "./discord";
 import { componentText } from "./discord-message";
 import { nightTitle, zonedToUtc } from "./nights";
@@ -287,14 +288,7 @@ export async function ensureGame(bggId: number, fallbackName: string) {
   return bggId;
 }
 
-export const normalizeTitle = (s: string) =>
-  s
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+export { normalizeTitle };
 
 /**
  * Match a logged game name to a BGG id: an earlier play that was already
@@ -439,7 +433,7 @@ async function replaceCollection(userId: string, all: BggCollectionEntry[]) {
   });
 }
 
-/** Pull full /thing details for games we've never detailed or haven't refreshed in 30 days. */
+/** Pull full /thing details for games we've never detailed, haven't refreshed in 30 days, or detailed before we kept their editions. */
 export async function refreshStaleGameDetails(limit = 60) {
   if (!hasBggToken()) return 0;
   const stale = await db
@@ -448,6 +442,7 @@ export async function refreshStaleGameDetails(limit = 60) {
     .where(
       or(
         isNull(schema.game.detailsFetchedAt),
+        isNull(schema.game.implementations),
         lt(schema.game.detailsFetchedAt, new Date(Date.now() - 30 * 86_400_000)),
       ),
     )
@@ -474,6 +469,7 @@ export async function upsertGameDetails(details: BggGameDetails[], { markFetched
       ...(d.thumbnail ? { thumbnail: d.thumbnail, image: d.image } : {}),
       ...(d.categories.length ? { categories: d.categories, mechanics: d.mechanics } : {}),
       ...(d.description ? { description: d.description } : {}),
+      ...(d.implementations ? { implementations: d.implementations } : {}),
       ...(markFetched ? { detailsFetchedAt: new Date() } : {}),
     };
     await db

@@ -1,7 +1,8 @@
 import "server-only";
-import { type Column, and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, max, ne, not, sql } from "drizzle-orm";
+import { type Column, and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, max, ne, not, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MUST_PLAY_LIMIT, TIERS, type MeepleColor, type Night, type Sentiment, type Tier } from "@/db/enums";
+import { mergeEditions } from "./editions";
 import { localDate, recentMonths } from "./nights";
 import { playOrder } from "./log-post";
 import { matchByName, playerLabels } from "./players";
@@ -249,9 +250,19 @@ export async function getShelf(opts: { night?: Night; everyone?: boolean } = {})
       tier: game.tier,
       bggRating: game.bggRating,
       mechanics: game.mechanics,
+      implementations: game.implementations,
     })
     .from(game)
-    .innerJoin(collectionItem, and(eq(collectionItem.gameId, game.id), eq(collectionItem.own, true), inCrowd(collectionItem.userId, crowd)))
+    // What's owned, and what's been played: a play of an edition nobody owns counts for another edition someone does
+    .where(
+      or(
+        inArray(
+          game.id,
+          db.select({ id: collectionItem.gameId }).from(collectionItem).where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId, crowd))),
+        ),
+        inArray(game.id, db.select({ id: play.gameId }).from(play).where(and(isNotNull(play.gameId), opts.night ? eq(play.night, opts.night) : undefined))),
+      ),
+    )
     .orderBy(game.name);
 
   const [owners, plays, opinions] = await Promise.all([
@@ -268,7 +279,8 @@ export async function getShelf(opts: { night?: Night; everyone?: boolean } = {})
   ]);
 
   const playMap = new Map(plays.map((p) => [p.gameId, p]));
-  return games.map((g) => ({
+  // Two people's copies of one game in different editions (BGG's reimplementations) are one game here, played or not
+  return mergeEditions(games.map((g) => ({
     ...g,
     ownerIds: owners.filter((o) => o.gameId === g.id).map((o) => o.userId),
     plays: playMap.get(g.id)?.plays ?? 0,
@@ -278,7 +290,7 @@ export async function getShelf(opts: { night?: Night; everyone?: boolean } = {})
       .map((o) => ({ userId: o.userId, sentiment: o.sentiment as Sentiment })),
     wantToPlay: opinions.filter((o) => o.gameId === g.id && o.wantToPlay).map((o) => o.userId),
     mustPlay: opinions.filter((o) => o.gameId === g.id && o.mustPlay).map((o) => o.userId),
-  }));
+  }))).filter((g) => g.ownerIds.length > 0);
 }
 
 /**

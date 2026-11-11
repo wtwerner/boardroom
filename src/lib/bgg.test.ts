@@ -21,6 +21,8 @@ const XML = `<?xml version="1.0" encoding="utf-8"?>
     <playingtime value="120" /><minplaytime value="60" /><maxplaytime value="120" />
     <link type="boardgamecategory" id="1021" value="Economic" />
     <link type="boardgamemechanic" id="2040" value="Hand Management" />
+    <link type="boardgameimplementation" id="28720" value="Brass: Lancashire" inbound="true"/>
+    <link type="boardgameimplementation" id="10000002" value="Brass: Somewhere Else" />
     <statistics page="1"><ratings>
       <average value="8.56" />
       <ranks>
@@ -47,6 +49,7 @@ describe("parseThings", () => {
       weight: 3.87,
       categories: ["Economic"],
       mechanics: ["Hand Management"],
+      implementations: [28720, 10000002],
       expansion: false,
     });
     expect(exp).toMatchObject({ expansion: true, bggRank: null });

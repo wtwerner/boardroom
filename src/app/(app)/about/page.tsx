@@ -292,7 +292,7 @@ async function About() {
                   "Plays",
                   `Logged on the event's page once it starts, or on Plays (and posted to that kind's Discord channel), or written by hand in ${CASUAL_NIGHT ? "either channel" : "the channel"}. The sync reads hand-written posts every night and when anyone taps Sync from Discord, and picks up edits to posts for two weeks. A play logged both here and in Discord is only counted once.`,
                 ],
-                ["Shelf", "Everyone's BGG collection: from the BGG username in Settings, refreshed nightly, or a CSV export uploaded there."],
+                ["Shelf", "Everyone's BGG collection: from the BGG username in Settings, refreshed nightly, or a CSV export uploaded there. Editions of one game (Citadels from 2000 and 2016, say: BGG links them, and they have the same name) are one game on it, with everyone's copies and every play."],
                 ["Game details", "Player counts, best player counts, weight, mechanics and ratings come from BGG."],
                 ["Board Game Arena", "Which games are on BGA, matched to BGG by id, from BGA's public game list every night. BGG details for BGA's 400 most played games are fetched a batch a night so they can be recommended. BGA has no way to read anyone's plays without signing in."],
                 ...(CLAUDE

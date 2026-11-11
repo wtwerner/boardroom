@@ -39,6 +39,8 @@ export type BggGameDetails = {
   mechanics: string[];
   description: string | null;
   expansion: boolean;
+  /** BGG games this one reimplements or is reimplemented by (editions.ts); left out where BGG wasn't asked */
+  implementations?: number[];
 };
 
 const xml = new XMLParser({
@@ -181,6 +183,7 @@ function toDetails(it: Node): BggGameDetails {
     bggRank: num(rank?.value),
     categories: links.filter((l) => l.type === "boardgamecategory").map((l) => l.value),
     mechanics: links.filter((l) => l.type === "boardgamemechanic").map((l) => l.value),
+    implementations: links.filter((l) => l.type === "boardgameimplementation").map((l) => Number(l.id)).filter(Boolean),
     description: typeof it.description === "string" ? bggText(it.description).slice(0, 2000) : null,
     expansion: it.type === "boardgameexpansion",
   };

@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { CASUAL_NIGHT, DEMO, GROUP_NIGHTS, NIGHT_NAMES } from "@/config";
 import { NightTag } from "@/components/night-row";
 import { PrepLinks } from "@/components/prep-links";
-import { Empty, GameCover, Meeple, Panel, PlayerChip, Section, Skeleton, formatDate, playerRange, playtime } from "@/components/ui";
+import { Empty, GameCover, Meeple, Panel, PlayerChip, Section, Skeleton, formatDate, PLAY_DATE, playerRange, playtime } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { getBgaGame, getGame, getGamePlaces, getMembers, getMustPlayLeft } from "@/lib/queries";
 import { tierHref } from "../../rankings/tabs";
@@ -192,7 +192,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
               {plays.map((p) => (
                 <li key={p.id}>
                   <div className="text-sm font-medium">
-                    {formatDate(p.playedOn)}
+                    {formatDate(p.playedOn, PLAY_DATE)}
                     <NightTag night={p.night} className="ml-2" />
                   </div>
                   <div className="mt-1 flex flex-wrap gap-1">

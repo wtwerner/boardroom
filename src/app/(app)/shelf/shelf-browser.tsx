@@ -304,7 +304,7 @@ function ShelfTable({
               <td className="tabular px-2">{g.bggRating ? g.bggRating.toFixed(1) : "–"}</td>
               <td className="tabular px-2 whitespace-nowrap">
                 {g.plays ? `${g.plays}×` : <span className="text-slate">never</span>}
-                {g.lastPlayed && <span className="block text-xs text-slate">{formatDate(g.lastPlayed)}</span>}
+                {g.lastPlayed && <span className="block text-xs text-slate">{formatDate(g.lastPlayed, { month: "short", day: "numeric", year: "numeric" })}</span>}
                 {chances?.get(g.id) != null && <span className="block text-xs font-semibold text-accent">{Math.round(chances.get(g.id)! * 100)}% group chance</span>}
               </td>
               <td className="px-2">
