@@ -94,8 +94,9 @@ export async function syncNightPost(nightId: number, { quiet = false } = {}): Pr
   if (!claimed.length) return null;
   try {
     // The first post pings whoever the group set for this kind of night, or its announcement
-    // does when there is one, being where people read; edits never ping
-    const ping = quiet ? null : nightPing(nightPingSetting(row.night));
+    // does when there is one, being where people read; edits never ping. One still picking a
+    // date goes up quietly: the ping comes with the date (announceDateSetLater)
+    const ping = quiet || row.findingDate ? null : nightPing(nightPingSetting(row.night));
     const pingPost = announceTo ? null : ping;
     const first = view.message(pingPost);
     const posted = await postWithThread(channelId, view.threadName, first, pingPost?.allowedMentions);

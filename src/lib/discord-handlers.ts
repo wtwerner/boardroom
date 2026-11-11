@@ -294,7 +294,7 @@ async function refindDate(i: Interaction, nightId: number, form: Record<string, 
   const n = await ownNight(nightId);
   const found = await dateFellThrough(nightId, dates.map((d) => d.startsAt), userId);
   announceFellThroughLater(nightId, { by: `<@${i.member!.user.id}>`, was: found.was.toISOString(), going: found.going });
-  return reply(`**${escape(n.title)}** is finding a date again. Its post shows the dates on offer, and everyone's answers to them are still there.`);
+  return reply(`**${escape(n.title)}** is back to picking a date. Its post shows the dates on offer, with everyone's answers.`);
 }
 
 const ANSWERS: { status: RsvpStatus; label: string }[] = [

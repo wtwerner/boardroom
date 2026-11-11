@@ -94,6 +94,15 @@ describe("buildPollAnnouncement", () => {
     expect(buttons(m)).toEqual([{ type: 2, style: 5, label: "Say which dates work", url: post }]);
   });
 
+  it("adds a link to plan it on the site while it's open", () => {
+    const page = "https://boardroom.example.com/events/3";
+    expect(buttons(buildPollAnnouncement({ ...poll, pollUrl: page }, post))).toEqual([
+      { type: 2, style: 5, label: "Say which dates work", url: post },
+      { type: 2, style: 5, label: "Help plan it on Boardroom", url: page },
+    ]);
+    expect(buttons(buildPollAnnouncement({ ...poll, pollUrl: page, status: "cancelled" }, post)).map((b) => b.label)).toEqual(["Open the event"]);
+  });
+
   it("says when it's called off", () => {
     const m = buildPollAnnouncement({ ...poll, status: "cancelled" }, post);
     expect(componentText(m.components)).toBe("### ~~November heavy~~\n🚫 **Called off**\n-# Date TBD");

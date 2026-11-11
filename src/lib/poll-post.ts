@@ -68,8 +68,8 @@ export function nudgeLater(nightId: number, waiting: CardPerson[], by: string) {
 
 /**
  * Once its date's set: the post becomes the night's card, its thread is renamed with the date,
- * and a reply pings the group and the people coming, saying they're down from what they
- * answered. A night that was never posted is posted the usual way.
+ * and a reply pings the group with the date and a link to RSVP, and the people already down
+ * from what they answered. A night that was never posted is posted the usual way.
  */
 export function announceDateSetLater(nightId: number, coming: { going: CardPerson[]; maybe: CardPerson[] }, by: { playerId: number }) {
   after(async () => {
@@ -80,7 +80,7 @@ export function announceDateSetLater(nightId: number, coming: { going: CardPerso
         const night = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId) });
         if (!night?.messageId) return;
         await renameNightThread(nightId);
-        const { body, allowedMentions } = pickedMessage({ title: night.title, startsAt: night.startsAt.toISOString(), ...coming }, nightPing(nightPingSetting(night.night)));
+        const { body, allowedMentions } = pickedMessage({ title: night.title, startsAt: night.startsAt.toISOString(), url: night.url, ...coming }, nightPing(nightPingSetting(night.night)));
         // On the announcement when there is one, where the night's ping goes; it links to the post
         const announced = night.announceChannelId && night.announceMessageId && !isClaim(night.announceMessageId);
         if (announced) await replyToMessage(night.announceChannelId!, night.announceMessageId!, body, allowedMentions);

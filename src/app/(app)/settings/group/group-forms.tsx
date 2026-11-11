@@ -185,7 +185,7 @@ function DiscordNight({ night, name, showName, settings: s, discord, errors }: {
       <Field label={`Announcements channel${forWhom}`} hint="Optional, for an events channel people don't read as they chat, like a forum. Each event is announced here too, linking to its post." id={keys.announce} error={errors[keys.announce as SettingKey]}>
         <ChannelPicker id={keys.announce} value={s[keys.announce as SettingKey] as string | null} channels={discord.channels} none="None" />
       </Field>
-      <Field label="Ping when an event is posted" hint="Edits never ping. @here, @everyone and roles that can't be mentioned need the bot to have Mention All Roles." id={keys.ping} error={errors[keys.ping as SettingKey]}>
+      <Field label="Ping when an event is posted" hint="Edits never ping, and an event still picking its date pings when its date's set. @here, @everyone and roles that can't be mentioned need the bot to have Mention All Roles." id={keys.ping} error={errors[keys.ping as SettingKey]}>
         <RolePicker id={keys.ping} value={s[keys.ping as SettingKey] as string | null} roles={discord.roles} none="Nobody" extra={[["here", "@here"], ["everyone", "@everyone"]]} />
       </Field>
     </div>

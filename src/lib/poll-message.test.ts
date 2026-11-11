@@ -122,23 +122,25 @@ describe("dateChoiceLabel", () => {
 });
 
 describe("pickedMessage", () => {
-  it("pings the group's role and the people coming, down as they answered", () => {
-    const { body, allowedMentions } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", going: [sam, { name: "Riley" }], maybe: [alex] }, nightPing("10000000000000009"));
+  const url = "https://discord.com/channels/10000000000000000/10000000000000005/10000000000000006";
+
+  it("pings the group with the date and a link to RSVP, and the people coming underneath", () => {
+    const { body, allowedMentions } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", url, going: [sam, { name: "Riley" }], maybe: [alex] }, nightPing("10000000000000009"));
     expect(body.content).toBe(
-      "<@&10000000000000009> **November heavy** is set for <t:1793926800:F> (<t:1793926800:R>).\n<@10000000000000001> is down as going, since that date works for them.\n<@10000000000000002> is down as a maybe.\nAnyone else, say on the post if you're coming.",
+      `<@&10000000000000009> **November heavy** is set for <t:1793926800:F> (<t:1793926800:R>). [Open the event](<${url}>) to RSVP.\n-# Going: <@10000000000000001> · Maybe: <@10000000000000002>`,
     );
     expect(allowedMentions).toEqual({ parse: [], roles: ["10000000000000009"], users: ["10000000000000001", "10000000000000002"] });
   });
 
   it("lists several people who are going with an and", () => {
     const riley = { name: "Riley", discordId: "10000000000000004" };
-    const { body } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", going: [sam, alex, riley], maybe: [] }, null);
-    expect(body.content).toContain("\n<@10000000000000001>, <@10000000000000002> and <@10000000000000004> are down as going, since that date works for them.\nAnyone else");
+    const { body } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", url, going: [sam, alex, riley], maybe: [] }, null);
+    expect(body.content).toContain("\n-# Going: <@10000000000000001>, <@10000000000000002> and <@10000000000000004>");
   });
 
-  it("still says it's set when nobody's pinged", () => {
-    const { body, allowedMentions } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", going: [], maybe: [] }, null);
-    expect(body.content).toBe("**November heavy** is set for <t:1793926800:F> (<t:1793926800:R>).\nSay if you're coming on the post.");
+  it("says it's set without a link or anyone coming", () => {
+    const { body, allowedMentions } = pickedMessage({ title: "November heavy", startsAt: "2026-11-06T01:00:00.000Z", url: null, going: [], maybe: [] }, null);
+    expect(body.content).toBe("**November heavy** is set for <t:1793926800:F> (<t:1793926800:R>). RSVP on the post.");
     expect(allowedMentions).toEqual({ parse: [], users: [] });
   });
 });
@@ -147,14 +149,14 @@ describe("refindMessage", () => {
   it("says which date fell through, and pings whoever was going to check the other dates", () => {
     const { body, allowedMentions } = refindMessage({ by: "<@10000000000000003>", was: "2026-11-06T01:00:00.000Z", going: [sam, alex, { name: "Riley" }] });
     expect(body.content).toBe(
-      "↩️ <@10000000000000003> says <t:1793926800:F> fell through, so this is finding a date again.\n<@10000000000000001> and <@10000000000000002>, you were going. Check which dates work for you on the post.",
+      "↩️ <@10000000000000003> says <t:1793926800:F> fell through, so it's back to picking a date.\n<@10000000000000001> and <@10000000000000002>, you were going: say which dates work on the post.",
     );
     expect(allowedMentions).toEqual({ parse: [], users: ["10000000000000001", "10000000000000002"] });
   });
 
   it("leaves out the ping when nobody was going", () => {
     const { body } = refindMessage({ by: "**Sam**", was: "2026-11-06T01:00:00.000Z", going: [] });
-    expect(body.content).toBe("↩️ **Sam** says <t:1793926800:F> fell through, so this is finding a date again.");
+    expect(body.content).toBe("↩️ **Sam** says <t:1793926800:F> fell through, so it's back to picking a date.");
   });
 });
 
@@ -232,7 +234,7 @@ describe("everyoneAnsweredMessage", () => {
 
   it("says when a date works for everyone, and when none has enough", () => {
     expect(everyoneAnsweredMessage({ starter: null, best: { startsAt: "2026-11-06T01:00:00.000Z", coming: 4, everyone: true }, min: 2 }).body.content).toBe(
-      "✅ Everyone's answered, and <t:1793926800:F> works for all of them.\nSet the date on the post when you're ready.",
+      "✅ Everyone's answered, and <t:1793926800:F> works for everyone.\nSet the date on the post when you're ready.",
     );
     expect(everyoneAnsweredMessage({ starter: alex, best: null, min: 3 }).body.content).toBe("✅ Everyone's answered, but no date has 3 who can come.\n<@10000000000000002>, suggest another date on the post, or call it off.");
   });
