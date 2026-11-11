@@ -8,7 +8,7 @@ import { hasMemberRole, listGuildMembers } from "@/lib/discord";
 import { localDate } from "@/lib/nights";
 import { inSentence } from "@/lib/text";
 import { TIER_TAG } from "@/lib/tier";
-import { canManageGroup, requireMemberPage } from "@/lib/session";
+import { canManageGroup, requireUser } from "@/lib/session";
 import { getPeople, getPlayers, isNewMember, type PersonCard } from "@/lib/queries";
 import { canWelcome, coreNightName, welcomeName } from "@/lib/welcome";
 import { PeopleTabs } from "./tabs";
@@ -29,9 +29,14 @@ export default function PeoplePage() {
   );
 }
 
+/**
+ * The people of the nights someone sees: the members for a member, and for a casual account the
+ * casual night's people (getNightPeople), counted at its own nights. Inviting is the admins'.
+ */
 async function People() {
-  const me = await requireMemberPage();
-  const people = getPeople();
+  const me = await requireUser();
+  const member = me.access === "member";
+  const people = getPeople(member ? "core" : "casual");
   const invitedTo = coreNightName() ? `${coreNightName()} events` : SITE_NAME;
   // Who's a member is the admins' to decide, so inviting is theirs too
   const admin = await canManageGroup();
@@ -69,12 +74,16 @@ async function People() {
       <Section title="In the play logs, not signed up yet">
         {notSignedUp.length ? (
           <>
-            <p className="mb-3 text-sm text-slate">
-              Regulars from past plays{CASUAL_NIGHT && `, ${inSentence(NIGHT_NAMES.casual)} included`}.{" "}
-              {hasMemberRole() ? "Anyone given the group’s role in Discord" : "Anyone in the Discord server"} can sign in and their history
-              comes with them; if it doesn&apos;t, merge the names in{" "}
-              <Link href="/settings#players" className="text-accent underline-offset-4 hover:underline">Settings</Link>.
-            </p>
+            {member ? (
+              <p className="mb-3 text-sm text-slate">
+                Regulars from past plays{CASUAL_NIGHT && `, ${inSentence(NIGHT_NAMES.casual)} included`}.{" "}
+                {hasMemberRole() ? "Anyone given the group’s role in Discord" : "Anyone in the Discord server"} can sign in and their history
+                comes with them; if it doesn&apos;t, merge the names in{" "}
+                <Link href="/settings#players" className="text-accent underline-offset-4 hover:underline">Settings</Link>.
+              </p>
+            ) : (
+              <p className="mb-3 text-sm text-slate">Regulars from past {inSentence(NIGHT_NAMES.casual)}s. Once they sign in with Discord, their history comes with them.</p>
+            )}
             <Panel className="divide-y divide-line">
               {notSignedUp.map((p) => (
                 <div key={p.id} className="flex items-center gap-2.5 px-3 py-2.5 text-sm">
@@ -82,7 +91,7 @@ async function People() {
                   <span className="flex-1 font-medium">{p.name}</span>
                   <span className="tabular text-slate">
                     {`${p.nights} ${p.nights === 1 ? "event" : "events"}`}
-                    {p.casualNights > 0 && `, ${p.casualNights === p.nights ? "all" : p.casualNights} at ${inSentence(NIGHT_NAMES.casual)}`}
+                    {member && p.casualNights > 0 && `, ${p.casualNights === p.nights ? "all" : p.casualNights} at ${inSentence(NIGHT_NAMES.casual)}`}
                   </span>
                 </div>
               ))}

@@ -238,10 +238,13 @@ async function About() {
               is can&apos;t make it. If that date falls through, it stays on the list crossed out, with those answers, and every other answer stays as it was.
             </p>
             <p>
-              It waits on the members. A date where every member can come says so; otherwise the best date is marked, as long as enough can come and no other date is level with it (
+              {CASUAL_NIGHT
+                ? `A poll for ${core} waits on the members, and one for ${casual} on its people: everyone who's played at one in the last year, and everyone with an account for it. `
+                : "It waits on the members. "}
+              A date where everyone it waits on can come says so; otherwise the best date is marked, as long as enough can come and no other date is level with it (
               {MIN_PEOPLE.core}
               {CASUAL_NIGHT && MIN_PEOPLE.casual !== MIN_PEOPLE.core ? ` for ${core}, ${MIN_PEOPLE.casual} for ${casual}` : ""}, counting guests too), and a date
-              with fewer says too few. Once the last member answers, whoever started it is pinged in its thread to set the date.
+              with fewer says too few. Once the last of them answers, whoever started it is pinged in its thread to set the date.
             </p>
           </Part>
 
@@ -342,11 +345,41 @@ function CasualAbout({ casual }: { casual: string }) {
           </p>
         </Part>
 
+        <Part id="dates" title="Picking a date">
+          <p>
+            An event that&apos;s still picking a date offers a few, and you say which work: <strong>Works</strong>, <strong>If I have to</strong> or{" "}
+            <strong>Can&apos;t</strong>. Anyone can suggest another date. Whoever runs the event sets it, and everyone&apos;s then down as they
+            answered: works is going, if I have to is a maybe.
+          </p>
+          <p>
+            A poll for {casual} waits on its people: everyone who&apos;s played at one in the last year, and everyone with an account for it. Once
+            they&apos;ve all answered, whoever started it is told.
+          </p>
+        </Part>
+
+        <Part id="discover" title="Discover's percentages">
+          <p>
+            A percentage on <TextLink href="/discover">Discover</TextLink> is the chance someone would rank a game above their usual game: the top
+            half of what they&apos;ve rated. It comes from the mechanics, categories and weight they tend to rate highly, plus BGG&apos;s rating,
+            and 50% means no idea either way. The big number on a card is the average for {casual}&apos;s people; people count once they&apos;ve
+            rated or ranked {MIN_EVIDENCE} games.
+          </p>
+        </Part>
+
+        <Part id="online" title="Playing online">
+          <p>
+            <TextLink href="/online">Online</TextLink> lists everyone&apos;s games that Board Game Arena has, and BGA games that would go down
+            well. Tick <strong>Up for it on BGA</strong> on a game you&apos;d play there, and add your BGA name in Settings so the others can
+            find you.
+          </p>
+        </Part>
+
         <Part id="plan" title="Planning an event">
           <p>
             On an event you&apos;re going to, your ratings, rankings and votes count toward the games it suggests, like everyone else&apos;s
             there, and the games in your BGG collection are ones you can say you&apos;ll bring. Anyone going can ask someone who owns a game to
-            bring it.
+            bring it, answer for a friend they&apos;re bringing, or count others coming. <TextLink href="/shelf">Shelf</TextLink> has everyone&apos;s
+            games; pick {casual}&apos;s regulars to see what could come.
           </p>
           <p>
             After the event, log what was played on its page. The morning after, the bot messages you in Discord with any games you played and

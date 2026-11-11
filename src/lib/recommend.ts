@@ -6,7 +6,7 @@ import { type ChanceModel, type GroupChance, chanceOf, groupChance, saidChance, 
 import { isLegacy } from "./night";
 import { localDate } from "./nights";
 import { MIN_UPCOMING_CHANCE, UPCOMING_PER_GROUP, type UpcomingKind, upcomingStatus } from "./upcoming";
-import { type RankingLists, type ShelfGame, getMembers, getShelf, getSuggestions, getTieredRankingLists, inCrowd } from "./queries";
+import { type RankingLists, type ShelfGame, getMembers, getNightPeople, getShelf, getSuggestions, getTieredRankingLists, inCrowd } from "./queries";
 import { isFromLatestAsk } from "./picks";
 import { rankShare } from "./ranking";
 import { HEAVY_WEIGHT, NIGHT_TIER, gameTier } from "./tier";
@@ -102,12 +102,18 @@ type NightGame = { minPlayers: number | null; maxPlayers: number | null; weight:
  * game (heavy games for the core group, lighter ones, no heavier than it usually
  * plays, for the casual night).
  */
-export async function getRecommendations(meId: string, myPlayerId: number | null, opts: { twoPlayer?: boolean; online?: boolean } = {}) {
+/**
+ * Discover's picks, scored for whose taste `crowd` says: the core group's by default, or the
+ * casual night's people (getNightPeople), with everyone's games as the shelf, for someone who
+ * only sees the casual night.
+ */
+export async function getRecommendations(meId: string, myPlayerId: number | null, opts: { twoPlayer?: boolean; online?: boolean; crowd?: Night } = {}) {
+  const crowd = opts.crowd ?? "core";
   const [members, lists, opinions, collection, allGames, shelf, suggestions, catalog, groupPlays, myPlayed, coreTables, casualTables, onBga, casualWeights, upcomingRows] = await Promise.all([
-    getMembers(),
-    getTieredRankingLists(),
-    db.select().from(schema.opinion).where(inCrowd(schema.opinion.userId)),
-    db.select().from(schema.collectionItem).where(inCrowd(schema.collectionItem.userId)),
+    getNightPeople(crowd),
+    getTieredRankingLists(crowd),
+    db.select().from(schema.opinion).where(inCrowd(schema.opinion.userId, crowd)),
+    db.select().from(schema.collectionItem).where(inCrowd(schema.collectionItem.userId, crowd)),
     db
       .select({
         id: schema.game.id,
@@ -127,13 +133,14 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
         categories: schema.game.categories,
       })
       .from(schema.game),
-    getShelf(),
-    getSuggestions(meId),
+    crowd === "casual" ? getShelf({ everyone: true }) : getShelf(),
+    // The buy list and its ideas are the core group's
+    crowd === "casual" ? [] : getSuggestions(meId),
     db.select().from(schema.catalogGame),
     db
       .select({ id: schema.play.gameId, times: count() })
       .from(schema.play)
-      .where(isNotNull(schema.play.gameId))
+      .where(and(isNotNull(schema.play.gameId), crowd === "casual" ? eq(schema.play.night, "casual") : undefined))
       .groupBy(schema.play.gameId),
     myPlayerId
       ? db
@@ -449,15 +456,16 @@ function collectSignals(
 }
 
 /** The group taste statistics alone, for their own page: no candidates to score or chance models to train. */
-export async function getTasteInsights() {
+/** Group taste for a kind of night's people (getNightPeople): the core group's by default */
+export async function getTasteInsights(night: Night = "core") {
   const [members, lists, opinions, collection, allGames] = await Promise.all([
-    getMembers(),
-    getTieredRankingLists(),
-    db.select({ userId: schema.opinion.userId, gameId: schema.opinion.gameId, sentiment: schema.opinion.sentiment }).from(schema.opinion).where(inCrowd(schema.opinion.userId)),
+    getNightPeople(night),
+    getTieredRankingLists(night),
+    db.select({ userId: schema.opinion.userId, gameId: schema.opinion.gameId, sentiment: schema.opinion.sentiment }).from(schema.opinion).where(inCrowd(schema.opinion.userId, night)),
     db
       .select({ userId: schema.collectionItem.userId, gameId: schema.collectionItem.gameId, bggUserRating: schema.collectionItem.bggUserRating })
       .from(schema.collectionItem)
-      .where(inCrowd(schema.collectionItem.userId)),
+      .where(inCrowd(schema.collectionItem.userId, night)),
     db
       .select({
         id: schema.game.id,

@@ -137,15 +137,8 @@ async function Settings() {
           <p className="mb-3 text-sm text-slate">For playing online, at boardgamearena.com. It&apos;s a different site from BoardGameGeek.</p>
           <BgaForm username={bga?.username ?? null} premium={bga?.premium ?? false} />
           <p className="mt-2 text-xs text-slate">
-            {member ? (
-              <>
-                Shown on the <Link href="/online" className="text-accent underline-offset-4 hover:underline">Online</Link> page so the others can find
-                you there.
-              </>
-            ) : (
-              "Shown to the group so they can find you there."
-            )}{" "}
-            Only whoever opens a table needs Premium for a Premium game.
+            Shown on the <Link href="/online" className="text-accent underline-offset-4 hover:underline">Online</Link> page so the others can find
+            you there. Only whoever opens a table needs Premium for a Premium game.
           </p>
         </Panel>
       </Section>

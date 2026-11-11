@@ -33,7 +33,6 @@ export function ShelfBrowser({
   initialShame,
   groups,
   linkIds,
-  limited,
 }: {
   games: ShelfGame[];
   /** Games that can be played on Board Game Arena */
@@ -46,10 +45,8 @@ export function ShelfBrowser({
   initialShame: boolean;
   /** Whose games to narrow to as a group, beside one person's: the casual night's regulars, and for members the core group */
   groups: { id: string; label: string; ownerIds: string[] }[];
-  /** Owners whose names open their People page: the core group's members, for a member */
+  /** Owners whose names open their People page */
   linkIds: string[];
-  /** A casual account: the games carry only their own ratings, so there's no group view to sort or show */
-  limited: boolean;
 }) {
   const [query, setQuery] = useState("");
   // "Plays 4" keeps anything 4 can play; "Best at 4" only what BGG's voters say is best at 4
@@ -166,7 +163,7 @@ export function ShelfBrowser({
         </select>
         <select aria-label="Sort" className={select} value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
           <option value="name">A–Z</option>
-          {!limited && <option value="loved">Group&apos;s favorites</option>}
+          <option value="loved">Group&apos;s favorites</option>
           <option value="plays">Most played</option>
           <option value="stale">Longest since played</option>
           <option value="rating">BGG rating</option>
@@ -253,7 +250,7 @@ export function ShelfBrowser({
           ))}
         </ul>
       ) : (
-        <ShelfTable games={shown} memberById={memberById} chances={shameOnly ? chanceOf : null} linkable={linkable} limited={limited} />
+        <ShelfTable games={shown} memberById={memberById} chances={shameOnly ? chanceOf : null} linkable={linkable} />
       )}
     </div>
   );
@@ -264,13 +261,11 @@ function ShelfTable({
   memberById,
   chances,
   linkable,
-  limited,
 }: {
   games: ShelfGame[];
   memberById: Map<string, Member>;
   chances: Map<number, number | null> | null;
   linkable: Set<string>;
-  limited: boolean;
 }) {
   const th = "px-2 py-2 text-left text-xs font-medium text-slate";
   return (
@@ -285,7 +280,7 @@ function ShelfTable({
             <th className={th}>BGG</th>
             <th className={th}>Played</th>
             <th className={th}>Owners</th>
-            <th className={clsx(th, "pr-3")}>{limited ? "You" : "The group"}</th>
+            <th className={clsx(th, "pr-3")}>The group</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">

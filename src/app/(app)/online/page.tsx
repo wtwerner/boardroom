@@ -6,11 +6,11 @@ import { bgaFacts, bgaGameUrl } from "@/lib/bga";
 import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
 import { type BgaListing, type OnlineGame, getBgaByBggId, getBgaCasualPlayers, getBgaMembers, getOnlineGames } from "@/lib/queries";
 import { type Candidate, MIN_EVIDENCE, getRecommendations } from "@/lib/recommend";
-import { requireMemberPage } from "@/lib/session";
+import { requireUser } from "@/lib/session";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { describeReason } from "@/lib/taste";
 import { BGA_SYNC_KEY, lastSyncedAt } from "@/lib/sync";
-import type { Sentiment } from "@/db/enums";
+import type { Night, Sentiment } from "@/db/enums";
 import { CollapsibleSection, LoadBgaButton, OnlineToggle } from "./online-controls";
 
 export const metadata: Metadata = { title: "Online" };
@@ -35,12 +35,15 @@ export default function OnlinePage() {
 const SENTIMENT_SCORE: Record<Sentiment, number> = { love: 2, like: 1, meh: -1, nope: -2 };
 const loved = (g: OnlineGame) => g.sentiments.reduce((n, s) => n + SENTIMENT_SCORE[s.sentiment], 0);
 
+/** The group's games on BGA. A casual account's is everyone with an account and the casual night's plays (getOnlineGames) */
 async function Online() {
-  const me = await requireMemberPage();
+  const me = await requireUser();
+  const member = me.access === "member";
+  const crowd = member ? "core" : "casual";
   const [games, members, casualPlayers, syncedAt] = await Promise.all([
-    getOnlineGames(),
-    getBgaMembers(),
-    CASUAL_NIGHT ? getBgaCasualPlayers() : [],
+    getOnlineGames(crowd),
+    getBgaMembers(crowd),
+    CASUAL_NIGHT && member ? getBgaCasualPlayers() : [],
     lastSyncedAt(BGA_SYNC_KEY),
   ]);
   const mine = members.find((m) => m.id === me.id);
@@ -49,7 +52,7 @@ async function Online() {
     return (
       <Empty>
         The list of games on Board Game Arena hasn&apos;t been loaded yet. It refreshes every night.
-        <LoadBgaButton />
+        {member && <LoadBgaButton />}
       </Empty>
     );
   }
@@ -118,7 +121,7 @@ async function Online() {
         </p>
         <Suspense fallback={<Skeleton className="h-64" />}>
           {/* Shown elsewhere on the page: the ones people are up for and the ones on a wishlist or the buy list */}
-          <Recommended members={members} meId={me.id} playerId={me.playerId} listed={[...keen, ...tryFirst].map((g) => g.id)} />
+          <Recommended members={members} meId={me.id} playerId={me.playerId} crowd={crowd} listed={[...keen, ...tryFirst].map((g) => g.id)} />
         </Suspense>
       </CollapsibleSection>
 
@@ -128,9 +131,15 @@ async function Online() {
 
       <CollapsibleSection id="try" title={`Try before you buy (${tryFirst.length})`}>
         <p className="mb-3 text-sm text-slate">
-          On a wishlist or the <TextLink href="/discover">buy list</TextLink>, and nobody owns it yet.
+          {member ? (
+            <>
+              On a wishlist or the <TextLink href="/discover">buy list</TextLink>, and nobody owns it yet.
+            </>
+          ) : (
+            "On someone's wishlist, and nobody owns it yet."
+          )}
         </p>
-        {tryFirst.length ? <GameList games={tryFirst} {...rowProps} /> : <Empty>Nothing on the wishlists or buy list is on BGA.</Empty>}
+        {tryFirst.length ? <GameList games={tryFirst} {...rowProps} /> : <Empty>Nothing on the wishlists{member && " or buy list"} is on BGA.</Empty>}
       </CollapsibleSection>
 
       <p className="text-xs text-slate">
@@ -143,8 +152,8 @@ async function Online() {
 
 const percent = (p: number) => `${Math.round(p * 100)}%`;
 
-async function Recommended({ members, meId, playerId, listed }: { members: Member[]; meId: string; playerId: number | null; listed: number[] }) {
-  const [rec, bga] = await Promise.all([getRecommendations(meId, playerId, { online: true }), getBgaByBggId()]);
+async function Recommended({ members, meId, playerId, crowd, listed }: { members: Member[]; meId: string; playerId: number | null; crowd: Night; listed: number[] }) {
+  const [rec, bga] = await Promise.all([getRecommendations(meId, playerId, { online: true, crowd }), getBgaByBggId()]);
   if (rec.scoredMemberIds.length === 0) {
     return <Empty>Picks start once someone has rated or ranked {MIN_EVIDENCE} games.</Empty>;
   }

@@ -7,7 +7,7 @@ import { CASUAL_NIGHT, CLAUDE, NIGHT_NAMES } from "@/config";
 import type { MeepleColor, Night } from "@/db/enums";
 import { nightParam } from "@/components/night-switch";
 import { Empty, GameCover, Meeple, PageHeader, Section, Skeleton, TextLink, playerRange, playtime } from "@/components/ui";
-import { requireMemberPage } from "@/lib/session";
+import { requireUser } from "@/lib/session";
 import { hasAnthropicKey } from "@/lib/ai";
 import { hasBggToken } from "@/lib/bgg";
 import { bggUrl } from "@/lib/bgg-links";
@@ -38,17 +38,24 @@ export default function DiscoverPage(props: PageProps<"/discover">) {
   );
 }
 
+/**
+ * Picks for the group and for you. A casual account gets the casual night's, scored for its people
+ * (getNightPeople) with everyone's games as the shelf. The buy list, adding ideas and Claude's
+ * picks are the core group's: Claude's are written from the core group's context.
+ */
 async function Discover({ searchParams }: { searchParams: PageProps<"/discover">["searchParams"] }) {
-  const me = await requireMemberPage();
+  const me = await requireUser();
+  const member = me.access === "member";
   const params = await searchParams;
   // Group taste has its own page now
   if (params.view === "taste") redirect("/people/taste");
   const twoPlayer = params.two === "1";
-  const [rec, bga] = await Promise.all([getRecommendations(me.id, me.playerId, { twoPlayer }), getBgaByBggId()]);
+  const [rec, bga] = await Promise.all([getRecommendations(me.id, me.playerId, { twoPlayer, crowd: member ? "core" : "casual" }), getBgaByBggId()]);
   const members: Member[] = rec.members.map((m) => ({ id: m.id, name: m.name, color: m.color }));
   const canFind = hasAnthropicKey() && hasBggToken();
   const evidenceCount = Object.values(rec.insights.evidence).reduce((a, b) => a + b, 0);
-  const cardProps = { members, meId: me.id, scoredIds: rec.scoredMemberIds, bga };
+  const cardProps = { members, meId: me.id, scoredIds: rec.scoredMemberIds, bga, limited: !member };
+  const claude = CLAUDE && member;
 
   const forNight = (night: Night) => {
     const n = rec.nights[night];
@@ -61,7 +68,7 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
         : `a ${n.tableSize}-player table, weight ${HEAVY_WEIGHT} and up`;
     return (
       <>
-        {CLAUDE && (
+        {claude && (
           <ClaudeSection
             title={`Claude's picks for ${forWhom}`}
             intro={
@@ -79,7 +86,7 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
           />
         )}
 
-        {rec.group.buyList.length > 0 && (
+        {member && rec.group.buyList.length > 0 && (
           <Section title="Buy list" action={<span className="text-xs text-slate">most wanted first</span>}>
             <PickGrid picks={rec.group.buyList} {...cardProps} mode="group" buyList />
           </Section>
@@ -100,15 +107,15 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
         <Section title={`More that fit ${forWhom}`}>
           <p className="mb-4 max-w-2xl text-sm text-slate">
             Ideas to buy: games on people&apos;s BGG wishlists and BGG&apos;s trending and well-loved lists, none of which anyone owns. Best bets
-            first for {table}, by every member&apos;s average chance of liking it.
+            first for {table}, by {member ? "every member's" : "everyone's"} average chance of liking it.
           </p>
-          <AddSuggestionForm />
+          {member && <AddSuggestionForm />}
           {n.more.length ? (
             <PickGrid picks={n.more} {...cardProps} mode="group" className="mt-4" />
           ) : (
             <Empty className="mt-4">
               Nothing yet. The nightly sync fills this from BGG.
-              {hasBggToken() && <LoadCatalogButton />}
+              {member && hasBggToken() && <LoadCatalogButton />}
             </Empty>
           )}
         </Section>
@@ -142,17 +149,18 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
       </>
     );
   };
-  const nights: Night[] = CASUAL_NIGHT ? ["core", "casual"] : ["core"];
+  const nights: Night[] = !member ? ["casual"] : CASUAL_NIGHT ? ["core", "casual"] : ["core"];
   const hasUpcoming = nights.some((night) => UPCOMING_GROUPS.some((u) => rec.nights[night].upcoming[u.kind].length > 0));
 
   // Everything comes from the same recommendations, so all the views and both nights are sent and switch in the browser
   return (
     <DiscoverTabs
       initial={params.view === "you" ? "you" : params.view === "upcoming" && hasUpcoming ? "upcoming" : "group"}
-      initialNight={(CASUAL_NIGHT && nightParam(params.night)) || "core"}
+      initialNight={!member ? "casual" : (CASUAL_NIGHT && nightParam(params.night)) || "core"}
       twoPlayer={twoPlayer}
-      nightNames={NIGHT_NAMES}
-      group={CASUAL_NIGHT ? { core: forNight("core"), casual: forNight("casual") } : { core: forNight("core") }}
+      // What's sent to the browser is readable there: a casual account's page doesn't carry the core group's night's name
+      nightNames={member ? NIGHT_NAMES : { core: "", casual: NIGHT_NAMES.casual }}
+      group={Object.fromEntries(nights.map((night) => [night, forNight(night)]))}
       upcoming={hasUpcoming ? Object.fromEntries(nights.map((night) => [night, upcomingFor(night)])) : null}
       you={
         !rec.me.enoughData ? (
@@ -161,7 +169,7 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
           </Empty>
         ) : (
           <>
-            {CLAUDE && (
+            {claude && (
               <ClaudeSection
                 title="Claude's picks for you"
                 intro="Tailored to your own rankings and ratings: games you might love that the group doesn't own."
@@ -237,7 +245,8 @@ function ClaudeSection({
   );
 }
 
-type CardProps = { members: Member[]; meId: string; scoredIds: string[]; mode: "group" | "me"; bga: Awaited<ReturnType<typeof getBgaByBggId>> };
+/** `limited`: a casual account, which doesn't vote on the core group's buy list */
+type CardProps = { members: Member[]; meId: string; scoredIds: string[]; mode: "group" | "me"; bga: Awaited<ReturnType<typeof getBgaByBggId>>; limited?: boolean };
 
 function PickGrid({ picks, className, owned, buyList, ...card }: CardProps & { picks: Candidate[]; className?: string; owned?: boolean; buyList?: boolean }) {
   return (
@@ -249,7 +258,7 @@ function PickGrid({ picks, className, owned, buyList, ...card }: CardProps & { p
   );
 }
 
-function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga }: CardProps & { c: Candidate; owned?: boolean; buyList?: boolean }) {
+function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga, limited }: CardProps & { c: Candidate; owned?: boolean; buyList?: boolean }) {
   const g = c.game;
   const onBga = bga.get(g.id);
   const name = (id: string) => (id === meId ? "You" : (members.find((m) => m.id === id)?.name ?? "Someone"));
@@ -381,7 +390,7 @@ function PickCard({ c, members, meId, scoredIds, mode, owned, buyList, bga }: Ca
           ) : (
             <span />
           )}
-          {!owned && (
+          {!owned && !limited && (
             <span className="flex flex-wrap items-center justify-end gap-2">
               {c.suggestion && c.suggestion.score !== 0 && <span className="tabular text-xs text-slate">{c.suggestion.score} {Math.abs(c.suggestion.score) === 1 ? "vote" : "votes"}</span>}
               <PickActions gameId={g.id} wanted={c.suggestion?.myVote === 1} notForMe={c.vetoedBy.includes(meId)} />

@@ -1,5 +1,5 @@
 import "server-only";
-import { type Column, and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, max, not, sql } from "drizzle-orm";
+import { type Column, and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, max, ne, not, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MUST_PLAY_LIMIT, TIERS, type MeepleColor, type Night, type Sentiment, type Tier } from "@/db/enums";
 import { localDate, recentMonths } from "./nights";
@@ -105,6 +105,7 @@ export async function getPlays(opts: { limit?: number; offset?: number; gameId?:
       sourceRef: play.sourceRef,
       night: play.night,
       needsReview: play.needsReview,
+      createdBy: play.createdBy,
       thumbnail: game.thumbnail,
       image: game.image,
       title: game.name,
@@ -281,19 +282,25 @@ export async function getShelf(opts: { night?: Night; everyone?: boolean } = {})
 }
 
 /**
- * The Shelf page's: every account's games (getShelf with `everyone`), everyone with an account, and
- * the casual night's regulars, so it can show what could come there: everyone who's played at one
- * in the last year (getCasualCrowd) and every casual account.
+ * A kind of night's people, for the pages about who comes to it (People, Group taste, Discover):
+ * the members for the core group's, and for the casual night everyone who's played at one in the
+ * last year (getCasualCrowd) and every casual account.
  */
-export async function getWholeShelf() {
-  const [games, people, played, casual] = await Promise.all([
-    getShelf({ everyone: true }),
+export async function getNightPeople(night: Night) {
+  if (night === "core") return getMembers();
+  const [everyone, played, casual] = await Promise.all([
     getMembers("casual"),
     getCasualCrowd(),
     db.select({ id: user.id }).from(user).where(eq(user.access, "casual")),
   ]);
   const regulars = new Set([...played, ...casual.map((c) => c.id)]);
-  return { games, people, regulars: people.filter((p) => regulars.has(p.id)).map((p) => p.id) };
+  return everyone.filter((p) => regulars.has(p.id));
+}
+
+/** The Shelf page's: every account's games (getShelf with `everyone`), everyone with an account, and the casual night's people (getNightPeople) */
+export async function getWholeShelf() {
+  const [games, people, regulars] = await Promise.all([getShelf({ everyone: true }), getMembers("casual"), getNightPeople("casual")]);
+  return { games, people, regulars: regulars.map((p) => p.id) };
 }
 
 export async function getWantToPlay(limit = 6) {
@@ -421,10 +428,7 @@ export async function getRankingPool(userId: string, playerId: number | null, ra
 // Single game
 // ---------------------------------------------------------------------------
 
-/**
- * One game: who in the core group owns it and what they think (inCrowd), its plays, and the
- * viewer's own opinion, which is theirs to see whether or not they're in the group.
- */
+/** One game: who owns it and what they think (everyone with an account), its plays, and the viewer's own opinion */
 export async function getGame(id: number, viewerId: string) {
   const [g, owners, opinions, plays, [mine]] = await Promise.all([
     db.query.game.findFirst({ where: eq(game.id, id) }),
@@ -432,11 +436,11 @@ export async function getGame(id: number, viewerId: string) {
       .select({ userId: user.id, name: user.name, own: collectionItem.own, wishlist: collectionItem.wishlist, rating: collectionItem.bggUserRating })
       .from(collectionItem)
       .innerJoin(user, eq(user.id, collectionItem.userId))
-      .where(and(eq(collectionItem.gameId, id), inCrowd(collectionItem.userId))),
+      .where(and(eq(collectionItem.gameId, id), inCrowd(collectionItem.userId, "casual"))),
     db
       .select({ userId: opinion.userId, sentiment: opinion.sentiment, wantToPlay: opinion.wantToPlay, mustPlay: opinion.mustPlay, playOnline: opinion.playOnline })
       .from(opinion)
-      .where(and(eq(opinion.gameId, id), inCrowd(opinion.userId))),
+      .where(and(eq(opinion.gameId, id), inCrowd(opinion.userId, "casual"))),
     getPlays({ gameId: id, limit: 200 }),
     db
       .select({ sentiment: opinion.sentiment, wantToPlay: opinion.wantToPlay, mustPlay: opinion.mustPlay, playOnline: opinion.playOnline })
@@ -694,8 +698,14 @@ export type PersonCard = Awaited<ReturnType<typeof getPeople>>["members"][number
  * shelf is in, and the game at the top of each of their rankings. Regulars from
  * the play logs who haven't signed up come separately.
  */
-export async function getPeople() {
-  const [members, owned, rated, attendance, welcomed, lists] = await Promise.all([
+/**
+ * The People page: a kind of night's people (getNightPeople) with what they own, rate and come to,
+ * and the regulars from its play logs who haven't signed up. The casual night's counts only its own
+ * nights, and has nobody invited (that's to the core group's).
+ */
+export async function getPeople(night: Night = "core") {
+  const [crowd, members, owned, rated, attendance, welcomed, lists] = await Promise.all([
+    getNightPeople(night),
     db
       .select({
         id: user.id,
@@ -709,28 +719,31 @@ export async function getPeople() {
       })
       .from(user)
       .leftJoin(player, eq(player.userId, user.id))
-      .where(inCrowd(user.id))
+      .where(inCrowd(user.id, night))
       .orderBy(desc(user.createdAt)),
     db
       .select({ userId: collectionItem.userId, n: count() })
       .from(collectionItem)
-      .where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId)))
+      .where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId, night)))
       .groupBy(collectionItem.userId),
     db
       .select({ userId: opinion.userId, n: count() })
       .from(opinion)
-      .where(and(isNotNull(opinion.sentiment), inCrowd(opinion.userId)))
+      .where(and(isNotNull(opinion.sentiment), inCrowd(opinion.userId, night)))
       .groupBy(opinion.userId),
-    getAttendance(),
+    getAttendance(night === "casual" ? "casual" : undefined),
     // Invited to the core group's nights, not signed in yet
-    db
-      .select({ id: player.id, name: player.name, color: player.color, discordId: player.discordId, welcomedAt: player.welcomedAt, by: user.name })
-      .from(player)
-      .leftJoin(user, eq(user.id, player.welcomedBy))
-      .where(and(isNotNull(player.welcomedAt), isNull(player.userId)))
-      .orderBy(desc(player.welcomedAt)),
-    getTieredRankingLists(),
+    night === "core"
+      ? db
+          .select({ id: player.id, name: player.name, color: player.color, discordId: player.discordId, welcomedAt: player.welcomedAt, by: user.name })
+          .from(player)
+          .leftJoin(user, eq(user.id, player.welcomedBy))
+          .where(and(isNotNull(player.welcomedAt), isNull(player.userId)))
+          .orderBy(desc(player.welcomedAt))
+      : [],
+    getTieredRankingLists(night),
   ]);
+  const inCrowdIds = new Set(crowd.map((c) => c.id));
   const topIds = TIERS.flatMap((t) => Object.values(lists[t]).map((list) => list[0]));
   const topGames = topIds.length
     ? await db.select({ id: game.id, name: game.name, thumbnail: game.thumbnail }).from(game).where(inArray(game.id, topIds))
@@ -742,7 +755,7 @@ export async function getPeople() {
   const ratedBy = new Map(rated.map((r) => [r.userId, r.n]));
   const seatsOf = new Map(attendance.map((a) => [a.id, a]));
   return {
-    members: members.map((m) => ({
+    members: members.filter((m) => inCrowdIds.has(m.id)).map((m) => ({
       ...m,
       owned: ownedBy.get(m.id) ?? 0,
       rated: ratedBy.get(m.id) ?? 0,
@@ -767,8 +780,11 @@ export async function getNewMembers() {
     .orderBy(desc(user.createdAt));
 }
 
-/** One member's page: their shelf, wishlist, rankings and what they've played with the group. */
-export async function getPerson(userId: string) {
+/**
+ * One person's page: their shelf, wishlist, rankings and what they've played. `night` keeps their
+ * plays to one kind of night, for someone who only sees that one.
+ */
+export async function getPerson(userId: string, night?: Night) {
   const [member] = await db
     .select({
       id: user.id,
@@ -781,13 +797,13 @@ export async function getPerson(userId: string) {
     })
     .from(user)
     .leftJoin(player, eq(player.userId, user.id))
-    .where(eq(user.id, userId))
+    .where(and(eq(user.id, userId), ne(user.access, "removed")))
     .limit(1);
   if (!member) return null;
 
   const gameCols = { id: game.id, name: game.name, thumbnail: game.thumbnail, image: game.image };
   const [shelf, wishlist, top, keen, played] = await Promise.all([
-    getShelf(),
+    getShelf({ everyone: true, night }),
     db
       .select(gameCols)
       .from(collectionItem)
@@ -811,7 +827,7 @@ export async function getPerson(userId: string) {
       .from(playPlayer)
       .innerJoin(play, eq(play.id, playPlayer.playId))
       .innerJoin(game, eq(game.id, play.gameId))
-      .where(eq(playPlayer.playerId, member.playerId ?? -1))
+      .where(and(eq(playPlayer.playerId, member.playerId ?? -1), night ? eq(play.night, night) : undefined))
       .groupBy(game.id)
       .orderBy(desc(count(play.id)), game.name)
       .limit(8),
@@ -852,13 +868,13 @@ export async function getBgaGame(bggId: number) {
   return row ?? null;
 }
 
-/** Members and their BGA names, so they can find each other there. */
-export async function getBgaMembers() {
+/** A night's crowd (inCrowd) and their BGA names, so they can find each other there: the members by default, or everyone with an account */
+export async function getBgaMembers(night: Night = "core") {
   return db
     .select({ id: user.id, name: user.name, image: user.image, color: player.color, bgaUsername: user.bgaUsername, bgaPremium: user.bgaPremium })
     .from(user)
     .leftJoin(player, eq(player.userId, user.id))
-    .where(inCrowd(user.id))
+    .where(inCrowd(user.id, night))
     .orderBy(user.name);
 }
 
@@ -876,22 +892,24 @@ export type OnlineGame = Awaited<ReturnType<typeof getOnlineGames>>[number];
 
 /**
  * Games on BGA that the group has some tie to: on the shelf, played together, on a
- * wishlist or the buy list, or someone's up for playing it there.
+ * wishlist or the buy list, or someone's up for playing it there. The casual night's (`night`)
+ * is everyone with an account and its own plays, without the core group's buy list.
  */
-export async function getOnlineGames() {
+export async function getOnlineGames(night: Night = "core") {
   const bga = await getBgaByBggId();
   if (bga.size === 0) return [];
+  const casual = night === "casual";
   const [owners, plays, opinions, wishes, buyList] = await Promise.all([
-    db.select({ gameId: collectionItem.gameId, userId: collectionItem.userId }).from(collectionItem).where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId))),
+    db.select({ gameId: collectionItem.gameId, userId: collectionItem.userId }).from(collectionItem).where(and(eq(collectionItem.own, true), inCrowd(collectionItem.userId, night))),
     db
       .select({ gameId: play.gameId, plays: count(), lastPlayed: max(play.playedOn) })
       .from(play)
-      .where(isNotNull(play.gameId))
+      .where(and(isNotNull(play.gameId), casual ? eq(play.night, "casual") : undefined))
       .groupBy(play.gameId),
-    db.select({ gameId: opinion.gameId, userId: opinion.userId, sentiment: opinion.sentiment, playOnline: opinion.playOnline }).from(opinion).where(inCrowd(opinion.userId)),
-    db.select({ gameId: collectionItem.gameId, userId: collectionItem.userId }).from(collectionItem).where(and(eq(collectionItem.wishlist, true), inCrowd(collectionItem.userId))),
+    db.select({ gameId: opinion.gameId, userId: opinion.userId, sentiment: opinion.sentiment, playOnline: opinion.playOnline }).from(opinion).where(inCrowd(opinion.userId, night)),
+    db.select({ gameId: collectionItem.gameId, userId: collectionItem.userId }).from(collectionItem).where(and(eq(collectionItem.wishlist, true), inCrowd(collectionItem.userId, night))),
     // "Want it" votes put a game on the buy list; Claude's ideas nobody has voted for don't count
-    db
+    casual ? [] : db
       .select({ gameId: schema.suggestion.bggId })
       .from(schema.suggestion)
       .innerJoin(schema.suggestionVote, eq(schema.suggestionVote.suggestionId, schema.suggestion.id))

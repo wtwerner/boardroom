@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import clsx from "clsx";
 import { Suspense } from "react";
 import { CASUAL_NIGHT, DEMO, GROUP_NIGHTS, NIGHT_NAMES } from "@/config";
 import { NightTag } from "@/components/night-row";
@@ -31,16 +30,28 @@ export default function GamePage(props: PageProps<"/games/[id]">) {
 
 async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) {
   const me = await requireUser();
-  // A casual account sees the game, their own say on it and their night: not the core group's opinions or plays
+  // A casual account sees everything about the game but the core group's: its nights' plays and
+  // places, and moving it between ranking lists, which is the members' housekeeping
   const limited = me.access !== "member";
   const id = Number((await params).id);
-  const [data, members, mustPlayLeft, bga] = await Promise.all([getGame(id, me.id), getMembers(), getMustPlayLeft(me.id, id), getBgaGame(id)]);
+  const [data, everyone, members, mustPlayLeft, bga] = await Promise.all([
+    getGame(id, me.id),
+    getMembers("casual"),
+    limited ? [] : getMembers(),
+    getMustPlayLeft(me.id, id),
+    getBgaGame(id),
+  ]);
   if (!data) notFound();
   const { game: g, owners, opinions, mine } = data;
+  // What everyone thinks: every member for a member, and anyone else who's said something or owns it.
+  // A casual account sees only the people who have, so the list doesn't spell out the core group
+  const said = new Set([...opinions.filter((o) => o.sentiment || o.mustPlay || o.wantToPlay || o.playOnline).map((o) => o.userId), ...owners.filter((o) => o.own).map((o) => o.userId)]);
+  const coreIds = new Set(members.map((m) => m.id));
+  const thinkers = everyone.filter((m) => coreIds.has(m.id) || said.has(m.id));
   const plays = limited ? data.plays.filter((p) => p.night === "casual") : data.plays;
   const tier = gameTier(g);
   const places = await getGamePlaces(g.id, tier, limited ? ["casual"] : GROUP_NIGHTS);
-  const memberById = new Map(members.map((m) => [m.id, m]));
+  const memberById = new Map(everyone.map((m) => [m.id, m]));
 
   // How many times each player has played it
   const record = new Map<number, { name: string; color: (typeof plays)[number]["players"][number]["color"]; plays: number }>();
@@ -82,7 +93,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
           </p>
           {bga && (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate">
-              {!limited && <OnlineToggle gameId={g.id} on={mine?.playOnline ?? false} label="Up for it on BGA" />}
+              <OnlineToggle gameId={g.id} on={mine?.playOnline ?? false} label="Up for it on BGA" />
               <span>
                 On BGA: {[...bgaFacts(bga), bga.premium && "Premium"].filter(Boolean).join(", ")}
               </span>
@@ -126,11 +137,11 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
         </div>
       </header>
 
-      <div className={clsx("grid gap-10", limited ? "lg:grid-cols-2" : "lg:grid-cols-3")}>
-        {!limited && (
+      <div className="grid gap-10 lg:grid-cols-3">
+        {thinkers.length > 0 && (
           <Section title="What everyone thinks">
             <Panel className="divide-y divide-line">
-              {members.map((m) => {
+              {thinkers.map((m) => {
                 const o = opinions.find((x) => x.userId === m.id);
                 const owned = owners.find((x) => x.userId === m.id && x.own);
                 return (
@@ -200,7 +211,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
 
       <Section title="Rules and teach">
         <Panel className="max-w-xl px-3 py-2.5">
-          <PrepLinks game={g} links={g.prepLinks} lockLinks={DEMO} readOnly={limited} />
+          <PrepLinks game={g} links={g.prepLinks} lockLinks={DEMO} canRemove={!limited} />
         </Panel>
       </Section>
 
@@ -210,12 +221,12 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
         </Section>
       )}
 
-      {!limited && owners.some((o) => o.wishlist) && (
+      {owners.some((o) => o.wishlist) && (
         <p className="text-sm text-slate">
           On the wishlist of {owners.filter((o) => o.wishlist).map((o) => memberById.get(o.userId)?.name).join(", ")}.
         </p>
       )}
-      {!limited && <Link href="/shelf" className="text-sm text-accent">Back to the shelf</Link>}
+      <Link href="/shelf" className="text-sm text-accent">Back to the shelf</Link>
     </div>
   );
 }

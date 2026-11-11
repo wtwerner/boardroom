@@ -118,7 +118,7 @@ async function Welcome() {
             Board Game Arena
           </a>{" "}
           (BGA) is a different site, for playing online between game nights. If you play there, add the name you play under so the others can find
-          you{limited ? " there" : <> on the <TextLink href="/online">Online</TextLink> page</>}.
+          you on the <TextLink href="/online">Online</TextLink> page.
         </p>
         <BgaForm username={profile?.bga ?? null} premium={profile?.premium ?? false} />
       </>
@@ -174,7 +174,7 @@ async function Welcome() {
                   in Discord, with a thread.{" "}
                   {limited ? (
                     <>
-                      Tap <strong>Going</strong> on a post, or answer on its page here.
+                      Tap <strong>Going</strong> on a post, or answer on <TextLink href="/plan">Plan</TextLink>.
                     </>
                   ) : (
                     <>
@@ -184,7 +184,9 @@ async function Welcome() {
                   )}
                 </>
               ) : limited ? (
-                <>The next one is on Home: say whether you&apos;re going, and what you&apos;ll bring.</>
+                <>
+                  They&apos;re on <TextLink href="/plan">Plan</TextLink>: say whether you&apos;re going, and what you&apos;ll bring.
+                </>
               ) : (
                 <>
                   They&apos;re on <TextLink href="/plan">Plan</TextLink>: say whether you&apos;re going, and help pick what to play.
@@ -192,14 +194,12 @@ async function Welcome() {
               )}
             </p>
           </div>
-          {!limited && (
-            <div className="space-y-1 p-4">
-              <h3 className="font-semibold">Every number explained</h3>
-              <p className="text-slate">
-                <TextLink href="/about">How it works</TextLink> says where rankings, percentages and the planner&apos;s picks come from.
-              </p>
-            </div>
-          )}
+          <div className="space-y-1 p-4">
+            <h3 className="font-semibold">Every number explained</h3>
+            <p className="text-slate">
+              <TextLink href="/about">How it works</TextLink> says where rankings, percentages and the planner&apos;s picks come from.
+            </p>
+          </div>
         </Panel>
       </Section>
     </div>

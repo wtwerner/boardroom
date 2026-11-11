@@ -24,7 +24,7 @@ import { refreshCatalog } from "@/lib/catalog";
 import { type SeatNight, getGameTiers, getPlayerNights, inCrowd } from "@/lib/queries";
 import { nightsVersion } from "@/lib/events";
 import { replaceTier } from "@/lib/tier";
-import { type CurrentUser, PREVIEW_COOKIE, requireAdmin, requireMember, requireUser } from "@/lib/session";
+import { type CurrentUser, PREVIEW_COOKIE, requireAdmin, requireMember, requireUser, seesNight } from "@/lib/session";
 import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
 import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
@@ -953,11 +953,15 @@ export async function startPoll(input: z.infer<typeof PollInput>): Promise<Actio
  * accounts only in the casual night's. The core group's nights don't exist for a casual account,
  * so it's answered as if the night were gone.
  */
-async function requireNight(night: Night | undefined): Promise<CurrentUser> {
+/** The signed-in person, on a kind of night they see (seesNight): anything else answers as if it were gone */
+async function requireNight(night: Night | null | undefined): Promise<CurrentUser> {
   const me = await requireUser();
-  if (me.access !== "member" && night !== "casual") throw new Error("That event is gone.");
+  if (!seesNight(me, night)) throw new Error("That event is gone.");
   return me;
 }
+
+const planKind = async (planId: number) =>
+  (await db.query.gamePlan.findFirst({ where: eq(schema.gamePlan.id, planId), columns: { night: true } }))?.night;
 
 const nightKind = async (nightId: number) =>
   (await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { night: true } }))?.night;
@@ -974,8 +978,7 @@ const Answer = z.enum(DATE_ANSWERS).nullable();
 
 /** My answer to one of the dates on offer: it works, it does if I have to, I can't, or none (null) */
 export async function answerDate(optionId: number, answer: z.infer<typeof Answer>): Promise<ActionResult> {
-  const me = await requireUser();
-  if (me.access !== "member") await requireNight(await optionKind(optionId));
+  const me = await requireNight(await optionKind(optionId));
   const parsed = Answer.safeParse(answer);
   if (!parsed.success) return { ok: false, error: "That isn't an answer." };
   try {
@@ -991,8 +994,7 @@ export async function answerDate(optionId: number, answer: z.infer<typeof Answer
 
 /** None of the dates on offer work for me */
 export async function noDatesWork(pollId: number): Promise<ActionResult> {
-  const me = await requireUser();
-  if (me.access !== "member") await requireNight(await pollKind(pollId));
+  const me = await requireNight(await pollKind(pollId));
   try {
     const { nightId } = await saveNoDates(pollId, await playerForUser(me));
     answeredLater(nightId, pollId);
@@ -1004,7 +1006,8 @@ export async function noDatesWork(pollId: number): Promise<ActionResult> {
 }
 
 export async function suggestPollDate(pollId: number, input: z.infer<typeof DateTime>): Promise<ActionResult> {
-  const me = await requireMember();
+  // Adding a date to choose from is anyone's on a night they see; setting one is the members'
+  const me = await requireNight(await pollKind(pollId));
   const parsed = DateTime.safeParse(input);
   if (!parsed.success) return { ok: false, error: "It needs a date and a time." };
   try {
@@ -1109,12 +1112,8 @@ export async function setRsvp(
   status: RsvpStatus | null,
   opts: { guests?: number; playerId?: number; name?: string; isNew?: boolean } = {},
 ): Promise<ActionResult> {
-  const me = await requireUser();
-  if (me.access !== "member") {
-    await requireNight(await nightKind(nightId));
-    // A casual account answers for themselves; answering for others is the members'
-    if (opts.playerId !== undefined || opts.name !== undefined) return { ok: false, error: "You can only answer for yourself." };
-  }
+  // Anyone on a night they see can answer for themselves or for someone they're bringing
+  const me = await requireNight(await nightKind(nightId));
   if (status !== null && !RSVP_STATUSES.includes(status)) return { ok: false, error: "Pick going, maybe or can't." };
   try {
     const playerId =
@@ -1131,7 +1130,7 @@ export async function setRsvp(
 
 /** Others coming to a night added here who aren't named, counted by hand */
 export async function setOthersComing(id: number, others: number): Promise<ActionResult> {
-  await requireMember();
+  await requireNight(await nightKind(id));
   try {
     const n = await ownNight(id);
     const waiting = await waitingFor(n.id);
@@ -1151,7 +1150,7 @@ export async function setOthersComing(id: number, others: number): Promise<Actio
 export async function addGameToNight(nightId: number, gameId: number): Promise<ActionResult> {
   const me = await requireUser();
   const n = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId) });
-  if (!n || (me.access !== "member" && n.night !== "casual")) return { ok: false, error: "That event is gone." };
+  if (!n || !seesNight(me, n.night)) return { ok: false, error: "That event is gone." };
   const existing = await db.query.gamePlan.findFirst({
     where: and(eq(schema.gamePlan.gameNightId, n.id), eq(schema.gamePlan.gameId, gameId)),
   });
@@ -1245,7 +1244,7 @@ export async function answerBringAsk(planId: number, yes: boolean): Promise<Acti
 
 /** "I'd play this" on a core night's proposal */
 export async function setPlanVote(planId: number, on: boolean) {
-  const me = await requireMember();
+  const me = await requireNight(await planKind(planId));
   if (on) await db.insert(schema.planVote).values({ planId, userId: me.id }).onConflictDoNothing();
   else await db.delete(schema.planVote).where(and(eq(schema.planVote.planId, planId), eq(schema.planVote.userId, me.id)));
   await syncPlanNight(planId);
@@ -1284,7 +1283,8 @@ const DEMO_LINKS = "You can't add or remove prep links on the demo.";
 
 /** A prep link is the game's, so it's there on the game's page and for every night it's locked in */
 export async function addPrepLink(gameId: number, rawUrl: string, rawLabel: string): Promise<ActionResult> {
-  await requireMember();
+  // Adding is anyone's; links aren't kept by who added them, so taking one off is the members'
+  await requireUser();
   if (DEMO) return { ok: false, error: DEMO_LINKS };
   let url: URL;
   try {
@@ -1312,7 +1312,7 @@ export async function removePrepLink(gameId: number, url: string) {
 }
 
 export async function setPrepped(planId: number, ready: boolean) {
-  const me = await requireMember();
+  const me = await requireNight(await planKind(planId));
   if (ready) await db.insert(schema.planReady).values({ planId, userId: me.id }).onConflictDoNothing();
   else await db.delete(schema.planReady).where(and(eq(schema.planReady.planId, planId), eq(schema.planReady.userId, me.id)));
   refresh();
@@ -1347,7 +1347,8 @@ export async function askClaudeForNight(input: {
   minutes: number | null;
   candidateIds: number[];
 }): Promise<{ ok: true; picks: NightPicks } | { ok: false; error: string }> {
-  await requireMember();
+  // Its context is the night's own (buildGroupContext), so it's for anyone who sees the night
+  await requireNight(input.night);
   if (!claudeReady()) return { ok: false, error: "Claude's picks are off. An admin can turn them on in Group settings, once the site has an ANTHROPIC_API_KEY." };
   const night: Night = input.night === "casual" ? "casual" : "core";
   try {

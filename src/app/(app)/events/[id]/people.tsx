@@ -44,8 +44,6 @@ export function People(props: {
   members: Member[];
   players: Player[];
   myPlayerId: number | null;
-  /** A casual account answers for themselves only: answering for others and counting them is the members' */
-  limited?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -118,12 +116,10 @@ export function People(props: {
         )}
       </div>
 
-      {!props.limited && (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-line pt-3">
-          <Stepper label="Others coming, not named" value={props.othersComing} max={20} disabled={pending} onChange={(n) => start(async () => void (await setOthersComing(props.nightId, n)))} />
-          <ForSomeoneElse players={props.players} myPlayerId={props.myPlayerId} disabled={pending} onAnswer={(who, status) => answer(status, who)} />
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-line pt-3">
+        <Stepper label="Others coming, not named" value={props.othersComing} max={20} disabled={pending} onChange={(n) => start(async () => void (await setOthersComing(props.nightId, n)))} />
+        <ForSomeoneElse players={props.players} myPlayerId={props.myPlayerId} disabled={pending} onAnswer={(who, status) => answer(status, who)} />
+      </div>
     </div>
   );
 }

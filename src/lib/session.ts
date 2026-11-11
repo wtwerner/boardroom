@@ -4,9 +4,9 @@ import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { cache } from "react";
 import { count, eq } from "drizzle-orm";
-import { CASUAL_NIGHT, DEMO } from "@/config";
+import { CASUAL_NIGHT, DEMO, GROUP_NIGHTS } from "@/config";
 import { db, schema } from "@/db";
-import type { Access, MeepleColor } from "@/db/enums";
+import type { Access, MeepleColor, Night } from "@/db/enums";
 import { auth } from "./auth";
 import { loadSettings } from "./settings-store";
 
@@ -70,9 +70,25 @@ export const requireUser = cache(async (): Promise<CurrentUser> => {
 });
 
 /**
- * The signed-in member of the core group. Call from every action a casual account can't take:
- * anything that changes what the whole group shares, or is about the core group's nights.
- * The site never offers those to a casual account, so this only stops a hand-made request.
+ * The kinds of night someone sees. Each kind has its own events, plays, group list and channels;
+ * a member sees every kind the group has, and a casual account only the casual night. Everything
+ * else on the site is everyone's, shown through the nights they see.
+ */
+export function nightsFor(me: Pick<CurrentUser, "access">): Night[] {
+  return me.access === "member" ? [...GROUP_NIGHTS] : ["casual"];
+}
+
+/** Whether someone sees this kind of night. A member sees any, even one the group has since turned off */
+export function seesNight(me: Pick<CurrentUser, "access">, night: Night | null | undefined) {
+  return me.access === "member" || night === "casual";
+}
+
+/**
+ * The signed-in member of the core group. Call from the actions only members take: making and
+ * running events, and the group's housekeeping (merging players, fixing game names, syncing,
+ * changing other people's plays), which changes things for everyone. Anything on a night is
+ * `seesNight` instead. The site never offers these to a casual account, so this only stops a
+ * hand-made request.
  */
 export async function requireMember(): Promise<CurrentUser> {
   const me = await requireUser();

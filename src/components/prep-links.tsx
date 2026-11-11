@@ -10,10 +10,20 @@ import { DemoTag, buttonClass } from "@/components/ui";
 /**
  * A game's prep: BGG's rules files and teach videos, then the links the group added for it. The
  * links are the game's, so they're there on its page and for every night it's locked in.
- * lockLinks (a demo) shows the links without adding or removing any, and says why; readOnly (a
- * casual account) shows them and nothing else.
+ * lockLinks (a demo) shows the links without adding or removing any, and says why. Anyone can add
+ * one; `canRemove` is off for a casual account, since links aren't kept by who added them.
  */
-export function PrepLinks({ game, links, lockLinks, readOnly = false }: { game: { id: number; name: string }; links: PrepLink[]; lockLinks: boolean; readOnly?: boolean }) {
+export function PrepLinks({
+  game,
+  links,
+  lockLinks,
+  canRemove = true,
+}: {
+  game: { id: number; name: string };
+  links: PrepLink[];
+  lockLinks: boolean;
+  canRemove?: boolean;
+}) {
   const [, start] = useTransition();
   const all = [...bggPrepLinks(game.id, game.name).map((l) => ({ ...l, builtIn: true })), ...links.map((l) => ({ ...l, builtIn: false }))];
   return (
@@ -25,7 +35,7 @@ export function PrepLinks({ game, links, lockLinks, readOnly = false }: { game: 
               <ExternalLink className="size-3.5 shrink-0" />
               <span className="truncate">{l.label}</span>
             </a>
-            {!l.builtIn && !lockLinks && !readOnly && (
+            {!l.builtIn && !lockLinks && canRemove && (
               <button
                 type="button"
                 aria-label={`Remove ${l.label}`}
@@ -38,7 +48,7 @@ export function PrepLinks({ game, links, lockLinks, readOnly = false }: { game: 
           </li>
         ))}
       </ul>
-      {readOnly ? null : lockLinks ? (
+      {lockLinks ? (
         <p className="mt-2 text-xs text-slate">
           <DemoTag /> Adding links is off on the demo.
         </p>

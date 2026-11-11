@@ -1,10 +1,11 @@
 import "server-only";
-import { and, asc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, ne, or } from "drizzle-orm";
 import { MIN_PEOPLE, NIGHT_TITLES } from "@/config";
 import { db, schema } from "@/db";
 import { type DateAnswer, type Night, POLL_MAX_DATES } from "@/db/enums";
 import { type Verdict, answeredBy, answerFor, dateVerdicts, resolveAnswers, rsvpFor, waitingOn } from "./date-answers";
 import { ownNight, titleForGame } from "./night-store";
+import { getNightPeople } from "./queries";
 import { localDate, nightTitle } from "./nights";
 import { handTitle } from "./night-title";
 
@@ -64,15 +65,31 @@ export type PollDetail = {
   decideBy: string | null;
 };
 
-/** The group's members, by name: a casual account is answered for like a guest, and isn't waited on */
-async function members(): Promise<PollMember[]> {
-  const rows = await db
-    .select({ userId: schema.user.id, userName: schema.user.name, userDiscordId: schema.user.discordId, playerId: schema.player.id, name: schema.player.name, discordId: schema.player.discordId })
-    .from(schema.user)
-    .leftJoin(schema.player, eq(schema.player.userId, schema.user.id))
-    .where(eq(schema.user.access, "member"))
-    .orderBy(asc(schema.user.name));
-  return rows.map((r) => ({ playerId: r.playerId, name: r.name ?? r.userName, discordId: r.discordId ?? r.userDiscordId, userId: r.userId }));
+/**
+ * Who each kind of night's poll waits on, by name: the members for the core group's, and the
+ * casual night's people (getNightPeople) for its own. Anyone else answers like a guest.
+ */
+async function waitsOn(): Promise<Record<Night, PollMember[]>> {
+  const [rows, casual] = await Promise.all([
+    db
+      .select({
+        userId: schema.user.id,
+        userName: schema.user.name,
+        userDiscordId: schema.user.discordId,
+        access: schema.user.access,
+        playerId: schema.player.id,
+        name: schema.player.name,
+        discordId: schema.player.discordId,
+      })
+      .from(schema.user)
+      .leftJoin(schema.player, eq(schema.player.userId, schema.user.id))
+      .where(ne(schema.user.access, "removed"))
+      .orderBy(asc(schema.user.name)),
+    getNightPeople("casual"),
+  ]);
+  const casualIds = new Set(casual.map((c) => c.id));
+  const asMember = (r: (typeof rows)[number]): PollMember => ({ playerId: r.playerId, name: r.name ?? r.userName, discordId: r.discordId ?? r.userDiscordId, userId: r.userId });
+  return { core: rows.filter((r) => r.access === "member").map(asMember), casual: rows.filter((r) => casualIds.has(r.userId)).map(asMember) };
 }
 
 /** A poll, as stored */
@@ -100,7 +117,7 @@ async function findingNight(nightId: number) {
 /** Polls with their dates and everyone's answers, soonest date first */
 async function loadPolls(ids: number[]): Promise<PollDetail[]> {
   if (!ids.length) return [];
-  const [polls, dates, given, group] = await Promise.all([
+  const [polls, dates, given, groups] = await Promise.all([
     db.select().from(p).where(inArray(p.id, ids)),
     db.select().from(o).where(inArray(o.pollId, ids)).orderBy(asc(o.startsAt)),
     db
@@ -109,13 +126,14 @@ async function loadPolls(ids: number[]): Promise<PollDetail[]> {
       .innerJoin(o, eq(o.id, v.optionId))
       .innerJoin(schema.player, eq(schema.player.id, v.playerId))
       .where(inArray(o.pollId, ids)),
-    members(),
+    waitsOn(),
   ]);
   const people = new Map(given.map((a) => [a.playerId, { playerId: a.playerId, name: a.name, discordId: a.discordId, userId: a.userId }]));
   const now = Date.now();
   return ids.flatMap((id) => {
     const row = polls.find((r) => r.id === id);
     if (!row?.gameNightId) return [];
+    const group = groups[row.night];
     const mine = dates.filter((d) => d.pollId === id);
     const facts = mine.map((d) => ({ id: d.id, createdAt: d.createdAt.toISOString(), fellThrough: d.fellThroughAt !== null }));
     const answers = given.filter((a) => mine.some((d) => d.id === a.optionId)).map((a) => ({ optionId: a.optionId, playerId: a.playerId, answer: a.answer, at: a.at.toISOString() }));
@@ -424,8 +442,18 @@ export async function everyoneJustAnswered(pollId: number) {
   if (!poll || poll.waiting.length || !poll.members.length || !poll.dates.some((d) => !d.past && !d.fellThrough)) return null;
   const claimed = await db.update(p).set({ everyoneAnsweredAt: new Date() }).where(and(eq(p.id, pollId), isNull(p.everyoneAnsweredAt))).returning({ id: p.id });
   if (!claimed.length) return null;
-  const starter = poll.createdBy ? poll.members.find((m) => m.userId === poll.createdBy) ?? null : null;
+  // Whoever started it may not be one it waits on: a member who started a casual night's poll
+  const starter = poll.createdBy ? (poll.members.find((m) => m.userId === poll.createdBy) ?? (await starterOf(poll.createdBy))) : null;
   return { poll, starter };
+}
+
+async function starterOf(userId: string): Promise<PollMember | null> {
+  const [r] = await db
+    .select({ userId: schema.user.id, userName: schema.user.name, userDiscordId: schema.user.discordId, playerId: schema.player.id, name: schema.player.name, discordId: schema.player.discordId })
+    .from(schema.user)
+    .leftJoin(schema.player, eq(schema.player.userId, schema.user.id))
+    .where(eq(schema.user.id, userId));
+  return r ? { playerId: r.playerId, name: r.name ?? r.userName, discordId: r.discordId ?? r.userDiscordId, userId: r.userId } : null;
 }
 
 /** How long a nudge lasts before the members still waiting can be nudged again */

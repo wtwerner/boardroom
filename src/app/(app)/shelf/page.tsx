@@ -24,7 +24,7 @@ export default function ShelfPage(props: PageProps<"/shelf">) {
 /**
  * Everyone's games, members' and casual accounts' alike, so anyone can see what the whole group
  * owns. It narrows to the casual night's regulars (what could come there) or, for members, to the
- * core group's. A casual account never sees the core group named, and gets only its own ratings.
+ * core group's. A casual account never sees the core group named.
  */
 async function Shelf({ searchParams }: { searchParams: PageProps<"/shelf">["searchParams"] }) {
   const me = await requireUser();
@@ -44,15 +44,6 @@ async function Shelf({ searchParams }: { searchParams: PageProps<"/shelf">["sear
       </Empty>
     );
   }
-  // What the others think stays off a casual account's pages: they get their own ratings and votes
-  const shown = member
-    ? games
-    : games.map((g) => ({
-        ...g,
-        sentiments: g.sentiments.filter((o) => o.userId === me.id),
-        wantToPlay: g.wantToPlay.filter((id) => id === me.id),
-        mustPlay: g.mustPlay.filter((id) => id === me.id),
-      }));
   const shame = coreShelf.length ? await getShelfOfShame(Infinity, coreShelf) : [];
   const groups = [
     ...(member && CASUAL_NIGHT ? [{ id: "core", label: `${NIGHT_NAMES.core} group`, ownerIds: members.map((m) => m.id) }] : []),
@@ -67,7 +58,7 @@ async function Shelf({ searchParams }: { searchParams: PageProps<"/shelf">["sear
           ` Pick ${NIGHT_NAMES.casual} regulars for what could come to the ${inSentence(NIGHT_NAMES.casual)}: the games of everyone who's played at one in the last year${member ? `, and everyone with a ${inSentence(NIGHT_NAMES.casual)} account` : ""}.`}
       </p>
       <ShelfBrowser
-        games={shown}
+        games={games}
         onBga={bga ? games.filter((g) => bga.has(g.id)).map((g) => g.id) : []}
         members={people}
         groups={groups}
@@ -78,9 +69,8 @@ async function Shelf({ searchParams }: { searchParams: PageProps<"/shelf">["sear
         shame={shame.map((g) => ({ id: g.id, chance: g.group.of ? g.group.chance : null }))}
         // Linked from Home's shelf of shame
         initialShame={member && params.shame === "1"}
-        // Only members have a People page, and only members see it
-        linkIds={member ? members.map((m) => m.id) : []}
-        limited={!member}
+        // Everyone with an account has a People page
+        linkIds={people.map((m) => m.id)}
       />
     </div>
   );

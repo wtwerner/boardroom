@@ -11,7 +11,7 @@ import { discordAppUrl } from "@/lib/discord-components";
 import { bggPrepLinks } from "@/lib/bgg-links";
 import { nightKey } from "@/lib/calendar-store";
 import { Empty, Panel, Section, Skeleton, TextLink } from "@/components/ui";
-import { requireUser } from "@/lib/session";
+import { requireUser, seesNight } from "@/lib/session";
 import { getAllGamesForPicker, getMembers, getPlayedBy, getPlayers, getShelf, getTieredRankingLists } from "@/lib/queries";
 import { claudeReady } from "@/lib/ai";
 import { canPostToDiscord, postsNights } from "@/lib/discord";
@@ -49,18 +49,18 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   const n = Number.isInteger(id) ? await loadNight(id) : null;
   // The core group's nights aren't there for a casual account, and on theirs they do what's theirs to do
   const limited = me.access !== "member";
-  if (!n || (limited && n.night !== "casual")) notFound();
+  if (!n || !seesNight(me, n.night)) notFound();
 
   if (n.past) {
     const [members, log] = await Promise.all([getMembers(n.night), nightLog(n, limited, me.id)]);
     return (
       <div className="space-y-10">
         <div className="space-y-4">
-          <BackLink limited={limited} />
+          <BackLink />
           <NightHeader n={n} limited={limited} />
         </div>
         <LiveRefresh nightId={n.id} />
-        <PastNight n={n} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} log={log} limited={limited} />
+        <PastNight n={n} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} log={log} />
       </div>
     );
   }
@@ -72,10 +72,10 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
       <div className="space-y-10">
         <LiveRefresh nightId={n.id} />
         <div className="space-y-4">
-          <BackLink limited={limited} />
+          <BackLink />
           <NightHeader n={n} limited={limited} />
         </div>
-        <PlayedSection n={n} log={log} title="What's been played" limited={limited} />
+        <PlayedSection n={n} log={log} title="What's been played" />
         <RulesAndTeach n={n} />
       </div>
     );
@@ -125,7 +125,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
     <div className="space-y-10">
       <LiveRefresh nightId={n.id} />
       <div className="space-y-4">
-        <BackLink limited={limited} />
+        <BackLink />
         <NightHeader n={n} limited={limited} staying={staying} decideBy={poll?.decideBy ? localDate(new Date(poll.decideBy)) : null} calendar={calendar} addToCalendar={addToCalendar} />
         {poll ? (
           // Finding its date: everyone says which dates work, and their answers are who's coming once one's set
@@ -142,7 +142,6 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
               othersComing={n.othersComing}
               capacity={n.capacity}
               myPlayerId={me.playerId}
-              limited={limited}
               members={members.map((m) => ({ id: m.id, name: m.name, color: m.color, playerName: players.find((p) => p.id === m.playerId)?.name ?? null }))}
               players={players}
             />
@@ -236,8 +235,9 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
             rankings={[rankings.heavy, rankings.light]}
             chances={chances}
             today={new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE })}
-            aiEnabled={claudeReady() && !limited}
-            explain={!limited}
+            // Claude's context for the night is its own (buildGroupContext), so anyone who sees the night can ask
+            aiEnabled={claudeReady()}
+            explain
           />
         )}
       </Section>
@@ -318,10 +318,10 @@ function RulesAndTeach({ n }: { n: NightDetail }) {
 }
 
 /** Back to Plan, or for a casual account, who has no Plan, to Home */
-function BackLink({ limited }: { limited: boolean }) {
+function BackLink() {
   return (
-    <TextLink href={limited ? "/" : "/plan"} className="inline-flex items-center gap-1 text-sm">
-      <ArrowLeft className="size-3.5" /> {limited ? "Home" : "All events"}
+    <TextLink href="/plan" className="inline-flex items-center gap-1 text-sm">
+      <ArrowLeft className="size-3.5" /> All events
     </TextLink>
   );
 }

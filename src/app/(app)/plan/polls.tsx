@@ -90,7 +90,7 @@ export function PollCard({
   colors: Record<string, MeepleColor | null>;
   calendar: CalendarSetup;
   link?: boolean;
-  /** A casual account answers the dates; setting, suggesting, nudging and calling it off are the members' */
+  /** A casual account answers and suggests dates; setting one, nudging, calling it off and reopening are the members' */
   limited?: boolean;
 }) {
   const [open, setOpen] = useState<"suggest" | "set" | null>(null);
@@ -144,7 +144,7 @@ export function PollCard({
         </div>
       )}
       {poll.status === "open" && !answered && <p className="text-sm text-slate">Say which dates work. Any you leave count as can&apos;t.</p>}
-      {poll.status === "closed" && <p className="text-sm text-slate">Every date&apos;s gone by.{!limited && " Suggest another, or call it off."}</p>}
+      {poll.status === "closed" && <p className="text-sm text-slate">Every date&apos;s gone by.{limited ? " Suggest another." : " Suggest another, or call it off."}</p>}
 
       <ul className="space-y-2">
         {onOffer.map((d) => (
@@ -199,7 +199,7 @@ export function PollCard({
               <Check className="size-3.5" strokeWidth={3} /> Set the date
             </button>
           )}
-          {onOffer.length < POLL_MAX_DATES && !limited && (
+          {onOffer.length < POLL_MAX_DATES && (
             <button type="button" onClick={() => setOpen("suggest")} className={buttonClass("secondary", "px-2.5 py-1.5 text-xs")}>
               <CalendarPlus className="size-3.5" /> Suggest a date
             </button>

@@ -37,9 +37,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <span className="font-display text-lg">{SITE_NAME}</span>
         </Link>
         <div className="flex items-center gap-1">
-          <Suspense fallback={null}>
-            <WhoseMoreMenu />
-          </Suspense>
+          <MoreMenu />
           <Suspense fallback={<span className="size-9" />}>
             <HeaderAvatar />
           </Suspense>
@@ -101,16 +99,11 @@ const countToRank = cache(async () => {
   return (await getNewToRank(me.id, me.playerId)).length;
 });
 
-/** The nav for whoever's signed in, with counts beside its links: games you've played that aren't in your ranking yet */
+/** The nav with counts beside its links: games you've played that aren't in your ranking yet */
 async function WithBadges({ nav: Nav }: { nav: typeof SideNav }) {
-  const [me, toRank] = await Promise.all([requireUser(), countToRank()]);
+  const toRank = await countToRank();
   const badges: NavBadges = toRank ? { "/rankings": { count: toRank, label: toRank === 1 ? "game to rank" : "games to rank" } } : {};
-  return <Nav badges={badges} who={me.access} />;
-}
-
-async function WhoseMoreMenu() {
-  const me = await requireUser();
-  return <MoreMenu who={me.access} />;
+  return <Nav badges={badges} />;
 }
 
 /** While a member previews the casual side, a bar on every page says so and brings them back */

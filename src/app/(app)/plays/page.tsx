@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { ChevronRight } from "lucide-react";
-import { CASUAL_NIGHT, GROUP_NIGHTS, NIGHT_NAMES, TIME_ZONE } from "@/config";
+import { CASUAL_NIGHT, NIGHT_NAMES, TIME_ZONE } from "@/config";
 import { DateBadge, NightTag } from "@/components/night-row";
 import { NightSwitch, nightParam } from "@/components/night-switch";
 import { Empty, GameCover, PageHeader, Panel, PlayerChip, Section, Skeleton, buttonClass, formatDate } from "@/components/ui";
-import { requireMemberPage } from "@/lib/session";
+import { type CurrentUser, nightsFor, requireUser } from "@/lib/session";
 import { getAllGamesForPicker, getPlayers, getPlays, getReviewQueue, getWhichQueue, type PlayRow } from "@/lib/queries";
 import { type NightSummary, getNightsByDate } from "@/lib/events";
 import { zonedToUtc } from "@/lib/nights";
@@ -29,10 +29,7 @@ export default async function PlaysPage(props: PageProps<"/plays">) {
   await loadSettings();
   return (
     <>
-      <PageHeader title="Plays">
-        {/* Reading the channel needs the same bot and channel as posting to it */}
-        {canPostToDiscord() && <SyncDiscordButton />}
-      </PageHeader>
+      <PageHeader title="Plays" />
       <Suspense fallback={<Skeleton className="h-96" />}>
         <Plays searchParams={props.searchParams} />
       </Suspense>
@@ -40,29 +37,47 @@ export default async function PlaysPage(props: PageProps<"/plays">) {
   );
 }
 
+/**
+ * Every play of the kinds of night someone sees. Fixing names, sorting out who was who and syncing
+ * from Discord are the members' housekeeping; a casual account logs its night's plays and edits
+ * the ones it logged.
+ */
 async function Plays({ searchParams }: { searchParams: PageProps<"/plays">["searchParams"] }) {
-  await requireMemberPage();
+  const me = await requireUser();
+  const member = me.access === "member";
   const params = await searchParams;
   const page = Math.max(1, Number(params.page) || 1);
-  const night = CASUAL_NIGHT ? nightParam(params.night) : undefined;
-  const pageHref = (n: number) => `/plays?${new URLSearchParams({ ...(night ? { night } : {}), page: String(n) })}`;
-  const canPost = Object.fromEntries(GROUP_NIGHTS.map((n) => [n, canPostToDiscord(n)]));
+  const night = !member ? "casual" : CASUAL_NIGHT ? nightParam(params.night) : undefined;
+  const pageHref = (n: number) => `/plays?${new URLSearchParams({ ...(night && member ? { night } : {}), page: String(n) })}`;
+  const canPost = Object.fromEntries(nightsFor(me).map((n) => [n, canPostToDiscord(n)]));
   const [plays, review, which, games, players, synced] = await Promise.all([
     getPlays({ limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE, night }),
-    getReviewQueue(),
-    getWhichQueue(),
+    member ? getReviewQueue() : [],
+    member ? getWhichQueue() : [],
     getAllGamesForPicker(),
     getPlayers(),
-    lastSyncedAt(),
+    member ? lastSyncedAt() : null,
   ]);
   const hasMore = plays.length > PAGE_SIZE;
+  // What's sent to the browser is readable there: a casual account's page doesn't carry the core group's night's name
+  const nightNames = member ? NIGHT_NAMES : { core: "", casual: NIGHT_NAMES.casual };
   const nights = groupByNight(plays.slice(0, PAGE_SIZE));
   const stored = await getNightsByDate(nights.map(([, ps]) => ({ night: ps[0].night, date: ps[0].playedOn })));
 
   return (
-    <PlayEditorProvider games={games} players={players} canPost={canPost} nightNames={NIGHT_NAMES}>
+    <PlayEditorProvider games={games} players={players} canPost={canPost} nightNames={nightNames}>
       <div className="space-y-10">
-        {synced && <p className="-mt-4 text-xs text-slate">Discord last checked {synced.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</p>}
+        {/* Reading the channel needs the same bot and channel as posting to it */}
+        {member && canPostToDiscord() && (
+          <div className="-mt-4 flex flex-wrap items-center justify-between gap-3">
+            {synced ? (
+              <p className="text-xs text-slate">Discord last checked {synced.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}</p>
+            ) : (
+              <span />
+            )}
+            <SyncDiscordButton />
+          </div>
+        )}
 
         {review.length > 0 && (
           <Section id="review" title="Needs a game match" className="scroll-mt-6" action={<span className="text-xs text-slate">fixing one fixes every play with that name</span>}>
@@ -98,11 +113,11 @@ async function Plays({ searchParams }: { searchParams: PageProps<"/plays">["sear
             <span className="hidden group-open:inline">Log a play</span>
           </summary>
           <div className="border-t border-line p-4">
-            <LogPlayForm games={games} players={players} canPost={canPost} nightNames={NIGHT_NAMES} />
+            <LogPlayForm games={games} players={players} canPost={canPost} nightNames={nightNames} />
           </div>
         </details>
 
-        {CASUAL_NIGHT && <NightSwitch current={night} href={(n) => (n ? `/plays?night=${n}` : "/plays")} all="All" />}
+        {CASUAL_NIGHT && member && <NightSwitch current={night} href={(n) => (n ? `/plays?night=${n}` : "/plays")} all="All" />}
 
         {nights.length === 0 ? (
           <Empty>{night ? `No ${inSentence(NIGHT_NAMES[night])} plays yet.` : "No plays yet. Sync from Discord or log one by hand."}</Empty>
@@ -110,7 +125,7 @@ async function Plays({ searchParams }: { searchParams: PageProps<"/plays">["sear
           <ol className="space-y-4">
             {nights.map(([key, nightPlays]) => (
               <li key={key}>
-                <NightCard plays={nightPlays} stored={stored.get(`${nightPlays[0].night}:${nightPlays[0].playedOn}`)} />
+                <NightCard plays={nightPlays} stored={stored.get(`${nightPlays[0].night}:${nightPlays[0].playedOn}`)} me={me} />
               </li>
             ))}
           </ol>
@@ -129,7 +144,7 @@ async function Plays({ searchParams }: { searchParams: PageProps<"/plays">["sear
  * One night's plays, as a card like the nights on Home and Plan. Its header opens the night's
  * page; below it, who came and each game, with its own edit and delete.
  */
-function NightCard({ plays, stored }: { plays: PlayRow[]; stored: NightSummary | undefined }) {
+function NightCard({ plays, stored, me }: { plays: PlayRow[]; stored: NightSummary | undefined; me: CurrentUser }) {
   const [first] = plays;
   const table = roster(plays);
   const games = new Set(plays.map((p) => p.gameId ?? p.name)).size;
@@ -144,9 +159,7 @@ function NightCard({ plays, stored }: { plays: PlayRow[]; stored: NightSummary |
           <NightTag night={first.night} />
         </span>
         <span className="block text-sm text-slate">
-          {[first.location, `${games} ${games === 1 ? "game" : "games"}`, table.length > 0 && `${table.length} played`]
-            .filter(Boolean)
-            .join(" · ")}
+          {[first.location, `${games} ${games === 1 ? "game" : "games"}`, table.length > 0 && `${table.length} played`].filter(Boolean).join(" · ")}
         </span>
       </span>
     </>
@@ -173,7 +186,7 @@ function NightCard({ plays, stored }: { plays: PlayRow[]; stored: NightSummary |
       )}
       <ul className="divide-y divide-line border-t border-line">
         {plays.map((p) => (
-          <PlayItem key={p.id} play={p} showPlayers={!samePlayers(p.players, table)} />
+          <PlayItem key={p.id} play={p} showPlayers={!samePlayers(p.players, table)} canChange={me.access === "member" || p.createdBy === me.id} />
         ))}
       </ul>
     </article>
@@ -181,7 +194,8 @@ function NightCard({ plays, stored }: { plays: PlayRow[]; stored: NightSummary |
 }
 
 /** The players of a game are only listed when they aren't the whole night's table. */
-function PlayItem({ play, showPlayers }: { play: PlayRow; showPlayers: boolean }) {
+/** `canChange`: a member changes any play, a casual account the ones it logged */
+function PlayItem({ play, showPlayers, canChange }: { play: PlayRow; showPlayers: boolean; canChange: boolean }) {
   const body = (
     <>
       <GameCover src={play.thumbnail} name={play.name} size="sm" />
@@ -210,22 +224,24 @@ function PlayItem({ play, showPlayers }: { play: PlayRow; showPlayers: boolean }
       ) : (
         <div className="flex min-w-0 flex-1 items-start gap-3">{body}</div>
       )}
-      <span className="flex shrink-0">
-        <EditPlayButton
-          play={{
-            playId: play.id,
-            name: play.name,
-            gameId: play.gameId,
-            playedOn: play.playedOn,
-            location: play.location,
-            notes: play.notes,
-            playerIds: play.players.map((s) => s.playerId),
-            night: play.night,
-            discord: play.source === "manual" ? (play.sourceRef ? "app-post" : "none") : "hand-post",
-          }}
-        />
-        <DeletePlayButton id={play.id} name={play.name} postedByApp={play.source === "manual" && Boolean(play.sourceRef)} />
-      </span>
+      {canChange && (
+        <span className="flex shrink-0">
+          <EditPlayButton
+            play={{
+              playId: play.id,
+              name: play.name,
+              gameId: play.gameId,
+              playedOn: play.playedOn,
+              location: play.location,
+              notes: play.notes,
+              playerIds: play.players.map((s) => s.playerId),
+              night: play.night,
+              discord: play.source === "manual" ? (play.sourceRef ? "app-post" : "none") : "hand-post",
+            }}
+          />
+          <DeletePlayButton id={play.id} name={play.name} postedByApp={play.source === "manual" && Boolean(play.sourceRef)} />
+        </span>
+      )}
     </li>
   );
 }

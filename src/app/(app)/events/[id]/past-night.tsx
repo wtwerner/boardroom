@@ -11,7 +11,7 @@ type Member = { id: string; name: string; color: MeepleColor | null };
  * A night that's happened: who came, what was played, and how that compares with the plan.
  * `log` logs its plays, open until something's logged (the morning-after DM links here).
  */
-export function PastNight({ n, members, log, limited = false }: { n: NightDetail; members: Member[]; log: ReactNode; limited?: boolean }) {
+export function PastNight({ n, members, log }: { n: NightDetail; members: Member[]; log: ReactNode }) {
   const byId = new Map(members.map((m) => [m.id, m]));
   const came = cameTo(n);
   const cameIds = new Set(came.map((s) => s.playerId));
@@ -30,7 +30,7 @@ export function PastNight({ n, members, log, limited = false }: { n: NightDetail
         )}
       </Panel>
 
-      <PlayedSection n={n} log={log} limited={limited} />
+      <PlayedSection n={n} log={log} />
 
       {n.games.length > 0 && (
         <Section title={n.night === "core" ? "The plan" : "What was brought"}>
@@ -72,7 +72,7 @@ export function PastNight({ n, members, log, limited = false }: { n: NightDetail
  * What's been played on a night, logged with `log` (live-log.tsx): on its page once it starts, and
  * once it's over. Without one (a night with no date), what's logged is only listed.
  */
-export function PlayedSection({ n, log, title = "What was played", limited = false }: { n: NightDetail; log: ReactNode; title?: string; limited?: boolean }) {
+export function PlayedSection({ n, log, title = "What was played" }: { n: NightDetail; log: ReactNode; title?: string }) {
   return (
     <Section title={title}>
       {log ??
@@ -93,13 +93,7 @@ export function PlayedSection({ n, log, title = "What was played", limited = fal
           </ul>
         ) : (
           <Empty>
-            Nothing logged for this event.
-            {!limited && (
-              <>
-                {" "}
-                <TextLink href="/plays">Log it on Plays</TextLink> and it shows up here.
-              </>
-            )}
+            Nothing logged for this event. <TextLink href="/plays">Log it on Plays</TextLink> and it shows up here.
           </Empty>
         ))}
     </Section>

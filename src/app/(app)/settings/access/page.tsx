@@ -172,7 +172,7 @@ async function PeopleAndAccess() {
       <Section title="What each can do">
         <p className="mb-3 max-w-2xl text-sm text-slate">
           {showCasual
-            ? `${casualName} accounts never see the ${names.core}'s events or pages: what isn't theirs isn't there, rather than shown as locked.`
+            ? `${casualName} accounts see everything but the ${names.core}'s events, plays and group list, which aren't there for them rather than shown as locked. Running events and the group's housekeeping are the members'.`
             : "Members can do everything with the group's things; admins also look after the group."}
         </p>
         <Panel className="overflow-x-auto">

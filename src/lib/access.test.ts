@@ -72,8 +72,8 @@ describe("capabilities", () => {
   const rows = capabilities({ core: "Game night", casual: "Open night" });
   const source = readFileSync(new URL("../app/actions.ts", import.meta.url), "utf8");
   const actions = [...source.matchAll(/^export async function (\w+)/gm)].map((m) => m[1]);
-  /** The first check an action makes: requireUser, requireMember or requireAdmin */
-  const gate = (name: string) => source.match(new RegExp(`^export async function ${name}\\b[\\s\\S]*?require(User|Member|Admin)\\(`, "m"))?.[1];
+  /** The first check an action makes: requireUser, requireNight, requireMember or requireAdmin */
+  const gate = (name: string) => source.match(new RegExp(`^export async function ${name}\\b[\\s\\S]*?require(User|Night|Member|Admin)\\(`, "m"))?.[1];
   // Not something the table describes: members-only inside, and a read the event page polls
   const outside = ["previewCasual", "getNightsVersion"];
 
@@ -85,8 +85,9 @@ describe("capabilities", () => {
 
   it("matches what each action checks first", () => {
     for (const row of rows) {
-      const expected = row.member === "no" ? "Admin" : row.casual === "no" ? "Member" : "User";
-      for (const action of row.actions) expect({ action, gate: gate(action) }).toEqual({ action, gate: expected });
+      // On the casual night only: requireNight, or requireUser with a check of its own
+      const expected = row.member === "no" ? ["Admin"] : row.casual === "no" ? ["Member"] : row.casual === "casual" ? ["Night", "User"] : ["User"];
+      for (const action of row.actions) expect({ action, gate: expected.includes(gate(action)!) ? "matches" : gate(action) }).toEqual({ action, gate: "matches" });
     }
   });
 });

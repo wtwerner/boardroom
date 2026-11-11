@@ -11,7 +11,7 @@ export function PeopleTabs({ current }: { current: "members" | "taste" }) {
   return (
     <nav aria-label="People views" className="flex gap-1 rounded-lg border border-line bg-table p-1">
       <Link href="/people" aria-current={current === "members" ? "page" : undefined} className={tab(current === "members")}>
-        Members
+        Everyone
       </Link>
       <Link href="/people/taste" aria-current={current === "taste" ? "page" : undefined} className={tab(current === "taste")}>
         Group taste

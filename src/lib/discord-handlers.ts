@@ -234,10 +234,15 @@ async function submitted(i: Interaction) {
   const form = formValues(i.data?.components);
   // Like the card's own buttons, anyone may answer on the casual night
   if (action?.kind === "for") return answerFor(i, action.nightId, form);
+  // Suggesting a date, like answering, is anyone's who can see the night
+  if (action?.kind === "pollAdd") {
+    const row = await ownPoll(action.pollId);
+    if (!(await mayAnswer(i, row.night))) return reply(NOT_THIS_ONE());
+    return suggestDate(i, action.pollId, form);
+  }
   if (!(await isMember(i))) return reply(MEMBERS_ONLY());
   if (action?.kind === "new") return newNight(i, form, action.seats ?? null);
   if (action?.kind === "newPoll") return newPoll(i, form);
-  if (action?.kind === "pollAdd") return suggestDate(i, action.pollId, form);
   if (action?.kind === "pollPick") return pickDate(i, action.pollId, form);
   if (action?.kind === "refind") return refindDate(i, action.nightId, form);
   if (action?.kind !== "edit") return reply("That form is from an older version. Try again.");
@@ -581,8 +586,9 @@ async function pollButton(i: Interaction, action: PollAction) {
     return reply("Got it: none of those work for you. If one does after all, tap **Works for me** beside it.");
   }
 
-  // Reopening, suggesting, setting the date and calling it off are members', as on the site
-  if (!(await isMember(i))) return reply(MEMBERS_ONLY());
+  // Suggesting a date is anyone's who can answer (checked above); reopening, setting the date and
+  // calling it off are members', as on the site
+  if (action.kind !== "pollAdd" && !(await isMember(i))) return reply(MEMBERS_ONLY());
 
   if (action.kind === "pollReopen") {
     await reopenPoll(row.id);

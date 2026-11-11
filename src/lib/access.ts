@@ -68,7 +68,7 @@ export function roleMismatch(access: Access, hasRole: boolean | null): "extra-ro
   return null;
 }
 
-/** What one kind of account can do with one thing: all of it, their own, on the casual night only, or nothing */
+/** What one kind of account can do with one thing: all of it, their own, on the nights they see (the casual night), or nothing */
 export type Allowed = "yes" | "own" | "casual" | "no";
 
 export type Capability = {
@@ -79,61 +79,73 @@ export type Capability = {
   casual: Allowed;
   /** Only says something with a casual night */
   aboutCasual?: true;
-  /** The actions in actions.ts that do it, which access.test.ts holds to the row: no for casual means requireMember, admins only means requireAdmin */
+  /**
+   * The actions in actions.ts that do it, which access.test.ts holds to the row: no for casual
+   * means requireMember, admins only means requireAdmin, and the casual night means requireNight
+   * (or requireUser with its own check)
+   */
   actions: string[];
 };
 
 /**
  * What each kind of account can do, for the admins' page, named with the group's names for its
- * nights. A description of the rules requireMember, requireAdmin and the casual checks in
- * actions.ts enforce; access.test.ts checks each action against its row.
+ * nights. The rule: each kind of night has its own events, plays and group list, and a casual
+ * account sees the casual night's; everything else is everyone's, but making and running events and
+ * the group's housekeeping are the members', and settings and access the admins'.
  */
 export function capabilities(names: { core: string; casual: string }): Capability[] {
   return [
     { area: "Their own", what: "Rate and rank games", admin: "yes", member: "yes", casual: "yes", actions: ["setOpinion", "saveRanking"] },
     {
       area: "Their own",
-      what: "Name, color, calendar and BGG collection",
+      what: "Name, color, calendar, BGG collection and Board Game Arena name",
       admin: "yes",
       member: "yes",
       casual: "yes",
-      actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv"],
+      actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv", "saveBgaProfile"],
     },
-    { area: "Their own", what: "Board Game Arena name", admin: "yes", member: "yes", casual: "yes", actions: ["saveBgaProfile"] },
-    { area: "Events", what: "See and answer events", admin: "yes", member: "yes", casual: "casual", actions: ["setRsvp", "answerDate", "noDatesWork"] },
-    { area: "Events", what: "Answer for someone else, and count others coming", admin: "yes", member: "yes", casual: "no", actions: ["setOthersComing"] },
+    { area: "Seeing", what: "Every page: Home, Plan, Plays, Shelf, Rankings, People, Discover, Online", admin: "yes", member: "yes", casual: "yes", actions: [] },
+    { area: "Seeing", what: `The ${names.core}'s events, plays and group list`, admin: "yes", member: "yes", casual: "no", actions: [] },
+    { area: "Seeing", what: `Counted in the ${names.casual}'s list, planner and date polls`, admin: "yes", member: "yes", casual: "yes", actions: [], aboutCasual: true },
     {
       area: "Events",
-      what: "Make, edit, date or delete events",
+      what: "Answer, for themselves or someone they're bringing, and say which dates work",
+      admin: "yes",
+      member: "yes",
+      casual: "casual",
+      actions: ["setRsvp", "setOthersComing", "answerDate", "noDatesWork"],
+    },
+    { area: "Events", what: "Suggest a date", admin: "yes", member: "yes", casual: "casual", actions: ["suggestPollDate"] },
+    { area: "Events", what: "Bring games and ask others to bring", admin: "yes", member: "yes", casual: "casual", actions: ["addGameToNight", "askToBring", "answerBringAsk", "dropPlan"] },
+    { area: "Events", what: "Vote on and prep the game, and ask Claude for picks", admin: "yes", member: "yes", casual: "casual", actions: ["setPlanVote", "setPrepped", "askClaudeForNight"] },
+    {
+      area: "Events",
+      what: "Make, edit, date, call off or delete events, and lock in the game",
       admin: "yes",
       member: "yes",
       casual: "no",
-      actions: ["addNight", "updateNight", "updateNightDetails", "deleteNight", "startPoll", "suggestPollDate", "findNewDate", "setNightDate", "nudgeForDates", "callOffPoll", "reopenPoll"],
+      actions: ["addNight", "updateNight", "updateNightDetails", "deleteNight", "startPoll", "findNewDate", "setNightDate", "nudgeForDates", "callOffPoll", "reopenPoll", "choosePlan"],
     },
-    { area: "Events", what: "Bring games and ask others to bring", admin: "yes", member: "yes", casual: "casual", actions: ["addGameToNight", "askToBring", "answerBringAsk", "dropPlan"] },
-    { area: "Events", what: "Propose, vote on, prep and lock in the game", admin: "yes", member: "yes", casual: "no", actions: ["setPlanVote", "setPrepped", "choosePlan"] },
     { area: "Plays", what: "Log plays", admin: "yes", member: "yes", casual: "casual", actions: ["logPlay", "endNight"] },
     { area: "Plays", what: "Edit or delete plays", admin: "yes", member: "yes", casual: "own", actions: ["updatePlay", "deletePlay", "movePlay"] },
     {
-      area: "Plays",
-      what: "Sync from Discord, fix names, merge players",
+      area: "Housekeeping",
+      what: "Sync from Discord, fix game names, merge or split players",
       admin: "yes",
       member: "yes",
       casual: "no",
       actions: ["syncDiscordNow", "resolveGameName", "ignoreGameName", "setPlayerDiscord", "playerNightsFor", "splitPlayer", "settleWhich", "mergePlayers"],
     },
-    { area: "Group", what: "The shelf: everyone's games, and who owns them", admin: "yes", member: "yes", casual: "yes", actions: [] },
-    { area: "Group", what: "People, Discover, Online and Plays pages", admin: "yes", member: "yes", casual: "no", actions: [] },
-    { area: "Group", what: `Counted in the ${names.core}'s rankings and Discover`, admin: "yes", member: "yes", casual: "no", actions: [] },
-    { area: "Group", what: `Counted in the ${names.casual}'s list and planner`, admin: "yes", member: "yes", casual: "yes", actions: [], aboutCasual: true },
-    { area: "Group", what: "Move a game to the other ranking list", admin: "yes", member: "yes", casual: "no", actions: ["setGameTier"] },
+    { area: "Housekeeping", what: "Add prep links to a game", admin: "yes", member: "yes", casual: "yes", actions: ["addPrepLink"] },
+    { area: "Housekeeping", what: "Take prep links off, move a game to the other ranking list", admin: "yes", member: "yes", casual: "no", actions: ["removePrepLink", "setGameTier"] },
+    { area: "Housekeeping", what: "Load BGG's and BGA's lists now", admin: "yes", member: "yes", casual: "no", actions: ["loadCatalog", "loadBgaGames"] },
     {
-      area: "Group",
-      what: "Buy list, Claude's picks, prep links",
+      area: "Housekeeping",
+      what: `The buy list, adding ideas and Claude's picks on Discover (written from the ${names.core}'s taste)`,
       admin: "yes",
       member: "yes",
       casual: "no",
-      actions: ["wantGame", "unwantGame", "takeOffBuyList", "addSuggestion", "askClaudeForPicks", "askClaudeForNight", "addPrepLink", "removePrepLink", "loadCatalog", "loadBgaGames"],
+      actions: ["wantGame", "unwantGame", "takeOffBuyList", "addSuggestion", "askClaudeForPicks"],
     },
     { area: "Admin", what: "Group settings, and who's an admin", admin: "yes", member: "no", casual: "no", actions: ["saveGroupSettings", "setAdmin"] },
     { area: "Admin", what: "Invite people, and move them up, down or off the site", admin: "yes", member: "no", casual: "no", actions: ["welcomeToGroup", "setAccess", "matchDiscordRole"] },

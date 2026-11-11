@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import type { MeepleColor } from "@/db/enums";
 import { Empty, GameCover, Meeple, PageHeader, Panel, Section, Skeleton, TextLink } from "@/components/ui";
-import { requireMemberPage } from "@/lib/session";
+import { requireUser } from "@/lib/session";
 import { MIN_EVIDENCE, type TasteInsights, getTasteInsights } from "@/lib/recommend";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { PeopleTabs } from "../tabs";
@@ -25,9 +25,10 @@ export default function GroupTastePage() {
   );
 }
 
+/** The taste of the people of the nights someone sees: the members', or the casual night's people */
 async function GroupTaste() {
-  await requireMemberPage();
-  const { members, insights } = await getTasteInsights();
+  const me = await requireUser();
+  const { members, insights } = await getTasteInsights(me.access === "member" ? "core" : "casual");
   return <Taste insights={insights} members={members.map((m) => ({ id: m.id, name: m.name, color: m.color }))} />;
 }
 
