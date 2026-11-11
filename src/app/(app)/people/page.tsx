@@ -37,7 +37,7 @@ async function People() {
   const me = await requireUser();
   const member = me.access === "member";
   const people = getPeople(member ? "core" : "casual");
-  const invitedTo = coreNightName() ? `${coreNightName()} events` : SITE_NAME;
+  const invitedTo = coreNightName() ? `${inSentence(coreNightName()!)} events` : SITE_NAME;
   // Who's a member is the admins' to decide, so inviting is theirs too
   const admin = await canManageGroup();
   const [{ members, notSignedUp, welcomed }, candidates] = await Promise.all([people, canWelcome() && admin ? welcomeCandidates(people) : null]);

@@ -430,7 +430,7 @@ async function newNight(i: Interaction, form: Record<string, string>, capacity: 
 
   // Posting takes a few calls to Discord, so the reply comes once it's up
   after(async () => {
-    let done = `Made **${title}** (${NIGHT_NAMES[night]}), <t:${unix(when.startsAt)}:F>${location ? ` at ${location}` : ""}${capacity ? `, ${capacity} seats` : ""}.`;
+    let done = `Made **${title}** (${inSentence(NIGHT_NAMES[night])}), <t:${unix(when.startsAt)}:F>${location ? ` at ${location}` : ""}${capacity ? `, ${capacity} seats` : ""}.`;
     try {
       if (!postsNights(night)) {
         // Saved, but there's nowhere to post it: say so, rather than leave people looking for a post

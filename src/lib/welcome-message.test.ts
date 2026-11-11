@@ -12,6 +12,7 @@ const casey: Welcome = {
   eventsChannelId: "100000000000000009",
   command: "event",
   coreNight: "Strategy",
+  casualNight: "Casual night",
 };
 
 type Row = { type: number; components?: { url?: string }[] };
@@ -53,7 +54,7 @@ describe("welcomeDm", () => {
 
   it("points at the events channel and the group's command", () => {
     expect(componentText(welcomeDm({ ...casey, command: "session" }).components)).toContain("Events go up in <#100000000000000009>. Hit **Going** on one, or make your own with `/session new`.");
-    expect(componentText(welcomeDm({ ...casey, eventsChannelId: null, coreNight: null }).components)).not.toMatch(/<#|casual/);
+    expect(componentText(welcomeDm({ ...casey, eventsChannelId: null, coreNight: null, casualNight: null }).components)).not.toMatch(/<#|casual/);
   });
 
   it("keeps names from being read as markdown", () => {

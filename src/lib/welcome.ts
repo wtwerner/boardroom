@@ -83,6 +83,7 @@ export async function welcomeToGroup(discordId: string, by: { name: string; user
     eventsChannelId: postsNights("core") ? eventsChannel("core") : null,
     command: commandName(),
     coreNight: coreNightName(),
+    casualNight: CASUAL_NIGHT ? NIGHT_NAMES.casual : null,
   };
 
   const channelId = await welcomeChannel();

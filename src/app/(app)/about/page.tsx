@@ -219,7 +219,7 @@ async function About() {
             </p>
             {CASUAL_NIGHT && (
               <p>
-                Planning <strong>{NIGHT_NAMES.casual}</strong> is different: &ldquo;never played&rdquo; and how recently it was played count only{" "}
+                Planning <strong>{casual}</strong> is different: &ldquo;never played&rdquo; and how recently it was played count only{" "}
                 {casual} plays, and it starts with games up to weight 2.5, 2 hours, and two seats for people who aren&apos;t members.
                 Plans belong to their event: a play at {casual} doesn&apos;t tick off a plan for {core}.
               </p>
