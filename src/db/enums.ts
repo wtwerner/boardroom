@@ -1,7 +1,11 @@
 // Shared by the schema and client components — keep free of drizzle imports.
 
-// Order matters: adjacent colors are validated to stay distinguishable (incl. color-blind).
-export const MEEPLE_COLORS = ["red", "blue", "yellow", "green", "purple", "orange"] as const;
+/**
+ * Meeple colors to pick from. They can repeat, so a color is never the only thing saying who
+ * someone is: a name or their face (Face in components/ui.tsx) does that. New ones go on the end,
+ * since a player's color is stored by name.
+ */
+export const MEEPLE_COLORS = ["red", "blue", "yellow", "green", "purple", "orange", "black", "white", "pink", "teal", "brown"] as const;
 export type MeepleColor = (typeof MEEPLE_COLORS)[number];
 
 export const SENTIMENTS = ["love", "like", "meh", "nope"] as const;

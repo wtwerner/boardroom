@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { Empty, GameCover, Meeple, PageHeader, Panel, Skeleton, TextLink, formatDate } from "@/components/ui";
+import { Empty, Face, Faces, GameCover, Meeple, PageHeader, Panel, Skeleton, TextLink, formatDate } from "@/components/ui";
+import { topFew } from "@/lib/meeple";
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
 import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
 import { type BgaListing, type OnlineGame, getBgaByBggId, getBgaCasualPlayers, getBgaMembers, getOnlineGames } from "@/lib/queries";
@@ -173,6 +174,11 @@ function PickRow({ c, bga, members, meId, scoredIds }: { c: Candidate; bga: BgaL
   const g = c.game;
   const name = (id: string) => (id === meId ? "You" : (members.find((m) => m.id === id)?.name ?? "Someone"));
   const hosts = members.filter((m) => m.bgaPremium);
+  // A big crowd shows who it'd suit best, then how many more
+  const fits = topFew(
+    members.filter((m) => scoredIds.includes(m.id)),
+    (m) => c.fits[m.id].chance,
+  );
   // Why: what the keenest member likes about it, as on Discover
   const keenest = scoredIds.map((id) => ({ id, fit: c.fits[id] })).sort((a, b) => b.fit.chance - a.fit.chance)[0];
   const reasons = keenest.fit.reasons
@@ -200,15 +206,18 @@ function PickRow({ c, bga, members, meId, scoredIds }: { c: Candidate; bga: BgaL
           <span className="block text-[0.7rem] text-slate">{c.group.of > 1 ? "average chance" : "chance of a hit"}</span>
         </span>
         {scoredIds.length > 1 && (
-          <ul aria-label="Chance for each member" className="flex gap-2 text-xs">
-            {members
-              .filter((m) => scoredIds.includes(m.id))
-              .map((m) => (
-                <li key={m.id} className="inline-flex items-center gap-0.5" title={`${m.name}: ${percent(c.fits[m.id].chance)}`}>
-                  <Meeple color={m.color} className="size-3.5" />
-                  <span className="tabular">{percent(c.fits[m.id].chance)}</span>
-                </li>
-              ))}
+          <ul aria-label="Chance for each member" className="flex flex-wrap gap-2 text-xs">
+            {fits.shown.map((m) => (
+              <li key={m.id} className="inline-flex items-center gap-0.5" title={`${m.name}: ${percent(c.fits[m.id].chance)}`}>
+                <Face src={m.image} name={m.name} color={m.color} className="size-4" />
+                <span className="tabular">{percent(c.fits[m.id].chance)}</span>
+              </li>
+            ))}
+            {fits.rest.length > 0 && (
+              <li className="text-slate" title={fits.rest.map((m) => `${m.name}: ${percent(c.fits[m.id].chance)}`).join(", ")}>
+                +{fits.rest.length} more
+              </li>
+            )}
           </ul>
         )}
         <OnlineToggle gameId={g.id} on={false} />
@@ -270,11 +279,7 @@ function GameRow({ g, members, meId }: { g: OnlineGame; members: Member[]; meId:
           </span>
         )}
         {g.playOnline.length > 0 && (
-          <span className="flex items-center" aria-label={`Up for it: ${names(g.playOnline)}`} title={`Up for it: ${names(g.playOnline)}`}>
-            {g.playOnline.map((id) => (
-              <Meeple key={id} color={members.find((m) => m.id === id)?.color ?? null} className="-ml-1 size-4 first:ml-0" />
-            ))}
-          </span>
+          <Faces people={members.filter((m) => g.playOnline.includes(m.id))} label={`Up for it: ${names(g.playOnline)}`} />
         )}
         <OnlineToggle gameId={g.id} on={g.playOnline.includes(meId)} />
         <a

@@ -18,7 +18,7 @@ Every member can do everything with the group's data, including logging, deletin
    It also says where events are posted and lets you pick your meeple color. The name, rating and ranking are the steps that count (`src/lib/setup.ts`): until they're done, Home shows one line with how far along you are and the next step, and taps through to Get set up. It never puts the whole checklist on Home. Settings links to the page too.
 
    Later, when tastes have moved on, **Replay this or that** (on Rankings) ranks everything again from scratch: your old list stays hidden, every answer feeds a Bradley–Terry fit (`src/lib/pairwise.ts`) so one odd pick doesn't sink a game, and nothing changes until you save the result.
-3. Settings also has your display name and meeple color.
+3. Settings also has your display name and meeple color. Colors can repeat (a new account gets one of the least used, `pickColor` in `src/lib/meeple.ts`), so a meeple only appears beside a name. Where nothing else says who someone is (a game's owners on Shelf, each person's chance on Discover and Online, votes on an event's games, Group taste), the site shows their Discord picture in a ring of their color, or their initial without one (`Face` and `Faces` in `src/components/ui.tsx`). A row with one for each person shows the five a game suits best, then how many more, once there are more than six.
 
 **New games to rank.** Once you're set up, a game you play that isn't in your ranking yet shows three ways: a count beside **Rankings** in the nav (and on the tab bar on phones), a *New to rank* card at the top of Home naming the games and when you last played one, with a button to the right list, and a count on each list's switch on Rankings. Ranking them clears all three.
 

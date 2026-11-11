@@ -107,7 +107,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
   ]);
   // What Find a new date keeps: the other dates on the poll it was picked from
   const staying = stayingDates.map((d) => dateChoiceLabel(d.startsAt, d.votes, TIME_ZONE));
-  const people = members.map((m) => ({ id: m.id, name: m.name, color: m.color }));
+  const people = members.map((m) => ({ id: m.id, name: m.name, image: m.image, color: m.color }));
   const byId = new Map(people.map((p) => [p.id, p]));
   const going = table.memberIds.flatMap((uid) => byId.get(uid) ?? []);
   const headcount = table.memberIds.length + table.others;

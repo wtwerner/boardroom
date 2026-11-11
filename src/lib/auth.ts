@@ -6,10 +6,11 @@ import { nextCookies } from "better-auth/next-js";
 import { and, eq } from "drizzle-orm";
 import { CASUAL_NIGHT, CASUAL_SIGN_IN, SITE_URL } from "@/config";
 import { db, schema } from "@/db";
-import { type Access, MEEPLE_COLORS } from "@/db/enums";
+import type { Access } from "@/db/enums";
 import { signInAccess } from "./access";
 import { getServerMember } from "./discord";
 import { discordAccountEmail } from "./discord-email";
+import { pickColor } from "./meeple";
 import { matchByName } from "./players";
 import { loadSettings } from "./settings-store";
 import type { SignInRefusal } from "./sign-in-refusal";
@@ -57,13 +58,12 @@ function checkedJustNow(userId: string) {
  * that was @-mentioned with their Discord account (or, failing that, is the only
  * one with their name), or start a fresh one. Two players with their name could
  * be either, so they start fresh and merge their history in. Either way they get
- * the first free meeple color.
+ * a meeple color if they don't have one (pickColor).
  */
 async function linkPlayer(userId: string, name: string, discordId: string | null) {
   const players = await db.select().from(schema.player);
   if (players.some((p) => p.userId === userId)) return;
-  const taken = new Set(players.map((p) => p.color).filter(Boolean));
-  const color = MEEPLE_COLORS.find((c) => !taken.has(c)) ?? null;
+  const color = pickColor(players.map((p) => p.color));
   const byName = matchByName(
     players.filter((p) => !p.userId && !p.discordId),
     name,
@@ -82,6 +82,14 @@ async function linkPlayer(userId: string, name: string, discordId: string | null
   } else {
     await db.insert(schema.player).values({ name, userId, discordId, color });
   }
+}
+
+/** Anyone who first signed in once the first six colors were taken went without one: they get one on their next sign-in */
+async function colorIfNone(userId: string) {
+  const mine = await db.query.player.findFirst({ where: eq(schema.player.userId, userId), columns: { id: true, color: true } });
+  if (!mine || mine.color) return;
+  const used = await db.select({ color: schema.player.color }).from(schema.player);
+  await db.update(schema.player).set({ color: pickColor(used.map((p) => p.color)) }).where(eq(schema.player.id, mine.id));
 }
 
 export const auth = betterAuth({
@@ -147,6 +155,9 @@ export const auth = betterAuth({
             db.query.user.findFirst({ where: eq(schema.user.id, session.userId), columns: { access: true } }),
           ]);
           await signInAs(row?.accountId, u?.access ?? null);
+        },
+        after: async (session) => {
+          await colorIfNone(session.userId);
         },
       },
     },

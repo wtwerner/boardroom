@@ -50,7 +50,6 @@ async function Settings() {
     me.playerId ? db.query.player.findFirst({ where: eq(schema.player.id, me.playerId), columns: { calendarToken: true } }) : null,
   ]);
   const plays = new Map(seatCounts.map((s) => [s.playerId, s.n]));
-  const takenColors = players.filter((p) => p.id !== me.playerId && p.color).map((p) => p.color!);
 
   return (
     <div className="max-w-2xl space-y-10">
@@ -95,8 +94,8 @@ async function Settings() {
             <RenamePlayerForm players={[{ id: me.playerId, name: me.name }]} myPlayerId={me.playerId} label="Your name" />
           </div>
         )}
-        <p className="mb-3 text-sm text-slate">Your meeple color marks you everywhere on the site.</p>
-        <ColorPicker current={me.color} taken={takenColors} />
+        <p className="mb-3 text-sm text-slate">Your meeple color goes beside your name on plays and rankings, and around your picture. Others can pick the same one.</p>
+        <ColorPicker current={me.color} />
       </Section>
 
       {me.playerId && (

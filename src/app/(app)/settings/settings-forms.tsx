@@ -20,30 +20,29 @@ function Result({ state }: { state: ActionResult | null }) {
 
 const input = "rounded-lg border border-line bg-table px-3 py-2 text-sm";
 
-export function ColorPicker({ current, taken }: { current: MeepleColor | null; taken: MeepleColor[] }) {
+/** Your meeple color. Others can have the same one, so it's yours to pick, not to claim */
+export function ColorPicker({ current }: { current: MeepleColor | null }) {
   const [pending, start] = useTransition();
   return (
     <div role="radiogroup" aria-label="Meeple color" className="flex flex-wrap gap-2">
-      {MEEPLE_COLORS.map((c) => {
-        const isTaken = taken.includes(c);
-        return (
-          <button
-            key={c}
-            type="button"
-            role="radio"
-            aria-checked={current === c}
-            aria-label={`${c}${isTaken ? " (taken)" : ""}`}
-            disabled={pending || isTaken}
-            onClick={() => start(() => setMyColor(c))}
-            className={clsx(
-              "grid size-12 place-items-center rounded-xl border-2 bg-card disabled:opacity-30",
-              current === c ? "border-ink shadow-token" : "border-line hover:border-ink/40",
-            )}
-          >
-            <Meeple color={c} className="size-7" />
-          </button>
-        );
-      })}
+      {MEEPLE_COLORS.map((c) => (
+        <button
+          key={c}
+          type="button"
+          role="radio"
+          aria-checked={current === c}
+          aria-label={c}
+          title={c}
+          disabled={pending}
+          onClick={() => start(() => setMyColor(c))}
+          className={clsx(
+            "grid size-12 place-items-center rounded-xl border-2 bg-card disabled:opacity-60",
+            current === c ? "border-ink shadow-token" : "border-line hover:border-ink/40",
+          )}
+        >
+          <Meeple color={c} className="size-7" />
+        </button>
+      ))}
     </div>
   );
 }

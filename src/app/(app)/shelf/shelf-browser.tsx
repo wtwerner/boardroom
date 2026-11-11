@@ -5,11 +5,11 @@ import { useDeferredValue, useMemo, useState, useSyncExternalStore } from "react
 import { LayoutGrid, List, Search } from "lucide-react";
 import clsx from "clsx";
 import type { MeepleColor, Sentiment } from "@/db/enums";
-import { GameCover, Meeple, bestAt, formatDate, playerRange, playtime } from "@/components/ui";
+import { Faces, GameCover, Meeple, bestAt, formatDate, playerRange, playtime } from "@/components/ui";
 import type { ShelfGame } from "@/lib/queries";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 
-type Member = { id: string; name: string; color: MeepleColor | null };
+type Member = { id: string; name: string; image: string | null; color: MeepleColor | null };
 type Sort = "name" | "plays" | "stale" | "rating" | "weight" | "loved" | "bet";
 
 const subscribeToNothing = () => () => {};
@@ -228,8 +228,8 @@ export function ShelfBrowser({
                 <GameCover src={g.thumbnail} image={g.image} name={g.name} size="fluid" sizes="(min-width: 1024px) 18vw, (min-width: 640px) 30vw, 45vw" />
                 <div className="mt-2 flex items-start justify-between gap-2">
                   <span className="line-clamp-2 text-sm font-semibold group-hover:underline">{g.name}</span>
-                  <span className="flex shrink-0 pt-0.5" aria-label={`Owned by ${g.ownerIds.map((id) => memberById.get(id)?.name).join(", ")}`}>
-                    {g.ownerIds.map((id) => <Meeple key={id} color={memberById.get(id)?.color ?? null} className="-ml-1 size-3.5 first:ml-0" />)}
+                  <span className="pt-0.5">
+                    <Owners people={g.ownerIds.flatMap((id) => memberById.get(id) ?? [])} />
                   </span>
                 </div>
                 <div className="mt-0.5 text-xs text-slate">
@@ -343,4 +343,9 @@ function ShelfTable({
       </table>
     </div>
   );
+}
+
+/** Who owns a game, on its card: their faces, three at most */
+function Owners({ people }: { people: Member[] }) {
+  return <Faces people={people} max={3} label={`Owned by ${people.map((p) => p.name).join(", ")}`} />;
 }
