@@ -389,6 +389,43 @@ async function datesToAnswer(userId: string) {
   });
 }
 
+/**
+ * For a casual account: the casual night's events still picking a date, whether or not they've
+ * answered, since polls only wait on members (poll-store.ts)
+ */
+async function casualDatesToAnswer(playerId: number | null) {
+  const polls = (await findingPolls()).filter((p) => p.night === "casual");
+  const nights = await Promise.all(polls.map((p) => loadNight(p.nightId)));
+  return polls.flatMap((p, i) => {
+    const n = nights[i];
+    if (!n) return [];
+    const offered = p.dates.filter((d) => !d.past && !d.fellThrough).length;
+    return [{ id: n.id, title: n.title, offered, answered: p.answered.length, mine: p.answered.some((a) => a.playerId === playerId) }];
+  });
+}
+
+function CasualDatesToAnswer({ events }: { events: Awaited<ReturnType<typeof casualDatesToAnswer>> }) {
+  return (
+    <Section title="Picking a date">
+      <ul className="grid gap-3 lg:grid-cols-2">
+        {events.map((e) => (
+          <li key={e.id}>
+            <Link href={`/events/${e.id}`} className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/60">
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">{e.title}</span>
+                <span className="block text-sm text-slate">
+                  Date TBD · {e.offered} {e.offered === 1 ? "date" : "dates"} on offer · {e.answered} answered{e.mine && ", you included"}
+                </span>
+              </span>
+              <span className={buttonClass(e.mine ? "secondary" : "primary", "px-2.5 py-1.5 text-xs")}>{e.mine ? "Change" : "Answer"}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Section>
+  );
+}
+
 /** Events picking a date, each a tap from saying which dates work */
 function DatesToAnswer({ events }: { events: Awaited<ReturnType<typeof datesToAnswer>> }) {
   return (
@@ -496,8 +533,9 @@ function SetupNudge({ name, status, toRank, casual = false }: { name: string; st
  * now, what was played last time, how the people who come rank games, and their own setup.
  */
 async function CasualHome({ me }: { me: CurrentUser }) {
-  const [nights, crowd, setup, toRank, favorites] = await Promise.all([
+  const [nights, picking, crowd, setup, toRank, favorites] = await Promise.all([
     getUpcomingNights().then((all) => all.filter((n) => n.night === "casual")),
+    casualDatesToAnswer(me.playerId),
     getMembers("casual"),
     getSetupStatus(me),
     getNewToRank(me.id, me.playerId),
@@ -514,12 +552,15 @@ async function CasualHome({ me }: { me: CurrentUser }) {
     <div className="space-y-10">
       <SetupNudge name={me.name} status={setup} toRank={toRank} casual />
       {onNow.length > 0 && <HappeningNow nights={onNow} members={crowd} />}
+      {picking.length > 0 && <CasualDatesToAnswer events={picking} />}
       {comingUp.length > 0 ? (
         <UpNext nights={comingUp.slice(0, 3)} members={crowd} plan={false} />
       ) : (
-        <Section title="Coming up">
-          <Empty>Nothing&apos;s on the calendar yet. The next {casual} shows up here, and in Discord, once it&apos;s set.</Empty>
-        </Section>
+        picking.length === 0 && (
+          <Section title="Coming up">
+            <Empty>Nothing&apos;s on the calendar yet. The next {casual} shows up here, and in Discord, once it&apos;s planned.</Empty>
+          </Section>
+        )
       )}
 
       {last && games.length > 0 && (
