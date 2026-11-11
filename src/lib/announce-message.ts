@@ -1,7 +1,8 @@
 /**
  * A night's announcement in the group's chat channel, for groups whose posts live
  * somewhere people don't read as they chat, like a forum (announceChannel in discord.ts). It
- * shows the details and links to the post, which has the buttons, so it has none of its own.
+ * shows the details and links to the post, which has the buttons, so it has none of its own
+ * (and while a date's being picked, to its page on the site too).
  * Pure so it can be tested; announce-post.ts sends it.
  */
 
@@ -28,7 +29,7 @@ export function buildNightAnnouncement(n: NightCard, postUrl: string | null, pin
     lockedIn?.imageUrl ? withBox(header, lockedIn.name, lockedIn.imageUrl) : { type: TEXT, content: header },
     { type: TEXT, content: details.join("\n") },
   ];
-  return message(card, n.cancelled ? CANCELLED_ACCENT : NIGHT_ACCENT[n.kind], postUrl ? { label: "Open the event", url: postUrl } : null, ping);
+  return message(card, n.cancelled ? CANCELLED_ACCENT : NIGHT_ACCENT[n.kind], postUrl ? [{ label: "Open the event", url: postUrl }] : [], ping);
 }
 
 export function buildPollAnnouncement(p: PollCard, postUrl: string | null, ping?: NightPing | null): { flags: number; components: Component[] } {
@@ -45,17 +46,22 @@ export function buildPollAnnouncement(p: PollCard, postUrl: string | null, ping?
     { type: TEXT, content: `${title}\n-# ${sub}` },
     ...(dates.length ? [{ type: TEXT, content: dates.join("\n") }] : []),
   ];
-  return message(card, p.status === "cancelled" ? CANCELLED_ACCENT : NIGHT_ACCENT[p.kind], postUrl ? { label: open ? "Say which dates work" : "Open the event", url: postUrl } : null, ping);
+  const buttons = [
+    postUrl && { label: open ? "Say which dates work" : "Open the event", url: postUrl },
+    // While it's being planned, the site has the rest: games, who's coming, answering for someone
+    open && p.pollUrl && { label: `Help plan it on ${p.siteName}`.slice(0, 80), url: p.pollUrl },
+  ].filter((b) => !!b);
+  return message(card, p.status === "cancelled" ? CANCELLED_ACCENT : NIGHT_ACCENT[p.kind], buttons, ping);
 }
 
-function message(card: Component[], accent: number, button: { label: string; url: string } | null, ping?: NightPing | null) {
+function message(card: Component[], accent: number, buttons: { label: string; url: string }[], ping?: NightPing | null) {
   return {
     flags: COMPONENTS_V2,
     components: [
       // Above the card, on the first announcement only: edits drop it, and never ping
       ...(ping ? [{ type: TEXT, content: ping.text }] : []),
       { type: CONTAINER, accent_color: accent, components: card },
-      ...(button ? [{ type: ACTION_ROW, components: [{ type: BUTTON, style: LINK_BUTTON_STYLE, label: button.label, url: button.url }] }] : []),
+      ...(buttons.length ? [{ type: ACTION_ROW, components: buttons.map((b) => ({ type: BUTTON, style: LINK_BUTTON_STYLE, label: b.label, url: b.url })) }] : []),
     ],
   };
 }

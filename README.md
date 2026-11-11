@@ -120,7 +120,7 @@ Sign in with Discord and open **Settings → Group settings**. Until someone's a
 | Plays channel | none | Where plays logged on the site are posted, and where hand-written ones are read from. One for each kind of night |
 | Events channel | none | Where each kind of night is posted, with its thread: a text channel or a forum. Needs `DISCORD_PUBLIC_KEY` |
 | Announcements channel | none | A chat channel each kind of night is announced in, with its details and a link to its post, for events channels people don't read as they chat (a forum, say). The announcement takes the night's ping |
-| Ping when an event is posted | nobody | Who a night's post (or its announcement, when there is one) pings when it first goes up: @here, @everyone or a role |
+| Ping when an event is posted | nobody | Who a night's post (or its announcement, when there is one) pings when it first goes up: @here, @everyone or a role. A night still picking its date pings when its date's set instead |
 | Welcome channel | the usual place | Where someone invited to the core group's nights is greeted, instead of its announcements, events or plays channel (see [Inviting people](docs/discord-setup.md#part-5-inviting-people-to-the-core-groups-nights-optional)) |
 
 The Discord settings pick from the server's channels and roles, so they only show once the bot is in the server. Admins can make other members admins on the same page. A change shows across the site straight away, with no redeploy.

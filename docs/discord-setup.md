@@ -73,7 +73,7 @@ Boardroom can post each night to an events channel: a card with when and where, 
    node scripts/with-env.mjs .env.production pnpm discord:commands
    ```
 
-5. Optional: to ping people when a night (including one still picking its date) is posted, pick @here, @everyone or a role under **Ping when an event is posted** on Group settings. Only the first post pings (or its announcement, when nights are announced); edits never do. `here`, `everyone` and a role that isn't **Allow anyone to @mention this role** need the bot's role to have **Mention @everyone, @here, and All Roles**, which the invite link leaves out; the owner can give it under **Server Settings → Roles**.
+5. Optional: to ping people when a night is posted, pick @here, @everyone or a role under **Ping when an event is posted** on Group settings. Only the first post pings (or its announcement, when nights are announced); edits never do. A night still picking its date goes up quietly, with a link to plan it on the site, and the ping comes in the reply when its date's set. `here`, `everyone` and a role that isn't **Allow anyone to @mention this role** need the bot's role to have **Mention @everyone, @here, and All Roles**, which the invite link leaves out; the owner can give it under **Server Settings → Roles**.
 6. Optional: for the reminder before each night and the morning-after DM asking for its plays, set up [the tick](../README.md#reminders-and-the-morning-after).
 
 ## Part 5: inviting people to the core group's nights (optional)

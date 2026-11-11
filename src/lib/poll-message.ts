@@ -219,26 +219,23 @@ export function stayingLine(dates: string[], timeZone: string) {
 export function refindMessage(n: { by: string; was: string; going: CardPerson[] }) {
   const going = n.going.filter((g) => g.discordId);
   const lines = [
-    `↩️ ${n.by} says <t:${unix(n.was)}:F> fell through, so this is finding a date again.`,
-    ...(going.length ? [`${andList(going.map(person))}, you were going. Check which dates work for you on the post.`] : []),
+    `↩️ ${n.by} says <t:${unix(n.was)}:F> fell through, so it's back to picking a date.`,
+    ...(going.length ? [`${andList(going.map(person))}, you were going: say which dates work on the post.`] : []),
   ];
   return { body: { content: lines.join("\n") }, allowedMentions: { parse: [], users: [...new Set(going.map((g) => g.discordId!))] } };
 }
 
 /**
- * The reply on the post once its date's set: pings whoever the group set for its nights, and
- * the people coming, saying they're down as going (or a maybe) from what they answered, and asks
- * anyone who hadn't answered to say whether they're coming.
+ * The reply on the post (or its announcement) once its date's set: pings whoever the group set
+ * for its nights with the date and a link to RSVP, and underneath, small, who's already down as
+ * going or a maybe from what they answered, which pings them too.
  */
-export function pickedMessage(p: { title: string; startsAt: string; going: CardPerson[]; maybe: CardPerson[] }, ping: NightPing | null) {
+export function pickedMessage(p: { title: string; startsAt: string; url: string | null; going: CardPerson[]; maybe: CardPerson[] }, ping: NightPing | null) {
   const going = p.going.filter((v) => v.discordId);
   const maybe = p.maybe.filter((v) => v.discordId);
-  const lines = [
-    `${ping ? `${ping.text} ` : ""}**${escape(p.title)}** is set for <t:${unix(p.startsAt)}:F> (<t:${unix(p.startsAt)}:R>).`,
-    going.length && `${andList(going.map(person))} ${going.length === 1 ? "is" : "are"} down as going, since that date works for them.`,
-    maybe.length && `${andList(maybe.map(person))} ${maybe.length === 1 ? "is" : "are"} down as a maybe.`,
-    going.length || maybe.length ? "Anyone else, say on the post if you're coming." : "Say if you're coming on the post.",
-  ].filter(Boolean);
+  const rsvp = p.url ? `[Open the event](<${p.url}>) to RSVP.` : "RSVP on the post.";
+  const coming = [going.length && `Going: ${andList(going.map(person))}`, maybe.length && `Maybe: ${andList(maybe.map(person))}`].filter(Boolean).join(" · ");
+  const lines = [`${ping ? `${ping.text} ` : ""}**${escape(p.title)}** is set for <t:${unix(p.startsAt)}:F> (<t:${unix(p.startsAt)}:R>). ${rsvp}`, coming && `-# ${coming}`].filter(Boolean);
   return {
     body: { content: lines.join("\n") },
     allowedMentions: {
@@ -265,7 +262,7 @@ export function everyoneAnsweredMessage(m: { starter: CardPerson | null; best: {
   const lines = m.best
     ? [
         m.best.everyone
-          ? `✅ Everyone's answered, and <t:${unix(m.best.startsAt)}:F> works for all of them.`
+          ? `✅ Everyone's answered, and <t:${unix(m.best.startsAt)}:F> works for everyone.`
           : `✅ Everyone's answered. <t:${unix(m.best.startsAt)}:F> works best: ${m.best.coming} can come.`,
         next("set the date on the post when you're ready."),
       ]
