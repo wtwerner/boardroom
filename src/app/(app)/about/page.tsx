@@ -6,7 +6,7 @@ import { PageHeader, Panel, Skeleton, TextLink } from "@/components/ui";
 import { MIN_EVIDENCE } from "@/lib/recommend";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { inSentence } from "@/lib/text";
-import { requireMemberPage } from "@/lib/session";
+import { requireUser } from "@/lib/session";
 import { HEAVY_WEIGHT, TIER_LABEL } from "@/lib/tier";
 import { UPCOMING_PER_GROUP } from "@/lib/upcoming";
 
@@ -36,12 +36,13 @@ export default function AboutPage() {
   );
 }
 
-/** For members: it explains the core group's nights too, so it isn't there for a casual account yet */
+/** The whole of it for members. It explains the core group's nights too, so a casual account gets their own night's part */
 async function About() {
-  await requireMemberPage();
+  const me = await requireUser();
   // The nights by the names this group gives them, for use mid-sentence
   const core = inSentence(NIGHT_NAMES.core);
   const casual = inSentence(NIGHT_NAMES.casual);
+  if (me.access !== "member") return <CasualAbout casual={casual} />;
   return (
     <>
       <PageHeader title="How it works" />
@@ -303,6 +304,55 @@ async function About() {
             />
           </Part>
         </div>
+      </div>
+    </>
+  );
+}
+
+/**
+ * How it works for a casual account: rating, ranking and the Beats score, their night's list,
+ * and how their ratings and collection plan their night. Nothing of the core group's.
+ */
+function CasualAbout({ casual }: { casual: string }) {
+  return (
+    <>
+      <PageHeader title="How it works" />
+      <div className="max-w-2xl space-y-12 text-sm leading-relaxed">
+        <Part id="votes" title="Ratings and votes">
+          <p>Each game has three things you can set, from its page or from Rankings → Rate games.</p>
+          <Facts
+            rows={[
+              ["Rating", <>How much you like it: {SENTIMENTS.map((s) => `${SENTIMENT_LABEL[s].emoji} ${SENTIMENT_LABEL[s].label}`).join(", ")}.</>],
+              ["Want to play", "You'd like it on the table soon, whether you've played it or not. It clears once you play the game."],
+              ["🔥 Must play", `The few games you really want next. You hold ${MUST_PLAY_LIMIT} at a time, and a vote comes back once you play its game.`],
+            ]}
+          />
+        </Part>
+
+        <Part id="rankings" title="Rankings">
+          <p>
+            You keep two rankings, so games are only compared with their own kind: <strong>{TIER_LABEL.heavy}</strong>, the longer, heavier ones
+            (BGG weight {HEAVY_WEIGHT} and up), and <strong>{TIER_LABEL.light}</strong>, everything lighter. Each is every game of that kind
+            you&apos;ve played, best first. A new game is placed with a few &ldquo;which would you rather play?&rdquo; questions; drag to adjust.
+          </p>
+          <p>
+            The group list is {casual}&apos;s: the rankings of everyone who&apos;s played at it in the last year. Its <strong>Beats</strong> score
+            is, for each person who ranked a game, the share of their other games it&apos;s ranked above, averaged across them. 100% is the top of
+            every list, 50% the middle. One imaginary 50% vote is added to every game, so a game few people have ranked sits nearer the middle.
+          </p>
+        </Part>
+
+        <Part id="plan" title="Planning an event">
+          <p>
+            On an event you&apos;re going to, your ratings, rankings and votes count toward the games it suggests, like everyone else&apos;s
+            there, and the games in your BGG collection are ones you can say you&apos;ll bring. Anyone going can ask someone who owns a game to
+            bring it.
+          </p>
+          <p>
+            After the event, log what was played on its page. The morning after, the bot messages you in Discord with any games you played and
+            haven&apos;t rated yet.
+          </p>
+        </Part>
       </div>
     </>
   );

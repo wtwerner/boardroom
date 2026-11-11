@@ -97,7 +97,7 @@ async function Rankings({ searchParams }: { searchParams: PageProps<"/rankings">
         <p className="mb-3 text-sm text-slate">
           <strong className="font-semibold text-ink">Beats</strong> is how much of each person&apos;s list a game is ranked above, on average:
           100% tops every list, 50% is the middle. Games few people have ranked are pulled toward 50%.{" "}
-          {member && <TextLink href="/about#rankings">How it works</TextLink>}
+          <TextLink href="/about#rankings">How it works</TextLink>
         </p>
         {group.length === 0 ? (
           <Empty>

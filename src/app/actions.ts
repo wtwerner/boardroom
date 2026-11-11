@@ -6,12 +6,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
-import { CLAUDE_IDEAS_PER_DAY, DEMO, GROUP_NIGHTS, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
+import { CASUAL_NIGHT, CLAUDE_IDEAS_PER_DAY, DEMO, GROUP_NIGHTS, NIGHT_NAMES, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { ACCESS, type Access, DATE_ANSWERS, MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
-import { canPostToDiscord, discordCode, getServerMember, giveMemberRole, hasInteractions, hasMemberRole, holdsRole, registerCommands, sendDirectMessage, takeMemberRole } from "@/lib/discord";
+import { canPostToDiscord, discordCode, getServerMember, giveMemberRole, hasInteractions, hasMemberRole, registerCommands, sendDirectMessage, takeMemberRole } from "@/lib/discord";
 import type { ParsedPlayer } from "@/lib/play-parser";
 import { isSyncOrigin } from "@/lib/calendar";
 import { feedTokenFor, replaceFeedToken } from "@/lib/calendar-store";
@@ -28,7 +28,8 @@ import { type CurrentUser, PREVIEW_COOKIE, requireAdmin, requireMember, requireU
 import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
 import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
-import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
+import { inSentence } from "@/lib/text";
+import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, leaveNights, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
 import { removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeCandidate, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
 import { accessChangeRefusal } from "@/lib/access";
@@ -444,7 +445,7 @@ export async function importCsv(_prev: ActionResult | null, form: FormData): Pro
 // ---------------------------------------------------------------------------
 
 export async function saveBgaProfile(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
-  const me = await requireUser();
+  const me = await requireMember();
   const username = String(form.get("bgaUsername") ?? "").trim() || null;
   if (username && username.length > 40) return { ok: false, error: "That's longer than a BGA name can be." };
   const premium = Boolean(username) && form.get("bgaPremium") === "on";
@@ -474,19 +475,10 @@ export type GroupSettingsResult = ActionResult | { ok: false; error: string; fie
 /** Save Group settings. Fields the form didn't show (the casual night's, with it off) keep what they were. */
 export async function saveGroupSettings(_prev: GroupSettingsResult | null, form: FormData): Promise<GroupSettingsResult> {
   try {
-    const me = await requireAdmin();
+    await requireAdmin();
     const input = Object.fromEntries(SETTING_KEYS.filter((key) => form.has(key)).map((key) => [key, form.get(key)]));
     const checked = checkSettings(input, SETTINGS);
     if (!checked.ok) return { ok: false, error: "Some of those need fixing first.", fields: checked.errors };
-
-    // Signing in needs the member role, so an admin without it would lock themselves out
-    const role = checked.settings.memberRole;
-    if (role && role !== SETTINGS.memberRole) {
-      const row = await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } });
-      if (row?.discordId && !(await holdsRole(row.discordId, role))) {
-        return { ok: false, error: "Some of those need fixing first.", fields: { memberRole: "You don't have this role, so you couldn't sign in again. Take it in Discord first." } };
-      }
-    }
 
     const welcomeBefore = welcomeName();
     await saveSettings(checked.settings);
@@ -747,31 +739,22 @@ export async function welcomeToGroup(discordId: string): Promise<ActionResult> {
 
 /**
  * An admin moves someone up to member, down to casual, or off the site (src/lib/access.ts), and
- * Discord's member role follows. Moving up someone without the role is an invite: the role, the
- * hello in the channel and the DM. Off the site ends their sessions too. Boardroom changes first;
- * if Discord won't, the message says so and People and access shows it until it's settled.
+ * Discord's member role follows. Moving down takes them off the core group's upcoming events (their
+ * answers, the dates they said work, their votes), and off the site takes them off every upcoming
+ * event and ends their sessions. Moving up someone without the role is an invite: the role, the
+ * hello in the channel and the DM. Boardroom changes first; if Discord won't, the message says so
+ * and People and access shows it until it's settled.
  */
 export async function setAccess(userId: string, to: Access): Promise<ActionResult> {
   try {
     const me = await requireAdmin();
     if (!ACCESS.includes(to)) return { ok: false, error: "Pick member, casual or removed." };
+    if (to === "casual" && !CASUAL_NIGHT) return { ok: false, error: 'Turn on "A casual night too" on Group settings first: without it, there\'s nothing for them to see.' };
     const target = await db.query.user.findFirst({ where: eq(schema.user.id, userId) });
     if (!target) return { ok: false, error: "They're not on the site." };
     const refusal = accessChangeRefusal(me.id, target, to);
     if (refusal) return { ok: false, error: refusal };
     if (target.access === to) return { ok: true };
-
-    if (to === "member" && target.discordId && canWelcome()) {
-      const candidate = await welcomeCandidate(target.discordId).catch(() => null);
-      if (candidate && !candidate.already) {
-        const row = await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } });
-        // Gives the role and makes them a member
-        const result = await welcome(target.discordId, { name: me.name, userId: me.id, discordId: row?.discordId ?? null });
-        await db.update(schema.user).set({ access: "member" }).where(eq(schema.user.id, userId));
-        refresh();
-        return { ok: true, message: welcomeSummary(result, () => "Discord") };
-      }
-    }
 
     await db
       .update(schema.user)
@@ -779,10 +762,36 @@ export async function setAccess(userId: string, to: Access): Promise<ActionResul
       .where(eq(schema.user.id, userId));
     // Off the site means now, not when their session runs out
     if (to === "removed") await db.delete(schema.session).where(eq(schema.session.userId, userId));
-    const discord = await matchRole(target.discordId, to, me.name);
+    // Someone no longer a member isn't coming to the core group's nights; someone off the site, to any
+    const left = to === "member" ? [] : await leaveNights(userId, { offSite: to === "removed" });
+    for (const { nightId, waiting } of left) syncNightPostLater(nightId, { waiting });
     refresh();
-    const said = { member: `${target.name} is a member.`, casual: `${target.name} has a casual account.`, removed: `${target.name} is off the site.` }[to];
-    return { ok: true, message: discord ? `${said} ${discord}` : said };
+
+    const names = { core: inSentence(NIGHT_NAMES.core), casual: inSentence(NIGHT_NAMES.casual) };
+    const said = {
+      member: `${target.name} is a member.`,
+      casual: `${target.name} now sees only the ${names.casual}.`,
+      removed: `${target.name} is off the site.`,
+    }[to];
+    const events = left.length ? ` Took them off ${left.length} upcoming ${left.length === 1 ? "event" : "events"}.` : "";
+
+    // Moving up someone without the role invites them, as People's invite does
+    if (to === "member" && target.discordId && canWelcome()) {
+      const candidate = await welcomeCandidate(target.discordId).catch(() => null);
+      if (candidate && !candidate.already) {
+        const row = await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } });
+        try {
+          const result = await welcome(target.discordId, { name: me.name, userId: me.id, discordId: row?.discordId ?? null });
+          return { ok: true, message: welcomeSummary(result, () => "Discord") };
+        } catch (err) {
+          console.error(`Couldn't invite ${target.discordId}`, err);
+          return { ok: true, message: `${said} Discord didn't give them the member role: try Match Discord in a minute.` };
+        }
+      }
+    }
+
+    const discord = await matchRole(target.discordId, to, me.name);
+    return { ok: true, message: [said + events, discord].filter(Boolean).join(" ") };
   } catch (err) {
     return fail(err);
   }

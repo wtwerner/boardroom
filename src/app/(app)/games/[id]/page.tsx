@@ -34,13 +34,12 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
   // A casual account sees the game, their own say on it and their night: not the core group's opinions or plays
   const limited = me.access !== "member";
   const id = Number((await params).id);
-  const [data, members, mustPlayLeft, bga] = await Promise.all([getGame(id), getMembers(), getMustPlayLeft(me.id, id), getBgaGame(id)]);
+  const [data, members, mustPlayLeft, bga] = await Promise.all([getGame(id, me.id), getMembers(), getMustPlayLeft(me.id, id), getBgaGame(id)]);
   if (!data) notFound();
-  const { game: g, owners, opinions } = data;
+  const { game: g, owners, opinions, mine } = data;
   const plays = limited ? data.plays.filter((p) => p.night === "casual") : data.plays;
   const tier = gameTier(g);
   const places = await getGamePlaces(g.id, tier, limited ? ["casual"] : GROUP_NIGHTS);
-  const mine = opinions.find((o) => o.userId === me.id);
   const memberById = new Map(members.map((m) => [m.id, m]));
 
   // How many times each player has played it
@@ -122,7 +121,6 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
               wantToPlay={mine?.wantToPlay ?? false}
               mustPlay={mine?.mustPlay ?? false}
               mustPlayLeft={mustPlayLeft}
-              explain={!limited}
             />
           </div>
         </div>

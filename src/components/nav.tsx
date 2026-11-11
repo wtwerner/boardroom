@@ -16,18 +16,22 @@ const LINKS = [
   { href: "/people", label: "People", icon: Users, casual: false },
   { href: "/discover", label: "Discover", icon: Sparkles, casual: false },
   { href: "/online", label: "Online", icon: Globe, casual: false },
-  { href: "/about", label: "How it works", icon: CircleHelp, casual: false },
+  { href: "/about", label: "How it works", icon: CircleHelp, casual: true },
   { href: "/settings", label: "Settings", icon: Settings, casual: true },
 ] as const;
 
 /**
  * Whose nav it is: a member's, a casual account's, or not known yet. The nav renders before the
- * session is read, so until then it has only the links everyone has, and a casual account never
- * sees the core group's pages listed, even for a moment.
+ * session is read, so until then the links only members have are blank placeholders: a casual
+ * account never sees the core group's pages named, even for a moment, and a member's nav doesn't
+ * grow as the page loads.
  */
 export type NavFor = "member" | "casual" | "unknown";
 
-const linksFor = (who: NavFor) => LINKS.filter((l) => who === "member" || l.casual);
+type NavLink = (typeof LINKS)[number] & { placeholder?: boolean };
+
+const linksFor = (who: NavFor): NavLink[] =>
+  who === "unknown" ? LINKS.map((l) => ({ ...l, placeholder: !l.casual })) : LINKS.filter((l) => who === "member" || l.casual);
 
 /** Mobile: the five things people reach for at the table. */
 const TAB_LINKS = (who: NavFor) => linksFor(who).filter((l) => !["/settings", "/discover", "/online", "/people", "/about"].includes(l.href));
@@ -62,26 +66,33 @@ export function SideNav({ badges = {}, who = "unknown" }: { badges?: NavBadges; 
     <WithPathname
       render={(pathname) => (
         <nav className="flex flex-col gap-0.5">
-          {linksFor(who).map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={isActive(pathname, href) ? "page" : undefined}
-              className={clsx(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-felt-ink/75 hover:bg-white/10 hover:text-felt-ink",
-                "aria-[current=page]:bg-felt-ink aria-[current=page]:text-felt aria-[current=page]:shadow-token",
-              )}
-            >
-              <Icon className="size-4.5" strokeWidth={2} />
-              {label}
-              {badges[href] && (
-                <span title={badges[href].label} className="tabular ml-auto rounded-full bg-meeple-yellow px-1.5 py-px text-[0.7rem] font-semibold text-ink">
-                  {badgeText(badges[href].count)}
-                  <span className="sr-only"> {badges[href].label}</span>
-                </span>
-              )}
-            </Link>
-          ))}
+          {linksFor(who).map(({ href, label, icon: Icon, placeholder }) =>
+            placeholder ? (
+              <span key={href} aria-hidden className="flex items-center gap-3 px-3 py-2">
+                <span className="size-4.5 rounded bg-felt-ink/10" />
+                <span className="h-3 w-16 rounded bg-felt-ink/10" />
+              </span>
+            ) : (
+              <Link
+                key={href}
+                href={href}
+                aria-current={isActive(pathname, href) ? "page" : undefined}
+                className={clsx(
+                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-felt-ink/75 hover:bg-white/10 hover:text-felt-ink",
+                  "aria-[current=page]:bg-felt-ink aria-[current=page]:text-felt aria-[current=page]:shadow-token",
+                )}
+              >
+                <Icon className="size-4.5" strokeWidth={2} />
+                {label}
+                {badges[href] && (
+                  <span title={badges[href].label} className="tabular ml-auto rounded-full bg-meeple-yellow px-1.5 py-px text-[0.7rem] font-semibold text-ink">
+                    {badgeText(badges[href].count)}
+                    <span className="sr-only"> {badges[href].label}</span>
+                  </span>
+                )}
+              </Link>
+            ),
+          )}
         </nav>
       )}
     />
@@ -97,25 +108,32 @@ export function TabBar({ badges = {}, who = "unknown" }: { badges?: NavBadges; w
           className="grid border-t border-ink/20 bg-felt pb-[env(safe-area-inset-bottom)] text-felt-ink"
           style={{ gridTemplateColumns: `repeat(${links.length}, minmax(0, 1fr))` }}
         >
-          {links.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={isActive(pathname, href) ? "page" : undefined}
-              className="flex flex-col items-center gap-0.5 py-2 text-[0.7rem] text-felt-ink/70 aria-[current=page]:font-semibold aria-[current=page]:text-felt-ink"
-            >
-              <span className="relative">
-                <Icon className="size-5" />
-                {badges[href] && (
-                  <span className="tabular absolute -top-1.5 -right-2.5 min-w-4 rounded-full bg-meeple-yellow px-1 text-center text-[0.6rem] leading-4 font-semibold text-ink">
-                    {badgeText(badges[href].count)}
-                    <span className="sr-only"> {badges[href].label}</span>
-                  </span>
-                )}
+          {links.map(({ href, label, icon: Icon, placeholder }) =>
+            placeholder ? (
+              <span key={href} aria-hidden className="flex flex-col items-center gap-1 py-2">
+                <span className="size-5 rounded bg-felt-ink/10" />
+                <span className="h-2.5 w-9 rounded bg-felt-ink/10" />
               </span>
-              {label}
-            </Link>
-          ))}
+            ) : (
+              <Link
+                key={href}
+                href={href}
+                aria-current={isActive(pathname, href) ? "page" : undefined}
+                className="flex flex-col items-center gap-0.5 py-2 text-[0.7rem] text-felt-ink/70 aria-[current=page]:font-semibold aria-[current=page]:text-felt-ink"
+              >
+                <span className="relative">
+                  <Icon className="size-5" />
+                  {badges[href] && (
+                    <span className="tabular absolute -top-1.5 -right-2.5 min-w-4 rounded-full bg-meeple-yellow px-1 text-center text-[0.6rem] leading-4 font-semibold text-ink">
+                      {badgeText(badges[href].count)}
+                      <span className="sr-only"> {badges[href].label}</span>
+                    </span>
+                  )}
+                </span>
+                {label}
+              </Link>
+            ),
+          )}
         </nav>
       )}
     />

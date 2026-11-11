@@ -17,12 +17,15 @@ export type SignInFacts = {
   existing: Access | null;
   /** Casual sign-in is on (and the group has a casual night) */
   casualSignIn: boolean;
+  /** The group has a casual night: without one, a casual account has nothing to see */
+  casualNight: boolean;
 };
 
 /**
  * Whether someone can sign in, and as what. Anyone not in the server is turned away. After the
  * first time, it's what Boardroom says, not the role: an admin moves people up or down, and
- * someone removed stays out. The first time, the role decides: with it they're a member; without
+ * someone removed stays out, and so does a casual account while the group has no casual night (an
+ * admin can make them a member). The first time, the role decides: with it they're a member; without
  * it they're a casual account when casual sign-in is on, and turned away when it isn't. A group
  * with no member role lets everyone in as a member, unless casual sign-in is on, when new people
  * start casual and an admin moves them up.
@@ -31,6 +34,7 @@ export function signInAccess(f: SignInFacts): { ok: true; access: "member" | "ca
   if (!f.inServer) return { ok: false, refusal: "not_in_server" };
   // Removed reads like a missing role: the page doesn't say someone was removed
   if (f.existing === "removed") return { ok: false, refusal: "missing_role" };
+  if (f.existing === "casual" && !f.casualNight) return { ok: false, refusal: "missing_role" };
   if (f.existing) return { ok: true, access: f.existing };
   if (f.hasRole) return { ok: true, access: "member" };
   if (f.casualSignIn) return { ok: true, access: "casual" };
@@ -67,26 +71,70 @@ export function roleMismatch(access: Access, hasRole: boolean | null): "extra-ro
 /** What one kind of account can do with one thing: all of it, their own, on the casual night only, or nothing */
 export type Allowed = "yes" | "own" | "casual" | "no";
 
+export type Capability = {
+  area: string;
+  what: string;
+  admin: Allowed;
+  member: Allowed;
+  casual: Allowed;
+  /** Only says something with a casual night */
+  aboutCasual?: true;
+  /** The actions in actions.ts that do it, which access.test.ts holds to the row: no for casual means requireMember, admins only means requireAdmin */
+  actions: string[];
+};
+
 /**
- * What each kind of account can do, for the admins' page. A description of the rules that
- * requireMember, requireAdmin and the casual checks in actions.ts enforce: change one, change both.
+ * What each kind of account can do, for the admins' page, named with the group's names for its
+ * nights. A description of the rules requireMember, requireAdmin and the casual checks in
+ * actions.ts enforce; access.test.ts checks each action against its row.
  */
-export const CAPABILITIES: { area: string; what: string; admin: Allowed; member: Allowed; casual: Allowed }[] = [
-  { area: "Their own", what: "Rate and rank games", admin: "yes", member: "yes", casual: "yes" },
-  { area: "Their own", what: "Name, color, calendar and BGG collection", admin: "yes", member: "yes", casual: "yes" },
-  { area: "Their own", what: "Board Game Arena name", admin: "yes", member: "yes", casual: "no" },
-  { area: "Events", what: "See and answer events", admin: "yes", member: "yes", casual: "casual" },
-  { area: "Events", what: "Answer for someone else", admin: "yes", member: "yes", casual: "no" },
-  { area: "Events", what: "Make, edit, move or delete events", admin: "yes", member: "yes", casual: "no" },
-  { area: "Events", what: "Bring games and ask others to bring", admin: "yes", member: "yes", casual: "casual" },
-  { area: "Events", what: "Propose, vote on and lock in the game", admin: "yes", member: "yes", casual: "no" },
-  { area: "Plays", what: "Log plays", admin: "yes", member: "yes", casual: "casual" },
-  { area: "Plays", what: "Edit or delete plays", admin: "yes", member: "yes", casual: "own" },
-  { area: "Plays", what: "Sync from Discord, fix names, merge players", admin: "yes", member: "yes", casual: "no" },
-  { area: "Group", what: "Shelf, People, Discover, Online and Plays pages", admin: "yes", member: "yes", casual: "no" },
-  { area: "Group", what: "Counted in the group's rankings and Discover", admin: "yes", member: "yes", casual: "no" },
-  { area: "Group", what: "Counted in the casual night's list and planner", admin: "yes", member: "yes", casual: "yes" },
-  { area: "Group", what: "Buy list, Claude's picks, prep links", admin: "yes", member: "yes", casual: "no" },
-  { area: "Admin", what: "Group settings, and who's an admin", admin: "yes", member: "no", casual: "no" },
-  { area: "Admin", what: "Move people up, down or out", admin: "yes", member: "no", casual: "no" },
-];
+export function capabilities(names: { core: string; casual: string }): Capability[] {
+  return [
+    { area: "Their own", what: "Rate and rank games", admin: "yes", member: "yes", casual: "yes", actions: ["setOpinion", "saveRanking"] },
+    {
+      area: "Their own",
+      what: "Name, color, calendar and BGG collection",
+      admin: "yes",
+      member: "yes",
+      casual: "yes",
+      actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv"],
+    },
+    { area: "Their own", what: "Board Game Arena name", admin: "yes", member: "yes", casual: "no", actions: ["saveBgaProfile"] },
+    { area: "Events", what: "See and answer events", admin: "yes", member: "yes", casual: "casual", actions: ["setRsvp", "answerDate", "noDatesWork"] },
+    { area: "Events", what: "Answer for someone else, and count others coming", admin: "yes", member: "yes", casual: "no", actions: ["setOthersComing"] },
+    {
+      area: "Events",
+      what: "Make, edit, date or delete events",
+      admin: "yes",
+      member: "yes",
+      casual: "no",
+      actions: ["addNight", "updateNight", "updateNightDetails", "deleteNight", "startPoll", "suggestPollDate", "findNewDate", "setNightDate", "nudgeForDates", "callOffPoll", "reopenPoll"],
+    },
+    { area: "Events", what: "Bring games and ask others to bring", admin: "yes", member: "yes", casual: "casual", actions: ["addGameToNight", "askToBring", "answerBringAsk", "dropPlan"] },
+    { area: "Events", what: "Propose, vote on, prep and lock in the game", admin: "yes", member: "yes", casual: "no", actions: ["setPlanVote", "setPrepped", "choosePlan"] },
+    { area: "Plays", what: "Log plays", admin: "yes", member: "yes", casual: "casual", actions: ["logPlay", "endNight"] },
+    { area: "Plays", what: "Edit or delete plays", admin: "yes", member: "yes", casual: "own", actions: ["updatePlay", "deletePlay", "movePlay"] },
+    {
+      area: "Plays",
+      what: "Sync from Discord, fix names, merge players",
+      admin: "yes",
+      member: "yes",
+      casual: "no",
+      actions: ["syncDiscordNow", "resolveGameName", "ignoreGameName", "setPlayerDiscord", "playerNightsFor", "splitPlayer", "settleWhich", "mergePlayers"],
+    },
+    { area: "Group", what: "Shelf, People, Discover, Online and Plays pages", admin: "yes", member: "yes", casual: "no", actions: [] },
+    { area: "Group", what: `Counted in the ${names.core}'s rankings and Discover`, admin: "yes", member: "yes", casual: "no", actions: [] },
+    { area: "Group", what: `Counted in the ${names.casual}'s list and planner`, admin: "yes", member: "yes", casual: "yes", actions: [], aboutCasual: true },
+    { area: "Group", what: "Move a game to the other ranking list", admin: "yes", member: "yes", casual: "no", actions: ["setGameTier"] },
+    {
+      area: "Group",
+      what: "Buy list, Claude's picks, prep links",
+      admin: "yes",
+      member: "yes",
+      casual: "no",
+      actions: ["wantGame", "unwantGame", "takeOffBuyList", "addSuggestion", "askClaudeForPicks", "askClaudeForNight", "addPrepLink", "removePrepLink", "loadCatalog", "loadBgaGames"],
+    },
+    { area: "Admin", what: "Group settings, and who's an admin", admin: "yes", member: "no", casual: "no", actions: ["saveGroupSettings", "setAdmin"] },
+    { area: "Admin", what: "Invite people, and move them up, down or off the site", admin: "yes", member: "no", casual: "no", actions: ["welcomeToGroup", "setAccess", "matchDiscordRole"] },
+  ];
+}

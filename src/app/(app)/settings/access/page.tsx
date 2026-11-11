@@ -6,7 +6,7 @@ import { ArrowLeft, Check, Minus } from "lucide-react";
 import { CASUAL_NIGHT, CASUAL_SIGN_IN, DEMO, NIGHT_NAMES } from "@/config";
 import type { Access } from "@/db/enums";
 import { Avatar, DemoNote, Empty, Meeple, PageHeader, Panel, Section, Skeleton, TextLink, formatDate } from "@/components/ui";
-import { type Allowed, CAPABILITIES, roleMismatch } from "@/lib/access";
+import { type Allowed, capabilities, roleMismatch } from "@/lib/access";
 import { hasMemberRole, listGuildMembers } from "@/lib/discord";
 import { type AccessOverview, getAccessOverview } from "@/lib/queries";
 import { canManageGroup, requireMemberPage } from "@/lib/session";
@@ -46,7 +46,11 @@ async function PeopleAndAccess() {
     return { inServer: Boolean(m), hasRole: m ? m.hasRole : null };
   };
   const readOnly = DEMO;
-  const casualName = CASUAL_NIGHT ? NIGHT_NAMES.casual : "Casual";
+  const casualName = NIGHT_NAMES.casual;
+  const names = { core: inSentence(NIGHT_NAMES.core), casual: inSentence(NIGHT_NAMES.casual) };
+  // Without a casual night there's no casual side to the site: nobody's moved there, and anyone already there can't sign in
+  const showCasual = CASUAL_NIGHT || accounts.some((a) => a.access === "casual");
+  const rows = capabilities(names);
   const byAccess = (a: Access) => accounts.filter((x) => x.access === a);
   const members = byAccess("member").sort((a, b) => Number(b.isAdmin) - Number(a.isAdmin) || a.name.localeCompare(b.name));
   const casual = byAccess("casual");
@@ -57,7 +61,7 @@ async function PeopleAndAccess() {
   });
 
   const row = (a: Account) => (
-    <PersonRow key={a.id} a={a} role={roleOf(a.discordId)} isMe={a.id === me.id} casualName={casualName} readOnly={readOnly} />
+    <PersonRow key={a.id} a={a} role={roleOf(a.discordId)} isMe={a.id === me.id} names={names} casualName={casualName} readOnly={readOnly} />
   );
 
   return (
@@ -67,15 +71,15 @@ async function PeopleAndAccess() {
           <ArrowLeft className="size-3.5" /> Settings
         </TextLink>
         <p className="max-w-2xl text-sm text-slate">
-          Who&apos;s a member, who has {CASUAL_NIGHT ? `a ${inSentence(NIGHT_NAMES.casual)} account` : "a casual account"}, and who&apos;s off the site.
+          Who&apos;s a member{showCasual && `, who has a ${names.casual} account`}, and who&apos;s off the site.
           It&apos;s decided here, and only admins see this page.{hasMemberRole() && " Discord's member role follows what you choose."}
         </p>
         {readOnly && <DemoNote className="rounded-lg px-3 py-2">On the demo you can look, but changes are off.</DemoNote>}
       </div>
 
-      <dl className="grid grid-cols-3 gap-px overflow-hidden rounded-xl border border-line bg-line">
+      <dl className={clsx("grid gap-px overflow-hidden rounded-xl border border-line bg-line", showCasual ? "grid-cols-3" : "grid-cols-2")}>
         <Tile label="Members" value={members.length} note={`${members.filter((m) => m.isAdmin).length} admin${members.filter((m) => m.isAdmin).length === 1 ? "" : "s"}`} />
-        <Tile label={CASUAL_NIGHT ? `${NIGHT_NAMES.casual} accounts` : "Casual accounts"} value={casual.length} note={signInNote()} />
+        {showCasual && <Tile label={`${casualName} accounts`} value={casual.length} note={signInNote()} />}
         <Tile label="Off the site" value={removed.length} note="can't sign in" />
       </dl>
 
@@ -95,7 +99,7 @@ async function PeopleAndAccess() {
                     <span className="font-medium">{a.name}</span>
                     <span className="block text-xs text-slate">
                       {extra
-                        ? `${a.access === "removed" ? "Off the site" : `${casualName} here`}, but has the member role in Discord, so sees the core channels`
+                        ? `${a.access === "removed" ? "Off the site" : `${casualName} only here`}, but has the member role in Discord, so sees the ${names.core}'s channels`
                         : "A member here, but doesn't have the member role in Discord"}
                     </span>
                   </span>
@@ -111,8 +115,14 @@ async function PeopleAndAccess() {
         <Panel className="divide-y divide-line">{members.map(row)}</Panel>
       </Section>
 
-      {(CASUAL_NIGHT || casual.length > 0) && (
+      {showCasual && (
         <Section title={`${casualName} accounts (${casual.length})`}>
+          {!CASUAL_NIGHT && (
+            <p className="mb-3 max-w-2xl text-sm text-slate">
+              &quot;A casual night too&quot; is off on Group settings, so they can&apos;t sign in. Everything of theirs is kept: make them a member, take
+              them off the site, or turn it back on.
+            </p>
+          )}
           {casual.length ? (
             <Panel className="divide-y divide-line">{casual.map(row)}</Panel>
           ) : (
@@ -134,7 +144,10 @@ async function PeopleAndAccess() {
       {CASUAL_NIGHT && regulars.length > 0 && (
         <Section title={`${NIGHT_NAMES.casual} regulars without an account`}>
           <p className="mb-3 max-w-2xl text-sm text-slate">
-            Came twice or more in the last year. {CASUAL_SIGN_IN ? "Once they're in the Discord server, they can sign in." : "They could sign in once casual sign-in is on and they're in the Discord server."}
+            Came twice or more in the last year.{" "}
+            {CASUAL_SIGN_IN
+              ? "Once they're in the Discord server, they can sign in."
+              : `They could sign in once "${casualName} players can sign in" is on and they're in the Discord server.`}
           </p>
           <Panel className="divide-y divide-line">
             {regulars.map((r) => {
@@ -158,8 +171,9 @@ async function PeopleAndAccess() {
 
       <Section title="What each can do">
         <p className="mb-3 max-w-2xl text-sm text-slate">
-          Casual accounts never see the {CASUAL_NIGHT ? inSentence(NIGHT_NAMES.core) : "core group"}&apos;s events or pages: what isn&apos;t theirs
-          isn&apos;t there, rather than shown as locked.
+          {showCasual
+            ? `${casualName} accounts never see the ${names.core}'s events or pages: what isn't theirs isn't there, rather than shown as locked.`
+            : "Members can do everything with the group's things; admins also look after the group."}
         </p>
         <Panel className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -168,17 +182,17 @@ async function PeopleAndAccess() {
                 <th className="py-2 pr-2 pl-3 font-medium">Can…</th>
                 <th className="w-24 px-2 py-2 text-center font-medium">Admins</th>
                 <th className="w-24 px-2 py-2 text-center font-medium">Members</th>
-                <th className="w-28 px-2 py-2 text-center font-medium">{casualName}</th>
+                {showCasual && <th className="w-28 px-2 py-2 text-center font-medium">{casualName}</th>}
               </tr>
             </thead>
-            {[...new Set(CAPABILITIES.map((c) => c.area))].map((area) => (
+            {[...new Set(rows.map((c) => c.area))].map((area) => (
               <tbody key={area} className="border-b border-line last:border-0">
                 <tr>
-                  <th colSpan={4} className="bg-table/60 px-3 pt-2.5 pb-1 text-left text-[0.7rem] font-semibold tracking-wider text-slate uppercase">
+                  <th colSpan={showCasual ? 4 : 3} className="bg-table/60 px-3 pt-2.5 pb-1 text-left text-[0.7rem] font-semibold tracking-wider text-slate uppercase">
                     {area}
                   </th>
                 </tr>
-                {CAPABILITIES.filter((c) => c.area === area).map((c) => (
+                {rows.filter((c) => c.area === area && (showCasual || !c.aboutCasual)).map((c) => (
                   <tr key={c.what}>
                     <td className="py-1.5 pr-2 pl-3">{c.what}</td>
                     <td className="px-2 py-1.5 text-center">
@@ -187,9 +201,11 @@ async function PeopleAndAccess() {
                     <td className="px-2 py-1.5 text-center">
                       <Cell allowed={c.member} casualName={casualName} />
                     </td>
-                    <td className="px-2 py-1.5 text-center">
-                      <Cell allowed={c.casual} casualName={casualName} />
-                    </td>
+                    {showCasual && (
+                      <td className="px-2 py-1.5 text-center">
+                        <Cell allowed={c.casual} casualName={casualName} />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -203,7 +219,7 @@ async function PeopleAndAccess() {
 
 /** Whether new people without the member role get a casual account, for the tile under the count */
 function signInNote() {
-  if (!CASUAL_NIGHT) return "needs a casual night";
+  if (!CASUAL_NIGHT) return "can't sign in";
   return CASUAL_SIGN_IN ? "sign-in on" : "sign-in off";
 }
 
@@ -217,10 +233,24 @@ function Tile({ label, value, note }: { label: string; value: number; note: stri
   );
 }
 
-function PersonRow({ a, role, isMe, casualName, readOnly }: { a: Account; role: RoleState | null; isMe: boolean; casualName: string; readOnly: boolean }) {
+function PersonRow({
+  a,
+  role,
+  isMe,
+  names,
+  casualName,
+  readOnly,
+}: {
+  a: Account;
+  role: RoleState | null;
+  isMe: boolean;
+  names: { core: string; casual: string };
+  casualName: string;
+  readOnly: boolean;
+}) {
   const nights = [
-    a.coreNights > 0 && `${a.coreNights} ${CASUAL_NIGHT ? inSentence(NIGHT_NAMES.core) : "event"}${a.coreNights === 1 ? "" : "s"}`,
-    a.casualNights > 0 && `${a.casualNights} ${inSentence(NIGHT_NAMES.casual)}${a.casualNights === 1 ? "" : "s"}`,
+    a.coreNights > 0 && `${a.coreNights} ${CASUAL_NIGHT ? names.core : "event"}${a.coreNights === 1 ? "" : "s"}`,
+    a.casualNights > 0 && `${a.casualNights} ${names.casual}${a.casualNights === 1 ? "" : "s"}`,
   ].filter(Boolean);
   const facts = [
     nights.length ? `${nights.join(", ")} in the last year` : "no events in the last year",
@@ -245,7 +275,17 @@ function PersonRow({ a, role, isMe, casualName, readOnly }: { a: Account; role: 
           <span className="block text-xs text-slate">{facts.join(" · ")}</span>
         </span>
       </div>
-      <AccessControls userId={a.id} name={a.name} access={a.access} isAdmin={a.isAdmin} isMe={isMe} casualName={casualName} readOnly={readOnly} />
+      <AccessControls
+        userId={a.id}
+        name={a.name}
+        access={a.access}
+        isAdmin={a.isAdmin}
+        isMe={isMe}
+        names={names}
+        casualName={casualName}
+        offerCasual={CASUAL_NIGHT}
+        readOnly={readOnly}
+      />
     </div>
   );
 }

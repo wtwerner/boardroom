@@ -111,7 +111,7 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
       {discord && (
         <Section title="Discord">
           <Panel className="space-y-4 p-4">
-            <Field label="Member role" hint="Only people with this role can sign in, and only they can answer for the group's own events. With none, anyone in the server can." {...field("memberRole")}>
+            <Field label="Member role" hint="Someone with this role is a member the first time they sign in. After that, People and access decides, and the bot gives or takes the role to match. With none, anyone in the server signs in as a member." {...field("memberRole")}>
               <RolePicker id="memberRole" value={s.memberRole} roles={discord.roles} none="None: anyone in the server" />
             </Field>
             <DiscordNight night="core" name={names.core} showName={casual} settings={s} discord={discord} errors={errors} />

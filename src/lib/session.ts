@@ -48,6 +48,8 @@ export const requireUser = cache(async (): Promise<CurrentUser> => {
   if (stored === "removed") redirect("/sign-in?error=missing_role");
   // Anything but a casual account is a member, as every account was before there were casual ones
   const access = stored === "casual" ? "casual" : "member";
+  // A casual account has nothing to see once the group has no casual night (signInAccess)
+  if (access === "casual" && !CASUAL_NIGHT) redirect("/sign-in?error=missing_role");
   // There's only a casual side to preview while the group has a casual night
   const previewing = access === "member" && CASUAL_NIGHT && jar.get(PREVIEW_COOKIE)?.value === "on";
   const p = await db.query.player.findFirst({

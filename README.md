@@ -116,7 +116,7 @@ Sign in with Discord and open **Settings → Group settings**. Until someone's a
 | Heavy from BGG weight | 2.75 | Where the two rankings, Heavy games and Light games, split. Set it to the weight your group's heavier games start at |
 | Use Claude | off | Claude's picks and reading hand-written play posts the parser can't. Shown once `ANTHROPIC_API_KEY` is set. Off, the site never calls Claude or mentions it |
 | Picks a day | 5 | Claude's picks each person can ask for in a day |
-| Member role | none | Only people with this Discord role can sign in (see [Who can sign in](docs/how-it-works.md#who-can-sign-in)) |
+| Member role | none | Who's a member the first time they sign in; after that admins decide on **People and access**, and the bot keeps the role in step (see [Who can sign in](docs/how-it-works.md#who-can-sign-in)) |
 | Plays channel | none | Where plays logged on the site are posted, and where hand-written ones are read from. One for each kind of night |
 | Events channel | none | Where each kind of night is posted, with its thread: a text channel or a forum. Needs `DISCORD_PUBLIC_KEY` |
 | Announcements channel | none | A chat channel each kind of night is announced in, with its details and a link to its post, for events channels people don't read as they chat (a forum, say). The announcement takes the night's ping |

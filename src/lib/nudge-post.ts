@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gt, inArray, isNotNull, isNull, lte } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import { CASUAL_NIGHT, REMINDER_HOURS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { canPostToDiscord, discordCode, postsNights, replyToMessage, sendDirectMessage } from "./discord";
@@ -126,7 +126,11 @@ export async function sendRateNudges(now = new Date()) {
         .select({ userId: schema.opinion.userId, gameId: schema.opinion.gameId })
         .from(schema.opinion)
         .where(and(inArray(schema.opinion.userId, userIds), isNotNull(schema.opinion.sentiment))),
-      db.select({ id: schema.user.id, discordId: schema.user.discordId }).from(schema.user).where(inArray(schema.user.id, userIds)),
+      // Nobody an admin took off the site: the link is to a site they can't open
+      db
+        .select({ id: schema.user.id, discordId: schema.user.discordId })
+        .from(schema.user)
+        .where(and(inArray(schema.user.id, userIds), ne(schema.user.access, "removed"))),
     ]);
     const rated = new Map<string, Set<number>>();
     for (const o of opinions) rated.set(o.userId, (rated.get(o.userId) ?? new Set()).add(o.gameId));

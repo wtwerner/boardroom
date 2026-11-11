@@ -8,8 +8,8 @@ import { buttonClass } from "@/components/ui";
 
 /**
  * One person's access, for an admin: member or casual, admin or not, and taking them off the
- * site (or letting them back on). Each change saves at once; the line under it says how it went,
- * including when Discord's role didn't follow.
+ * site (or letting them back on, as either). Moving down or off asks first, since it takes them
+ * off upcoming events; the line under it says how it went, including when Discord's role didn't follow.
  */
 export function AccessControls(props: {
   userId: string;
@@ -17,8 +17,12 @@ export function AccessControls(props: {
   access: Access;
   isAdmin: boolean;
   isMe: boolean;
+  /** The nights' names, mid-sentence */
+  names: { core: string; casual: string };
   /** The casual night's name, for the casual option */
   casualName: string;
+  /** The group has a casual night, so someone can be moved there */
+  offerCasual: boolean;
   readOnly: boolean;
 }) {
   const [pending, start] = useTransition();
@@ -32,13 +36,26 @@ export function AccessControls(props: {
   const tab = (active: boolean) =>
     clsx("rounded-md px-2.5 py-1 text-xs font-medium disabled:cursor-not-allowed", active ? "bg-card text-ink shadow-token" : "text-slate enabled:hover:text-ink");
 
+  const moveDown = () => {
+    if (confirm(`Move ${props.name} to the ${props.names.casual} only? They stop seeing the ${props.names.core}'s events and pages, and their answers for upcoming ones are taken off.`))
+      run(() => setAccess(props.userId, "casual"));
+  };
+
   if (props.access === "removed") {
     return (
-      <div className="flex flex-col items-end gap-1">
+      <div className="flex flex-col items-start gap-1.5 sm:items-end">
         {!props.readOnly && (
-          <button type="button" disabled={pending} onClick={() => run(() => setAccess(props.userId, "casual"))} className={buttonClass("secondary", "px-2.5 py-1 text-xs")}>
-            Let back in, casual
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-slate">Let back in as</span>
+            <button type="button" disabled={pending} onClick={() => run(() => setAccess(props.userId, "member"))} className={buttonClass("secondary", "px-2.5 py-1 text-xs")}>
+              Member
+            </button>
+            {props.offerCasual && (
+              <button type="button" disabled={pending} onClick={() => run(() => setAccess(props.userId, "casual"))} className={buttonClass("secondary", "px-2.5 py-1 text-xs")}>
+                {props.casualName}
+              </button>
+            )}
+          </div>
         )}
         <Status result={result} />
       </div>
@@ -58,16 +75,18 @@ export function AccessControls(props: {
           >
             Member
           </button>
-          <button
-            type="button"
-            disabled={locked || pending || props.isAdmin}
-            aria-pressed={props.access === "casual"}
-            title={props.isAdmin ? "Take their admin away first" : undefined}
-            onClick={() => run(() => setAccess(props.userId, "casual"))}
-            className={tab(props.access === "casual")}
-          >
-            {props.casualName}
-          </button>
+          {(props.offerCasual || props.access === "casual") && (
+            <button
+              type="button"
+              disabled={locked || pending || props.isAdmin || !props.offerCasual}
+              aria-pressed={props.access === "casual"}
+              title={props.isAdmin ? "Take their admin away first" : undefined}
+              onClick={moveDown}
+              className={tab(props.access === "casual")}
+            >
+              {props.casualName}
+            </button>
+          )}
         </div>
         {props.access === "member" && (
           <label className={clsx("flex items-center gap-1.5 text-xs", locked ? "text-slate" : "cursor-pointer")}>
@@ -86,7 +105,7 @@ export function AccessControls(props: {
             type="button"
             disabled={pending}
             onClick={() => {
-              if (confirm(`Take ${props.name} off the site? They're signed out now and can't sign back in until an admin lets them.`))
+              if (confirm(`Take ${props.name} off the site? They're signed out now, their answers for upcoming events are taken off, and they can't sign back in until an admin lets them.`))
                 run(() => setAccess(props.userId, "removed"));
             }}
             className={buttonClass("ghost", "px-2 py-1 text-xs text-meeple-red")}

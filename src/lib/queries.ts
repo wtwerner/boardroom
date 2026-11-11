@@ -328,12 +328,11 @@ export async function getGameTiers(ids: number[]) {
 }
 
 /**
- * Whose rankings make each kind of night's group list: the core group's nights are the members',
- * and the casual night's are whoever's played at one in the last year (CROWD_DAYS), members
- * included, so its list is the room it's planned for.
+ * Whose rankings make the casual night's group list: whoever's played at one in the last year
+ * (CROWD_DAYS), members included, so its list is the room it's planned for. The core group's is
+ * the members', which getRankingLists already keeps to (inCrowd).
  */
-export async function getNightCrowd(night: Night): Promise<Set<string>> {
-  if (night === "core") return new Set((await getMembers()).map((m) => m.id));
+async function getCasualCrowd(): Promise<Set<string>> {
   const rows = await db
     .selectDistinct({ id: player.userId })
     .from(play)
@@ -343,9 +342,10 @@ export async function getNightCrowd(night: Night): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id!));
 }
 
-/** The rankings in one tier of the people in a night's crowd (getNightCrowd) */
+/** The rankings in one tier that make a night's group list: the members' for the core group's, the casual night's crowd for its own (getCasualCrowd) */
 export async function getNightRankingLists(tier: Tier, night: Night) {
-  const [lists, crowd] = await Promise.all([getRankingLists(tier, night), getNightCrowd(night)]);
+  if (night === "core") return getRankingLists(tier, "core");
+  const [lists, crowd] = await Promise.all([getRankingLists(tier, "casual"), getCasualCrowd()]);
   return crowdLists(lists, crowd);
 }
 
@@ -398,8 +398,12 @@ export async function getRankingPool(userId: string, playerId: number | null, ra
 // Single game
 // ---------------------------------------------------------------------------
 
-export async function getGame(id: number) {
-  const [g, owners, opinions, plays] = await Promise.all([
+/**
+ * One game: who in the core group owns it and what they think (inCrowd), its plays, and the
+ * viewer's own opinion, which is theirs to see whether or not they're in the group.
+ */
+export async function getGame(id: number, viewerId: string) {
+  const [g, owners, opinions, plays, [mine]] = await Promise.all([
     db.query.game.findFirst({ where: eq(game.id, id) }),
     db
       .select({ userId: user.id, name: user.name, own: collectionItem.own, wishlist: collectionItem.wishlist, rating: collectionItem.bggUserRating })
@@ -411,9 +415,13 @@ export async function getGame(id: number) {
       .from(opinion)
       .where(and(eq(opinion.gameId, id), inCrowd(opinion.userId))),
     getPlays({ gameId: id, limit: 200 }),
+    db
+      .select({ sentiment: opinion.sentiment, wantToPlay: opinion.wantToPlay, mustPlay: opinion.mustPlay, playOnline: opinion.playOnline })
+      .from(opinion)
+      .where(and(eq(opinion.gameId, id), eq(opinion.userId, viewerId))),
   ]);
   if (!g) return null;
-  return { game: g, owners, opinions, plays };
+  return { game: g, owners, opinions, plays, mine };
 }
 
 /** Must-play votes a member has free, ignoring the one on `exceptGameId` (if any). */

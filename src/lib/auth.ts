@@ -4,7 +4,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { and, eq } from "drizzle-orm";
-import { CASUAL_SIGN_IN, SITE_URL } from "@/config";
+import { CASUAL_NIGHT, CASUAL_SIGN_IN, SITE_URL } from "@/config";
 import { db, schema } from "@/db";
 import { type Access, MEEPLE_COLORS } from "@/db/enums";
 import { signInAccess } from "./access";
@@ -27,12 +27,29 @@ async function signInAs(discordId: string | null | undefined, existing: Access |
   // The member role and casual sign-in are set on Group settings
   await loadSettings({ fresh: true });
   const member = discordId ? await getServerMember(discordId) : null;
-  const decision = signInAccess({ inServer: Boolean(member && !member.bot), hasRole: member?.hasRole ?? null, existing, casualSignIn: CASUAL_SIGN_IN });
+  const decision = signInAccess({
+    inServer: Boolean(member && !member.bot),
+    hasRole: member?.hasRole ?? null,
+    existing,
+    casualSignIn: CASUAL_SIGN_IN,
+    casualNight: CASUAL_NIGHT,
+  });
   if (!decision.ok) {
     // With a code, Better Auth redirects the OAuth callback to /sign-in?error=<code>; without one it answers with raw JSON
     throw new APIError("FORBIDDEN", { code: decision.refusal, message: REFUSAL_MESSAGE[decision.refusal] });
   }
   return decision.access;
+}
+
+/**
+ * Accounts whose first sign-in was just checked, so the session made right after it doesn't ask
+ * Discord again. Both hooks run in the same request; a check more than a minute old doesn't count.
+ */
+const justChecked = new Map<string, number>();
+function checkedJustNow(userId: string) {
+  const at = justChecked.get(userId);
+  justChecked.delete(userId);
+  return at !== undefined && Date.now() - at < 60_000;
 }
 
 /**
@@ -102,6 +119,7 @@ export const auth = betterAuth({
           if (account.providerId !== "discord") return;
           const access = await signInAs(account.accountId, null);
           await db.update(schema.user).set({ access }).where(eq(schema.user.id, account.userId));
+          justChecked.set(account.userId, Date.now());
         },
         // Only after the membership check passed: record the id and give them a player
         after: async (account) => {
@@ -120,6 +138,7 @@ export const auth = betterAuth({
         // Re-checked on every sign-in: someone who leaves the server, or an admin removed, can't get back in.
         // After the first time Boardroom says what they are, not the role
         before: async (session) => {
+          if (checkedJustNow(session.userId)) return;
           const [row, u] = await Promise.all([
             db.query.account.findFirst({
               where: and(eq(schema.account.userId, session.userId), eq(schema.account.providerId, "discord")),

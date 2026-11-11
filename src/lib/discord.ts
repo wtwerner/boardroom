@@ -109,14 +109,6 @@ export async function getServerMember(discordUserId: string) {
   return { id: m.user.id, name: m.nick || displayName(m.user), bot: Boolean(m.user.bot), hasRole: roleId ? m.roles.includes(roleId) : null };
 }
 
-/** Whether someone in the group's server holds this role. False when they aren't in it. */
-export async function holdsRole(discordUserId: string, roleId: string) {
-  const guildId = process.env.DISCORD_GUILD_ID;
-  if (!guildId) throw new Error("DISCORD_GUILD_ID is not set");
-  const m = await discordFetch<GuildMember>(`/guilds/${guildId}/members/${discordUserId}`);
-  return Boolean(m?.roles.includes(roleId));
-}
-
 /** The member role's name in the server ("Core group"), for messages that say what someone was given */
 export async function memberRoleName() {
   const guildId = process.env.DISCORD_GUILD_ID;
