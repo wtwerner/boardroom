@@ -3,7 +3,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { Empty, GameCover, Meeple, PageHeader, Panel, Skeleton, TextLink, formatDate } from "@/components/ui";
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
-import { type BgaListing, type OnlineGame, getBgaByBggId, getBgaMembers, getOnlineGames } from "@/lib/queries";
+import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
+import { type BgaListing, type OnlineGame, getBgaByBggId, getBgaCasualPlayers, getBgaMembers, getOnlineGames } from "@/lib/queries";
 import { type Candidate, MIN_EVIDENCE, getRecommendations } from "@/lib/recommend";
 import { requireMemberPage } from "@/lib/session";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
@@ -36,7 +37,12 @@ const loved = (g: OnlineGame) => g.sentiments.reduce((n, s) => n + SENTIMENT_SCO
 
 async function Online() {
   const me = await requireMemberPage();
-  const [games, members, syncedAt] = await Promise.all([getOnlineGames(), getBgaMembers(), lastSyncedAt(BGA_SYNC_KEY)]);
+  const [games, members, casualPlayers, syncedAt] = await Promise.all([
+    getOnlineGames(),
+    getBgaMembers(),
+    CASUAL_NIGHT ? getBgaCasualPlayers() : [],
+    lastSyncedAt(BGA_SYNC_KEY),
+  ]);
   const mine = members.find((m) => m.id === me.id);
 
   if (!syncedAt) {
@@ -76,6 +82,21 @@ async function Online() {
             ))}
           {members.every((m) => !m.bgaUsername) && <p className="px-3 py-2.5 text-sm text-slate">Nobody has added their BGA name yet.</p>}
         </Panel>
+        {casualPlayers.length > 0 && (
+          <>
+            <h3 className="mt-4 mb-2 text-xs font-semibold text-slate">{NIGHT_NAMES.casual} players</h3>
+            <Panel className="divide-y divide-line">
+              {casualPlayers.map((m) => (
+                <div key={m.id} className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 px-3 py-2.5 text-sm">
+                  <Meeple color={m.color} />
+                  <span className="font-medium">{m.name}</span>
+                  <span className="text-slate">{m.bgaUsername}</span>
+                  {m.bgaPremium && <span className="rounded-full bg-meeple-yellow/25 px-1.5 py-px text-[0.65rem] font-semibold tracking-wide uppercase">Premium</span>}
+                </div>
+              ))}
+            </Panel>
+          </>
+        )}
         <p className="mt-2 text-xs text-slate">
           {members.some((m) => !m.bgaUsername) && <>Not added yet: {members.filter((m) => !m.bgaUsername).map((m) => (m.id === me.id ? "you" : m.name)).join(", ")}. </>}
           <TextLink href="/settings#bga" className="text-xs">{mine?.bgaUsername ? "Change yours in Settings" : "Add yours in Settings"}</TextLink>

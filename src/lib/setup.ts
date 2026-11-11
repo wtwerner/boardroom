@@ -33,8 +33,8 @@ const STEP_TITLE: Record<SetupStepKey, string> = {
 
 /**
  * The steps in order. Finding yourself only shows while it's needed; the integrations are optional.
- * A casual account skips finding yourself (merging players is the members') and Board Game Arena
- * (the Online page is the core group's): their name, ratings, ranking and collection are theirs.
+ * A casual account skips finding yourself (merging players is the members'): their name, ratings,
+ * ranking, collection and Board Game Arena name are theirs.
  */
 export function setupSteps(f: SetupFacts, { casual = false } = {}): SetupStep[] {
   const steps: Omit<SetupStep, "title">[] = [
@@ -43,7 +43,7 @@ export function setupSteps(f: SetupFacts, { casual = false } = {}): SetupStep[] 
     { key: "rate", done: f.rateDone, optional: false },
     { key: "rank", done: f.rankDone, optional: false },
     { key: "bgg", done: f.collection, optional: true },
-    ...(casual ? [] : [{ key: "bga" as const, done: f.bga, optional: true }]),
+    { key: "bga", done: f.bga, optional: true },
   ];
   return steps.map((s) => ({ ...s, title: STEP_TITLE[s.key] }));
 }

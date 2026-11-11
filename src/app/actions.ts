@@ -445,7 +445,7 @@ export async function importCsv(_prev: ActionResult | null, form: FormData): Pro
 // ---------------------------------------------------------------------------
 
 export async function saveBgaProfile(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
-  const me = await requireMember();
+  const me = await requireUser();
   const username = String(form.get("bgaUsername") ?? "").trim() || null;
   if (username && username.length > 40) return { ok: false, error: "That's longer than a BGA name can be." };
   const premium = Boolean(username) && form.get("bgaPremium") === "on";

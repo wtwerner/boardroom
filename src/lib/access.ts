@@ -99,7 +99,7 @@ export function capabilities(names: { core: string; casual: string }): Capabilit
       casual: "yes",
       actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv"],
     },
-    { area: "Their own", what: "Board Game Arena name", admin: "yes", member: "yes", casual: "no", actions: ["saveBgaProfile"] },
+    { area: "Their own", what: "Board Game Arena name", admin: "yes", member: "yes", casual: "yes", actions: ["saveBgaProfile"] },
     { area: "Events", what: "See and answer events", admin: "yes", member: "yes", casual: "casual", actions: ["setRsvp", "answerDate", "noDatesWork"] },
     { area: "Events", what: "Answer for someone else, and count others coming", admin: "yes", member: "yes", casual: "no", actions: ["setOthersComing"] },
     {

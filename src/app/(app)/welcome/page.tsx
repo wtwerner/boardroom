@@ -118,7 +118,7 @@ async function Welcome() {
             Board Game Arena
           </a>{" "}
           (BGA) is a different site, for playing online between game nights. If you play there, add the name you play under so the others can find
-          you on the <TextLink href="/online">Online</TextLink> page.
+          you{limited ? " there" : <> on the <TextLink href="/online">Online</TextLink> page</>}.
         </p>
         <BgaForm username={profile?.bga ?? null} premium={profile?.premium ?? false} />
       </>

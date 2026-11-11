@@ -86,7 +86,7 @@ async function Settings() {
       )}
       <p className="text-sm text-slate">
         New here, or missing something? The <Link href="/welcome" className="text-accent underline-offset-4 hover:underline">setup guide</Link> walks
-        through rating, ranking and connecting BGG{member && " and Board Game Arena"}.
+        through rating, ranking and connecting BGG and Board Game Arena.
       </p>
       <Section title="You">
         {me.playerId && (
@@ -132,19 +132,26 @@ async function Settings() {
         </Panel>
       </Section>
 
+      <Section id="bga" title="Board Game Arena" className="scroll-mt-6">
+        <Panel className="p-4">
+          <p className="mb-3 text-sm text-slate">For playing online, at boardgamearena.com. It&apos;s a different site from BoardGameGeek.</p>
+          <BgaForm username={bga?.username ?? null} premium={bga?.premium ?? false} />
+          <p className="mt-2 text-xs text-slate">
+            {member ? (
+              <>
+                Shown on the <Link href="/online" className="text-accent underline-offset-4 hover:underline">Online</Link> page so the others can find
+                you there.
+              </>
+            ) : (
+              "Shown to the group so they can find you there."
+            )}{" "}
+            Only whoever opens a table needs Premium for a Premium game.
+          </p>
+        </Panel>
+      </Section>
+
       {member && (
         <>
-          <Section id="bga" title="Board Game Arena" className="scroll-mt-6">
-            <Panel className="p-4">
-              <p className="mb-3 text-sm text-slate">For playing online, at boardgamearena.com. It&apos;s a different site from BoardGameGeek.</p>
-              <BgaForm username={bga?.username ?? null} premium={bga?.premium ?? false} />
-              <p className="mt-2 text-xs text-slate">
-                Shown on the <Link href="/online" className="text-accent underline-offset-4 hover:underline">Online</Link> page so the others can find you
-                there. Only whoever opens a table needs Premium for a Premium game.
-              </p>
-            </Panel>
-          </Section>
-
           <Section id="players" title="Players" className="scroll-mt-6">
             <p className="mb-3 text-sm text-slate">
               Everyone who appears in a play log.

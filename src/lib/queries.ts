@@ -839,6 +839,16 @@ export async function getBgaMembers() {
     .orderBy(user.name);
 }
 
+/** Casual accounts that have added a BGA name, so members can find them there too */
+export async function getBgaCasualPlayers() {
+  return db
+    .select({ id: user.id, name: user.name, color: player.color, bgaUsername: user.bgaUsername, bgaPremium: user.bgaPremium })
+    .from(user)
+    .leftJoin(player, eq(player.userId, user.id))
+    .where(and(eq(user.access, "casual"), isNotNull(user.bgaUsername)))
+    .orderBy(user.name);
+}
+
 export type OnlineGame = Awaited<ReturnType<typeof getOnlineGames>>[number];
 
 /**

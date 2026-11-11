@@ -4,9 +4,9 @@ import { RANKED_TO_START, rankLists, setupProgress, setupSteps } from "./setup";
 const fresh = { nameDone: false, needsClaim: false, rateDone: false, rankDone: false, collection: false, bga: false };
 
 describe("setupSteps", () => {
-  it("leaves a casual account out of finding themselves and Board Game Arena", () => {
+  it("leaves a casual account out of finding themselves", () => {
     const casual = setupSteps({ ...fresh, needsClaim: true }, { casual: true });
-    expect(casual.map((s) => s.key)).toEqual(["name", "rate", "rank", "bgg"]);
+    expect(casual.map((s) => s.key)).toEqual(["name", "rate", "rank", "bgg", "bga"]);
     expect(setupProgress(casual).total).toBe(3);
   });
 
