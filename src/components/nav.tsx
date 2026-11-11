@@ -10,7 +10,7 @@ import { CalendarDays, CircleHelp, Ellipsis, Globe, House, Library, ListOrdered,
 const LINKS = [
   { href: "/", label: "Home", icon: House, casual: true },
   { href: "/plays", label: "Plays", icon: ScrollText, casual: false },
-  { href: "/shelf", label: "Shelf", icon: Library, casual: false },
+  { href: "/shelf", label: "Shelf", icon: Library, casual: true },
   { href: "/rankings", label: "Rankings", icon: ListOrdered, casual: true },
   { href: "/plan", label: "Plan", icon: CalendarDays, casual: false },
   { href: "/people", label: "People", icon: Users, casual: false },

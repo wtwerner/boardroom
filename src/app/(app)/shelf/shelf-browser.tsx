@@ -31,6 +31,8 @@ export function ShelfBrowser({
   initialOwner,
   shame,
   initialShame,
+  linkPeople,
+  limited,
 }: {
   games: ShelfGame[];
   /** Games that can be played on Board Game Arena */
@@ -41,6 +43,10 @@ export function ShelfBrowser({
   /** The shelf of shame, best bets first, with the group's chance of liking each */
   shame: { id: number; chance: number | null }[];
   initialShame: boolean;
+  /** Owners' names open their People page (the core group's members have one) */
+  linkPeople: boolean;
+  /** A casual account: the games carry only their own ratings, so there's no group view to sort or show */
+  limited: boolean;
 }) {
   const [query, setQuery] = useState("");
   // "Plays 4" keeps anything 4 can play; "Best at 4" only what BGG's voters say is best at 4
@@ -140,7 +146,7 @@ export function ShelfBrowser({
         </select>
         <select aria-label="Sort" className={select} value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
           <option value="name">A–Z</option>
-          <option value="loved">Group&apos;s favorites</option>
+          {!limited && <option value="loved">Group&apos;s favorites</option>}
           <option value="plays">Most played</option>
           <option value="stale">Longest since played</option>
           <option value="rating">BGG rating</option>
@@ -152,19 +158,21 @@ export function ShelfBrowser({
             <input type="checkbox" checked={unrated} onChange={(e) => setUnrated(e.target.checked)} />
             I haven&apos;t rated
           </label>
-          <label className="flex items-center gap-1.5 px-1 text-sm" title="Owned, never played, and the group would likely enjoy it">
-            <input
-              type="checkbox"
-              checked={shameOnly}
-              onChange={(e) => {
-                setShameOnly(e.target.checked);
-                // Best bets first when it's turned on; that order means nothing once it's off
-                if (e.target.checked) setSort("bet");
-                else if (sort === "bet") setSort("name");
-              }}
-            />
-            Shelf of shame
-          </label>
+          {shame.length > 0 && (
+            <label className="flex items-center gap-1.5 px-1 text-sm" title="Owned, never played, and the group would likely enjoy it">
+              <input
+                type="checkbox"
+                checked={shameOnly}
+                onChange={(e) => {
+                  setShameOnly(e.target.checked);
+                  // Best bets first when it's turned on; that order means nothing once it's off
+                  if (e.target.checked) setSort("bet");
+                  else if (sort === "bet") setSort("name");
+                }}
+              />
+              Shelf of shame
+            </label>
+          )}
           {onBga.size > 0 && (
             <label className="flex items-center gap-1.5 px-1 text-sm" title="Can be played on Board Game Arena">
               <input type="checkbox" checked={bgaOnly} onChange={(e) => setBgaOnly(e.target.checked)} />
@@ -225,13 +233,25 @@ export function ShelfBrowser({
           ))}
         </ul>
       ) : (
-        <ShelfTable games={shown} memberById={memberById} chances={shameOnly ? chanceOf : null} />
+        <ShelfTable games={shown} memberById={memberById} chances={shameOnly ? chanceOf : null} linkPeople={linkPeople} limited={limited} />
       )}
     </div>
   );
 }
 
-function ShelfTable({ games, memberById, chances }: { games: ShelfGame[]; memberById: Map<string, Member>; chances: Map<number, number | null> | null }) {
+function ShelfTable({
+  games,
+  memberById,
+  chances,
+  linkPeople,
+  limited,
+}: {
+  games: ShelfGame[];
+  memberById: Map<string, Member>;
+  chances: Map<number, number | null> | null;
+  linkPeople: boolean;
+  limited: boolean;
+}) {
   const th = "px-2 py-2 text-left text-xs font-medium text-slate";
   return (
     <div className="overflow-x-auto rounded-xl border border-line bg-card">
@@ -245,7 +265,7 @@ function ShelfTable({ games, memberById, chances }: { games: ShelfGame[]; member
             <th className={th}>BGG</th>
             <th className={th}>Played</th>
             <th className={th}>Owners</th>
-            <th className={clsx(th, "pr-3")}>The group</th>
+            <th className={clsx(th, "pr-3")}>{limited ? "You" : "The group"}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
@@ -274,12 +294,23 @@ function ShelfTable({ games, memberById, chances }: { games: ShelfGame[]; member
               </td>
               <td className="px-2">
                 <span className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
-                  {g.ownerIds.map((id) => (
-                    <Link key={id} href={`/people/${id}`} className="inline-flex items-center gap-1 hover:underline">
-                      <Meeple color={memberById.get(id)?.color ?? null} className="size-3.5" />
-                      {memberById.get(id)?.name}
-                    </Link>
-                  ))}
+                  {g.ownerIds.map((id) => {
+                    const who = (
+                      <>
+                        <Meeple color={memberById.get(id)?.color ?? null} className="size-3.5" />
+                        {memberById.get(id)?.name}
+                      </>
+                    );
+                    return linkPeople ? (
+                      <Link key={id} href={`/people/${id}`} className="inline-flex items-center gap-1 hover:underline">
+                        {who}
+                      </Link>
+                    ) : (
+                      <span key={id} className="inline-flex items-center gap-1">
+                        {who}
+                      </span>
+                    );
+                  })}
                 </span>
               </td>
               <td className="pr-3 pl-2 text-xs whitespace-nowrap">

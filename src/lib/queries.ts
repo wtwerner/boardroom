@@ -273,6 +273,39 @@ export async function getShelf(opts: { night?: Night } = {}) {
   }));
 }
 
+/**
+ * A night's shelf, for the Shelf page, with whose it is. The core group's is the members' games
+ * (getShelf). The casual night's is the games of the people who come to it: everyone who's played
+ * at one in the last year (getCasualCrowd) and every casual account, so it's what could come to
+ * the table there. Its owners, ratings and votes are theirs alone.
+ */
+export async function getNightShelf(night: Night) {
+  if (night === "core") {
+    const [games, people] = await Promise.all([getShelf(), getMembers()]);
+    return { games, people };
+  }
+  const [games, everyone, played, casual] = await Promise.all([
+    getShelf({ night: "casual" }),
+    getMembers("casual"),
+    getCasualCrowd(),
+    db.select({ id: user.id }).from(user).where(eq(user.access, "casual")),
+  ]);
+  const crowd = new Set([...played, ...casual.map((c) => c.id)]);
+  const theirs = (ids: string[]) => ids.filter((id) => crowd.has(id));
+  return {
+    games: games
+      .map((g) => ({
+        ...g,
+        ownerIds: theirs(g.ownerIds),
+        sentiments: g.sentiments.filter((o) => crowd.has(o.userId)),
+        wantToPlay: theirs(g.wantToPlay),
+        mustPlay: theirs(g.mustPlay),
+      }))
+      .filter((g) => g.ownerIds.length > 0),
+    people: everyone.filter((m) => crowd.has(m.id)),
+  };
+}
+
 export async function getWantToPlay(limit = 6) {
   const shelf = await getShelf();
   return shelf
