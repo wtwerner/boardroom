@@ -17,6 +17,8 @@ export const normalizeTitle = (s: string) =>
 type ShelfGame = {
   id: number;
   name: string;
+  /** BGG's reimplementation links (game.implementations), null until fetched */
+  implementations: number[] | null;
   ownerIds: string[];
   plays: number;
   lastPlayed: string | null;
@@ -26,19 +28,38 @@ type ShelfGame = {
 };
 
 /**
- * One shelf entry per title: games with the same name are editions of one game, so they're shown
- * once, with everyone's copies, every edition's plays and everyone's opinions. The entry is the
- * edition the group has played most (then the one most people own), so it links to where the
- * plays are. Someone with opinions on two editions keeps the ones on that edition.
+ * Which games are editions of one another: BGG links them as reimplementations (either one
+ * listing the other is enough) and they have the same name. The link alone isn't enough, since
+ * BGG files new games built on an old one there too (Citadels Duel, Masters Gallery for
+ * Modern Art), and the name alone could join two unrelated games. Each game maps to the
+ * lowest id of its editions.
+ */
+export function editionGroups(games: { id: number; name: string; implementations: number[] | null }[]): Map<number, number> {
+  const root = new Map(games.map((g) => [g.id, g.id]));
+  const find = (id: number): number => (root.get(id) === id ? id : find(root.get(id)!));
+  const title = new Map(games.map((g) => [g.id, normalizeTitle(g.name)]));
+  for (const g of games) {
+    for (const other of g.implementations ?? []) {
+      if (!root.has(other) || title.get(other) !== title.get(g.id)) continue;
+      const [a, b] = [find(g.id), find(other)];
+      if (a !== b) root.set(Math.max(a, b), Math.min(a, b));
+    }
+  }
+  return new Map(games.map((g) => [g.id, find(g.id)]));
+}
+
+/**
+ * One shelf entry per game, whatever edition people own (editionGroups): everyone's copies,
+ * every edition's plays and everyone's opinions. The entry is the edition the group has played
+ * most (then the one most people own), so it links to where the plays are. Someone with
+ * opinions on two editions keeps the ones on that edition.
  */
 export function mergeEditions<T extends ShelfGame>(games: T[]): T[] {
-  const byTitle = new Map<string, T[]>();
-  for (const g of games) {
-    const key = normalizeTitle(g.name);
-    byTitle.set(key, [...(byTitle.get(key) ?? []), g]);
-  }
+  const group = editionGroups(games);
+  const editionsOf = new Map<number, T[]>();
+  for (const g of games) editionsOf.set(group.get(g.id)!, [...(editionsOf.get(group.get(g.id)!) ?? []), g]);
   return games.flatMap((g) => {
-    const editions = byTitle.get(normalizeTitle(g.name))!;
+    const editions = editionsOf.get(group.get(g.id)!)!;
     if (editions.length === 1) return [g];
     const [main] = [...editions].sort((a, b) => b.plays - a.plays || b.ownerIds.length - a.ownerIds.length || a.id - b.id);
     if (g !== main) return [];

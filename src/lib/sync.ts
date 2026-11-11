@@ -433,7 +433,7 @@ async function replaceCollection(userId: string, all: BggCollectionEntry[]) {
   });
 }
 
-/** Pull full /thing details for games we've never detailed or haven't refreshed in 30 days. */
+/** Pull full /thing details for games we've never detailed, haven't refreshed in 30 days, or detailed before we kept their editions. */
 export async function refreshStaleGameDetails(limit = 60) {
   if (!hasBggToken()) return 0;
   const stale = await db
@@ -442,6 +442,7 @@ export async function refreshStaleGameDetails(limit = 60) {
     .where(
       or(
         isNull(schema.game.detailsFetchedAt),
+        isNull(schema.game.implementations),
         lt(schema.game.detailsFetchedAt, new Date(Date.now() - 30 * 86_400_000)),
       ),
     )
@@ -468,6 +469,7 @@ export async function upsertGameDetails(details: BggGameDetails[], { markFetched
       ...(d.thumbnail ? { thumbnail: d.thumbnail, image: d.image } : {}),
       ...(d.categories.length ? { categories: d.categories, mechanics: d.mechanics } : {}),
       ...(d.description ? { description: d.description } : {}),
+      ...(d.implementations ? { implementations: d.implementations } : {}),
       ...(markFetched ? { detailsFetchedAt: new Date() } : {}),
     };
     await db

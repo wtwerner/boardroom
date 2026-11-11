@@ -104,6 +104,11 @@ export const game = sqliteTable("game", {
   bggRank: integer("bgg_rank"),
   categories: text("categories", { mode: "json" }).$type<string[]>(),
   mechanics: text("mechanics", { mode: "json" }).$type<string[]>(),
+  /**
+   * BGG's reimplementation links, either way: Citadels (2016) and Citadels (2000) list each other.
+   * Null until its details are next fetched. See editions.ts.
+   */
+  implementations: text("implementations", { mode: "json" }).$type<number[]>(),
   description: text("description"),
   /** Set by hand to rank it with the other tier's games; null means its BGG weight decides (see tier.ts) */
   tier: text("tier", { enum: TIERS }),
