@@ -405,8 +405,8 @@ async function pollCard(n: NightDetail, poll: PollDetail | null): Promise<PollCa
     progress: poll.members.length ? { answered: poll.members.length - poll.waiting.length, of: poll.members.length, waiting: poll.waiting.map(who) } : null,
     min: poll.min,
     decideBy: poll.decideBy,
-    // Most of the casual night's channel can't open the site, as with its nights' posts
-    pollUrl: SITE_URL && n.night === "core" ? `${SITE_URL}/events/${n.id}` : null,
+    // The casual night's channel can open the site only while its players can sign in, as with its nights' posts
+    pollUrl: SITE_URL && (n.night === "core" || CASUAL_SIGN_IN) ? `${SITE_URL}/events/${n.id}` : null,
     siteName: SITE_NAME,
     emoji: await fetchAppEmoji(),
   };
