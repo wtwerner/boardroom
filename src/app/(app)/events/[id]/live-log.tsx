@@ -10,6 +10,7 @@ import { GameCover, PlayerChip, buttonClass } from "@/components/ui";
 import { DeletePlayButton } from "../../plays/delete-play-button";
 import { type Guest, type PlayerOption, WhoPlayed } from "../../plays/log-play-form";
 import { EditPlayButton, PlayEditorProvider } from "../../plays/play-editor";
+import { withYear } from "@/lib/text";
 
 export type LoggedPlay = {
   id: number;
@@ -58,7 +59,7 @@ export function LiveLog({
   plays: LoggedPlay[];
   /** The games planned or brought that aren't logged yet, to tap, with where each stands ("Locked in", "Sam's bringing it") */
   planned: { id: number; name: string; note: string | null }[];
-  games: { id: number; name: string }[];
+  games: { id: number; name: string; year: number | null }[];
   players: PlayerOption[];
   /** Who's playing to start with: the last game's table, or who said they were going */
   seated: number[];
@@ -149,7 +150,7 @@ export function LiveLog({
             <option value="">{planned.length ? "Something else…" : "Choose a game…"}</option>
             {games.map((g) => (
               <option key={g.id} value={g.id}>
-                {g.name}
+                {withYear(g)}
               </option>
             ))}
           </select>

@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { ignoreGameName, resolveGameName } from "@/app/actions";
 import { buttonClass } from "@/components/ui";
+import { withYear } from "@/lib/text";
 
 export function ReviewRow({
   gameName,
@@ -65,4 +66,4 @@ export function ReviewRow({
   );
 }
 
-const label = (g: { name: string; year: number | null }) => (g.year ? `${g.name} (${g.year})` : g.name);
+const label = withYear;

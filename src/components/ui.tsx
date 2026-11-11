@@ -303,6 +303,9 @@ export function Skeleton({ className }: { className?: string }) {
   return <div className={clsx("animate-pulse rounded-xl bg-line/60", className)} />;
 }
 
+/** A play's date: always with its year, since a play log runs back further than this one */
+export const PLAY_DATE: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric", year: "numeric" };
+
 export function formatDate(iso: string, opts: Intl.DateTimeFormatOptions = { weekday: "short", month: "short", day: "numeric" }) {
   const [y, m, d] = iso.split("-").map(Number);
   const date = new Date(y, m - 1, d);

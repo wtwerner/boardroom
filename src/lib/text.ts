@@ -9,5 +9,8 @@ export const inSentence = (name: string) =>
 /** A name as a title: "Strategy night" → "Strategy Night" */
 export const titleCase = (name: string) => name.replace(/\b\p{Ll}/gu, (c) => c.toUpperCase());
 
+/** A game with its year, so two editions with one name can be told apart: "Citadels (2016)" */
+export const withYear = (g: { name: string; year?: number | null }) => (g.year ? `${g.name} (${g.year})` : g.name);
+
 /** "a", "a and b", "a, b and c" */
 export const andList = (items: string[]) => (items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);

@@ -5,7 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { CASUAL_NIGHT, NIGHT_NAMES, TIME_ZONE } from "@/config";
 import { DateBadge, NightTag } from "@/components/night-row";
 import { NightSwitch, nightParam } from "@/components/night-switch";
-import { Empty, GameCover, PageHeader, Panel, PlayerChip, Section, Skeleton, buttonClass, formatDate } from "@/components/ui";
+import { Empty, GameCover, PageHeader, Panel, PlayerChip, Section, Skeleton, buttonClass, formatDate, PLAY_DATE } from "@/components/ui";
 import { type CurrentUser, nightsFor, requireUser } from "@/lib/session";
 import { getAllGamesForPicker, getPlayers, getPlays, getReviewQueue, getWhichQueue, type PlayRow } from "@/lib/queries";
 import { type NightSummary, getNightsByDate } from "@/lib/events";
@@ -98,7 +98,7 @@ async function Plays({ searchParams }: { searchParams: PageProps<"/plays">["sear
                   night={w.night}
                   playedOn={w.playedOn}
                   name={w.name}
-                  when={[formatDate(w.playedOn), CASUAL_NIGHT && NIGHT_NAMES[w.night], w.location].filter(Boolean).join(" · ")}
+                  when={[formatDate(w.playedOn, PLAY_DATE), CASUAL_NIGHT && NIGHT_NAMES[w.night], w.location].filter(Boolean).join(" · ")}
                   seatedId={w.seatedId}
                   choices={w.choices}
                 />
@@ -154,7 +154,7 @@ function NightCard({ plays, stored, me }: { plays: PlayRow[]; stored: NightSumma
       <span className="min-w-0 flex-1 space-y-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-display text-lg leading-tight underline-offset-4 group-hover/night:underline">
-            {stored?.title ?? formatDate(first.playedOn, { weekday: "long", month: "short", day: "numeric" })}
+            {stored?.title ?? formatDate(first.playedOn, { ...PLAY_DATE, weekday: "long" })}
           </span>
           <NightTag night={first.night} />
         </span>

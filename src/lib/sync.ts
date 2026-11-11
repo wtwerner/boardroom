@@ -15,6 +15,7 @@ import {
   searchGames,
 } from "./bgg";
 import { fetchBgaGames } from "./bga";
+import { normalizeTitle } from "./editions";
 import { type DiscordMessage, compareSnowflakes, fetchChannelMessagesAfter, playsChannel, snowflakeAt } from "./discord";
 import { componentText } from "./discord-message";
 import { nightTitle, zonedToUtc } from "./nights";
@@ -287,14 +288,7 @@ export async function ensureGame(bggId: number, fallbackName: string) {
   return bggId;
 }
 
-export const normalizeTitle = (s: string) =>
-  s
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
+export { normalizeTitle };
 
 /**
  * Match a logged game name to a BGG id: an earlier play that was already
