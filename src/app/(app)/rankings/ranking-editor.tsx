@@ -18,22 +18,26 @@ import clsx from "clsx";
 import { saveRanking } from "@/app/actions";
 import { GameCover, buttonClass } from "@/components/ui";
 import type { Tier } from "@/db/enums";
-import { type Placement, answer, compareIndex, startPlacement } from "@/lib/ranking";
+import { CLEAR_BGG_GAP, type Placement, type Placing, answer, compareIndex, settleClearCalls, startPlacement } from "@/lib/ranking";
 
-type Game = { id: number; name: string; thumbnail: string | null; image: string | null; plays: number };
+type Game = { id: number; name: string; thumbnail: string | null; image: string | null; plays: number; bggRating: number | null };
 
 /**
  * Your ranking of every game you've played with the group. New games are placed
  * with a few "which would you rather play?" questions (a binary search through the
- * list); drag to fine-tune.
+ * list); drag to fine-tune. Your own BGG ratings can answer the clear calls, once you say so.
  */
 export function RankingEditor({ tier, games, initial }: { tier: Tier; games: Game[]; initial: number[] }) {
   const byId = useMemo(() => new Map(games.map((g) => [g.id, g])), [games]);
-  const [ids, setIds] = useState(() => initial.filter((id) => byId.has(id)));
-  // Most-played first: the games you know best are the easiest to place
-  const [queue, setQueue] = useState(() => games.filter((g) => !initial.includes(g.id)).map((g) => g.id));
-  const [placement, setPlacement] = useState<Placement>(() => startPlacement(ids.length));
+  const [{ ids, queue, placement }, setPlacing] = useState<Placing>(() => {
+    const ids = initial.filter((id) => byId.has(id));
+    // Most-played first: the games you know best are the easiest to place
+    return { ids, queue: games.filter((g) => !initial.includes(g.id)).map((g) => g.id), placement: startPlacement(ids.length) };
+  });
+  const [useBgg, setUseBgg] = useState(false);
+  const [settled, setSettled] = useState(0);
   const [saving, start] = useTransition();
+  const rating = (id: number) => byId.get(id)?.bggRating;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -41,9 +45,14 @@ export function RankingEditor({ tier, games, initial }: { tier: Tier; games: Gam
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const commit = (next: number[]) => {
-    setIds(next);
-    start(() => saveRanking(tier, next));
+  const save = (list: number[]) => start(() => saveRanking(tier, list));
+
+  /** Where things go next, after BGG ratings answer what they can (when on); the list is saved whenever it changes. */
+  const advance = (next: Placing, bgg = useBgg) => {
+    const s = bgg ? settleClearCalls(next, rating) : { ...next, answered: 0 };
+    if (s.ids !== ids) save(s.ids);
+    setPlacing({ ids: s.ids, queue: s.queue, placement: s.placement });
+    if (s.answered) setSettled((n) => n + s.answered);
   };
 
   const placing = queue.length ? byId.get(queue[0]) : undefined;
@@ -51,11 +60,9 @@ export function RankingEditor({ tier, games, initial }: { tier: Tier; games: Gam
 
   /** Moves the placement on; once its spot is found the game is inserted and the next one starts. */
   const step = (next: Placement) => {
-    if (compareIndex(next) !== null || !placing) return setPlacement(next);
+    if (compareIndex(next) !== null || !placing) return advance({ ids, queue, placement: next });
     const list = [...ids.slice(0, next.lo), placing.id, ...ids.slice(next.lo)];
-    commit(list);
-    setQueue(queue.slice(1));
-    setPlacement(startPlacement(list.length));
+    advance({ ids: list, queue: queue.slice(1), placement: startPlacement(list.length) });
   };
 
   // Starting from nothing: the first question is between two of your own games
@@ -65,27 +72,32 @@ export function RankingEditor({ tier, games, initial }: { tier: Tier; games: Gam
     if (!seeding) return step(answer(placement, prefersNew));
     const [a, b] = queue;
     const first = b === undefined ? [a] : prefersNew === false ? [b, a] : [a, b];
-    commit(first);
-    setQueue(queue.slice(first.length));
-    setPlacement(startPlacement(first.length));
+    advance({ ids: first, queue: queue.slice(first.length), placement: startPlacement(first.length) });
   };
 
-  const skip = () => {
-    setQueue([...queue.slice(1), queue[0]]);
-    setPlacement(startPlacement(ids.length));
-  };
+  const skip = () => advance({ ids, queue: [...queue.slice(1), queue[0]], placement: startPlacement(ids.length) });
 
+  // Not through advance: a game you just took out shouldn't be put straight back by its BGG rating
   const remove = (id: number) => {
-    commit(ids.filter((x) => x !== id));
+    const list = ids.filter((x) => x !== id);
+    save(list);
     // Back in the queue, so it can be placed again
-    if (byId.get(id)?.plays) setQueue([...queue, id]);
-    setPlacement(startPlacement(ids.length - 1));
+    setPlacing({ ids: list, queue: byId.get(id)?.plays ? [...queue, id] : queue, placement: startPlacement(list.length) });
   };
 
   const onDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
-    commit(arrayMove(ids, ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id))));
+    const list = arrayMove(ids, ids.indexOf(Number(active.id)), ids.indexOf(Number(over.id)));
+    save(list);
+    setPlacing({ ids: list, queue, placement });
   };
+
+  const turnOnBgg = () => {
+    setUseBgg(true);
+    advance({ ids, queue, placement }, true);
+  };
+  // Worth offering when a game waiting has a BGG rating, and the list or the queue has another to compare it with
+  const bggCanHelp = !useBgg && queue.some((id) => rating(id) != null) && [...ids, ...queue].filter((id) => rating(id) != null).length >= 2;
 
   return (
     <div className="space-y-6">
@@ -125,8 +137,26 @@ export function RankingEditor({ tier, games, initial }: { tier: Tier; games: Gam
             <button type="button" onClick={skip} className={buttonClass("ghost", "px-3 py-1.5 text-xs")}>
               Skip for now
             </button>
+            {bggCanHelp && (
+              <button type="button" onClick={turnOnBgg} className={buttonClass("ghost", "px-3 py-1.5 text-xs")}>
+                Let my BGG ratings answer the clear ones
+              </button>
+            )}
           </div>
+          {useBgg && (
+            <p className="mt-3 text-xs text-slate">
+              Games {CLEAR_BGG_GAP} or more points apart in your BGG ratings are placed without asking.{" "}
+              <button type="button" onClick={() => setUseBgg(false)} className="text-accent underline-offset-4 hover:underline">
+                Ask me every one
+              </button>
+            </p>
+          )}
         </section>
+      )}
+      {settled > 0 && (
+        <p className="text-xs text-slate" role="status">
+          Your BGG ratings answered {settled === 1 ? "1 question" : `${settled} questions`}. Drag anything that landed wrong.
+        </p>
       )}
 
       {ids.length === 0 ? (

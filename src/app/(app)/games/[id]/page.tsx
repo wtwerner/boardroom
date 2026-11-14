@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { CASUAL_NIGHT, DEMO, GROUP_NIGHTS, NIGHT_NAMES } from "@/config";
+import { CASUAL_NIGHT, DEMO, GROUP_NIGHTS, NIGHT_NAMES, SHOW_BGG_RATINGS } from "@/config";
 import { NightTag } from "@/components/night-row";
 import { PrepLinks } from "@/components/prep-links";
 import { Empty, GameCover, Meeple, Panel, PlayerChip, Section, Skeleton, formatDate, PLAY_DATE, playerRange, playtime } from "@/components/ui";
 import { requireUser } from "@/lib/session";
-import { getBgaGame, getGame, getGamePlaces, getMembers, getMustPlayLeft } from "@/lib/queries";
+import { getBgaGame, getGame, getGamePlaces, getMembers, getMustPlayLeft, getMyBggRatings } from "@/lib/queries";
+import { formatBggRating, suggestSentiments } from "@/lib/bgg-ratings";
 import { tierHref } from "../../rankings/tabs";
 import { bgaFacts, bgaGameUrl } from "@/lib/bga";
 import { bggUrl } from "@/lib/bgg-links";
@@ -34,24 +35,31 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
   // places, and moving it between ranking lists, which is the members' housekeeping
   const limited = me.access !== "member";
   const id = Number((await params).id);
-  const [data, everyone, members, mustPlayLeft, bga] = await Promise.all([
+  const [data, everyone, members, mustPlayLeft, bga, myBgg] = await Promise.all([
     getGame(id, me.id),
     getMembers("casual"),
     limited ? [] : getMembers(),
     getMustPlayLeft(me.id, id),
     getBgaGame(id),
+    getMyBggRatings(me.id),
   ]);
   if (!data) notFound();
   const { game: g, owners, opinions, mine } = data;
   // What everyone thinks: every member for a member, and anyone else who's said something or owns it.
   // A casual account sees only the people who have, so the list doesn't spell out the core group
-  const said = new Set([...opinions.filter((o) => o.sentiment || o.mustPlay || o.wantToPlay || o.playOnline).map((o) => o.userId), ...owners.filter((o) => o.own).map((o) => o.userId)]);
+  // With BGG ratings shown, rating it there counts as having said something
+  const said = new Set([
+    ...opinions.filter((o) => o.sentiment || o.mustPlay || o.wantToPlay || o.playOnline).map((o) => o.userId),
+    ...owners.filter((o) => o.own || (SHOW_BGG_RATINGS && o.rating !== null)).map((o) => o.userId),
+  ]);
   const coreIds = new Set(members.map((m) => m.id));
   const thinkers = everyone.filter((m) => coreIds.has(m.id) || said.has(m.id));
   const plays = limited ? data.plays.filter((p) => p.night === "casual") : data.plays;
   const tier = gameTier(g);
   const places = await getGamePlaces(g.id, tier, limited ? ["casual"] : GROUP_NIGHTS);
   const memberById = new Map(everyone.map((m) => [m.id, m]));
+  // Plays people have logged on BGG: who knows the game, even if not from the group's table
+  const loggedOnBgg = owners.filter((o) => o.bggPlays && memberById.has(o.userId)).sort((a, b) => b.bggPlays! - a.bggPlays!);
 
   // How many times each player has played it
   const record = new Map<number, { name: string; color: (typeof plays)[number]["players"][number]["color"]; plays: number }>();
@@ -66,6 +74,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
     g.year && String(g.year),
     playerRange(g.minPlayers, g.maxPlayers),
     g.bestPlayers?.length ? `best at ${g.bestPlayers.join(", ")}` : null,
+    g.notRecommendedPlayers?.length ? `not recommended at ${g.notRecommendedPlayers.join(", ")}` : null,
     playtime(g.minPlaytime, g.maxPlaytime),
     g.weight ? `weight ${g.weight.toFixed(1)} / 5` : null,
     g.bggRating ? `BGG ${g.bggRating.toFixed(1)}` : null,
@@ -132,6 +141,8 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
               wantToPlay={mine?.wantToPlay ?? false}
               mustPlay={mine?.mustPlay ?? false}
               mustPlayLeft={mustPlayLeft}
+              bggRating={myBgg.get(g.id) ?? null}
+              suggested={myBgg.has(g.id) ? (suggestSentiments(myBgg).get(g.id) ?? null) : null}
             />
           </div>
         </div>
@@ -144,6 +155,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
               {thinkers.map((m) => {
                 const o = opinions.find((x) => x.userId === m.id);
                 const owned = owners.find((x) => x.userId === m.id && x.own);
+                const bgg = SHOW_BGG_RATINGS ? owners.find((x) => x.userId === m.id)?.rating : null;
                 return (
                   <div key={m.id} className="flex items-center gap-2.5 px-3 py-2.5 text-sm">
                     <Meeple color={m.color} />
@@ -151,6 +163,7 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
                     <span className="text-slate">
                       {[
                         o?.sentiment && `${SENTIMENT_LABEL[o.sentiment].emoji} ${SENTIMENT_LABEL[o.sentiment].label}`,
+                        bgg && `${formatBggRating(bgg)} on BGG`,
                         o?.mustPlay && "🔥 must play",
                         o?.wantToPlay && "wants to play",
                         o?.playOnline && "up for it on BGA",
@@ -183,6 +196,11 @@ async function Game({ params }: { params: PageProps<"/games/[id]">["params"] }) 
             </Panel>
           ) : (
             <Empty>Not played together yet.</Empty>
+          )}
+          {loggedOnBgg.length > 0 && (
+            <p className="mt-2 text-xs text-slate">
+              Logged on BGG, with the group or anywhere: {loggedOnBgg.map((o) => `${memberById.get(o.userId)!.name} ${o.bggPlays}×`).join(", ")}.
+            </p>
           )}
         </Section>
 

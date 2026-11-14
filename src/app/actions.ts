@@ -21,7 +21,7 @@ import { buildGroupContext, buildNightContext } from "@/lib/insights";
 import { describeTaste, getRecommendations, getTasteChances } from "@/lib/recommend";
 import { PICK_COUNT, askFor, choosePicks } from "@/lib/picks";
 import { refreshCatalog } from "@/lib/catalog";
-import { type SeatNight, getGameTiers, getPlayerNights, inCrowd } from "@/lib/queries";
+import { type SeatNight, getGameTiers, getPlayerNights, getRateableGames, inCrowd } from "@/lib/queries";
 import { nightsVersion } from "@/lib/events";
 import { replaceTier } from "@/lib/tier";
 import { type CurrentUser, PREVIEW_COOKIE, requireAdmin, requireMember, requireUser, seesNight } from "@/lib/session";
@@ -107,6 +107,25 @@ export async function setOpinion(gameId: number, patch: z.infer<typeof OpinionPa
 }
 
 /** Save a member's ranking of one tier's games; their other list stays as it is. */
+/**
+ * Rate every game on Rate games I haven't rated yet with the face my BGG rating suggests
+ * (bgg-ratings.ts). Games I've rated here keep what I said.
+ */
+export async function acceptBggSuggestions(): Promise<ActionResult> {
+  const me = await requireUser();
+  const { played, unplayed } = await getRateableGames(me.id, me.playerId, me.access === "member" ? "core" : "casual");
+  const rows = [...played, ...unplayed].flatMap((g) => (g.suggested ? [{ userId: me.id, gameId: g.id, sentiment: g.suggested }] : []));
+  if (rows.length) {
+    await db
+      .insert(schema.opinion)
+      .values(rows)
+      // Only where it's still blank: a face tapped since the page loaded stays
+      .onConflictDoUpdate({ target: [schema.opinion.userId, schema.opinion.gameId], set: { sentiment: sql`excluded.sentiment` }, setWhere: isNull(schema.opinion.sentiment) });
+  }
+  refresh();
+  return { ok: true };
+}
+
 export async function saveRanking(tier: Tier, gameIds: number[]) {
   const me = await requireUser();
   z.enum(TIERS).parse(tier);

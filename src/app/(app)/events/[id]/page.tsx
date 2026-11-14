@@ -12,7 +12,7 @@ import { bggPrepLinks } from "@/lib/bgg-links";
 import { nightKey } from "@/lib/calendar-store";
 import { Empty, Panel, Section, Skeleton, TextLink } from "@/components/ui";
 import { requireUser, seesNight } from "@/lib/session";
-import { getAllGamesForPicker, getMembers, getPlayedBy, getPlayers, getShelf, getTieredRankingLists } from "@/lib/queries";
+import { getAllGamesForPicker, getBggFacts, getMembers, getPlayedBy, getPlayers, getShelf, getTieredRankingLists } from "@/lib/queries";
 import { claudeReady } from "@/lib/ai";
 import { canListServer, canPostToDiscord, postsNights } from "@/lib/discord";
 import { isLegacy } from "@/lib/night";
@@ -83,7 +83,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
 
   const addToCalendar = n.findingDate || n.cancelled ? null : `/calendar/${await nightKey(n.id)}`;
   const table = tableFor(n.going, n.guests);
-  const [[everything, shelf, chances, members], rankings, opinions, playedBy, players, stayingDates, poll, calendar] = await Promise.all([
+  const [[everything, shelf, chances, bgg, members], rankings, opinions, playedBy, players, stayingDates, poll, calendar] = await Promise.all([
     // Every account's games, with recency and "never played" from this kind of night's plays only,
     // kept to the night's people (below): its crowd, and anyone with an account who's coming
     Promise.all([getShelf({ night: n.night, everyone: true }), getMembers(n.night), getMembers("casual")]).then(async ([all, crowd, accounts]) => {
@@ -94,7 +94,9 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
       });
       const s = theirs.filter((g) => !isLegacy(g));
       // Everyone's taste: the planner scores for whoever's coming, whatever their account
-      return [theirs, s, await getTasteChances(s.map((g) => g.id), { night: "casual" }), accounts.filter((m) => ids.has(m.id))] as const;
+      const gameIds = s.map((g) => g.id);
+      const [chances, bgg] = await Promise.all([getTasteChances(gameIds, { night: "casual" }), getBggFacts(gameIds)]);
+      return [theirs, s, chances, bgg, accounts.filter((m) => ids.has(m.id))] as const;
     }),
     // Whoever's coming counts, whatever their account; the planner keeps to the ones coming
     getTieredRankingLists("casual"),
@@ -218,6 +220,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
               minPlayers: g.minPlayers,
               maxPlayers: g.maxPlayers,
               bestPlayers: g.bestPlayers,
+              notRecommendedPlayers: g.notRecommendedPlayers,
               minPlaytime: g.minPlaytime,
               maxPlaytime: g.maxPlaytime,
               weight: g.weight,
@@ -235,6 +238,8 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
             }))}
             rankings={[rankings.heavy, rankings.light]}
             chances={chances}
+            bggRatings={bgg.ratings}
+            bggPlays={bgg.plays}
             today={new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE })}
             // Claude's context for the night is its own (buildGroupContext), so anyone who sees the night can ask
             aiEnabled={claudeReady()}

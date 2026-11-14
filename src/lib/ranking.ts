@@ -83,3 +83,48 @@ export function answer(p: Placement, prefersNew: boolean | "same"): Placement {
   if (prefersNew === "same") return { lo: mid + 1, hi: mid + 1 };
   return prefersNew ? { lo: p.lo, hi: mid } : { lo: mid + 1, hi: p.hi };
 }
+
+/** Someone's own BGG ratings this far apart settle a "which would you rather play?" without asking */
+export const CLEAR_BGG_GAP = 2;
+
+/** True when the new game wins on BGG ratings, false when the other one does, null when it's close or one isn't rated */
+export function clearPick(newRating: number | null | undefined, otherRating: number | null | undefined): boolean | null {
+  if (newRating == null || otherRating == null || Math.abs(newRating - otherRating) < CLEAR_BGG_GAP) return null;
+  return newRating > otherRating;
+}
+
+/** A ranking being built: the list so far, the games still to place (first is being placed now), and where it could go */
+export type Placing = { ids: number[]; queue: number[]; placement: Placement };
+
+/**
+ * Answers every question the person's BGG ratings settle (clearPick), placing games as their
+ * spots are found, and stops at the first one that needs asking. `answered` is how many it settled.
+ */
+export function settleClearCalls(s: Placing, rating: (id: number) => number | null | undefined): Placing & { answered: number } {
+  let { ids, queue, placement } = s;
+  let answered = 0;
+  while (queue.length) {
+    const [id, next] = queue;
+    if (ids.length === 0) {
+      // Starting from nothing: the first question is between two of the games to place
+      const pick = next === undefined ? null : clearPick(rating(id), rating(next));
+      if (pick === null) break;
+      ids = pick ? [id, next] : [next, id];
+      queue = queue.slice(2);
+      placement = startPlacement(ids.length);
+      answered++;
+      continue;
+    }
+    const mid = compareIndex(placement);
+    const pick = mid === null ? null : clearPick(rating(id), rating(ids[mid]));
+    if (pick === null) break;
+    placement = answer(placement, pick);
+    answered++;
+    if (compareIndex(placement) === null) {
+      ids = [...ids.slice(0, placement.lo), id, ...ids.slice(placement.lo)];
+      queue = queue.slice(1);
+      placement = startPlacement(ids.length);
+    }
+  }
+  return { ids, queue, placement, answered };
+}

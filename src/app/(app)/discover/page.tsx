@@ -156,13 +156,30 @@ async function Discover({ searchParams }: { searchParams: PageProps<"/discover">
   // Everything comes from the same recommendations, so all the views and both nights are sent and switch in the browser
   return (
     <DiscoverTabs
-      initial={params.view === "you" ? "you" : params.view === "upcoming" && hasUpcoming ? "upcoming" : "group"}
+      initial={params.view === "you" ? "you" : params.view === "wanted" && member ? "wanted" : params.view === "upcoming" && hasUpcoming ? "upcoming" : "group"}
       initialNight={!member ? "casual" : (CASUAL_NIGHT && nightParam(params.night)) || "core"}
       twoPlayer={twoPlayer}
       // What's sent to the browser is readable there: a casual account's page doesn't carry the core group's night's name
       nightNames={member ? NIGHT_NAMES : { core: "", casual: NIGHT_NAMES.casual }}
       group={Object.fromEntries(nights.map((night) => [night, forNight(night)]))}
       upcoming={hasUpcoming ? Object.fromEntries(nights.map((night) => [night, upcomingFor(night)])) : null}
+      // The buy list is the core group's, so the tab is too
+      wanted={
+        member ? (
+          <>
+            <p className="max-w-2xl text-sm text-slate">
+              Games nobody owns that someone wants: on their BGG wishlist, or voted onto the buy list. Most wanted first, whatever kind of event
+              they suit. Wishlists come from BGG with each person&apos;s collection, so add to yours there; tap Want it here to vote one onto the
+              buy list.
+            </p>
+            {rec.group.wanted.length ? (
+              <PickGrid picks={rec.group.wanted} {...cardProps} mode="group" />
+            ) : (
+              <Empty>Nothing yet: nobody&apos;s BGG wishlist has a game the group doesn&apos;t own, and the buy list is empty.</Empty>
+            )}
+          </>
+        ) : null
+      }
       you={
         !rec.me.enoughData ? (
           <Empty>

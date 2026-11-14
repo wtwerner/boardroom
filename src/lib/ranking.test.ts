@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answer, compareIndex, crowdLists, crowdSince, groupRanking, rankShare, startPlacement } from "./ranking";
+import { answer, clearPick, compareIndex, crowdLists, crowdSince, groupRanking, rankShare, settleClearCalls, startPlacement } from "./ranking";
 
 describe("groupRanking", () => {
   it("scores by the share of each list a game beats, so long and short lists count the same", () => {
@@ -61,5 +61,32 @@ describe("a night's crowd", () => {
     const lists = { "u-sam": [1, 2], "u-alex": [2, 1], "u-casey": [3] };
     expect(crowdLists(lists, new Set(["u-sam", "u-casey"]))).toEqual({ "u-sam": [1, 2], "u-casey": [3] });
     expect(groupRanking(crowdLists(lists, new Set(["u-alex"])))[0].gameId).toBe(2);
+  });
+});
+
+describe("settleClearCalls", () => {
+  const ratings: Record<number, number> = { 1: 9, 2: 8.5, 3: 6, 4: 4, 5: 9.5 };
+  const rating = (id: number) => ratings[id];
+
+  it("only settles questions with BGG ratings 2 or more apart", () => {
+    expect(clearPick(9, 6)).toBe(true);
+    expect(clearPick(6, 8)).toBe(false);
+    expect(clearPick(9, 8.5)).toBeNull();
+    expect(clearPick(9, null)).toBeNull();
+  });
+
+  it("places games the ratings settle and stops at the first close call", () => {
+    // 1 and 3 start the list; 4 is below both; 2 is close to 1, so that's asked
+    const s = settleClearCalls({ ids: [], queue: [3, 1, 4, 2], placement: startPlacement(0) }, rating);
+    expect(s.ids).toEqual([1, 3, 4]);
+    expect(s.queue).toEqual([2]);
+    // 2 beat 3 without asking (the middle of the list), and now it's 2 against 1
+    expect(compareIndex(s.placement)).toBe(0);
+    expect(s.answered).toBe(3);
+  });
+
+  it("asks about a game with no BGG rating", () => {
+    const s = settleClearCalls({ ids: [1, 4], queue: [99, 5], placement: startPlacement(2) }, rating);
+    expect(s).toEqual({ ids: [1, 4], queue: [99, 5], placement: startPlacement(2), answered: 0 });
   });
 });

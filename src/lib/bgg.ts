@@ -19,6 +19,8 @@ export type BggCollectionEntry = {
   wantToPlay: boolean;
   prevOwned: boolean;
   userRating: number | null;
+  /** Plays they've logged on BGG */
+  plays: number | null;
 };
 
 export type BggGameDetails = {
@@ -30,6 +32,8 @@ export type BggGameDetails = {
   minPlayers: number | null;
   maxPlayers: number | null;
   bestPlayers: number[];
+  /** Player counts most voters say not to play it at; left out where BGG wasn't asked */
+  notRecommendedPlayers?: number[];
   minPlaytime: number | null;
   maxPlaytime: number | null;
   weight: number | null;
@@ -118,6 +122,7 @@ export function mergeCollectionEntries(entries: BggCollectionEntry[]): BggCollec
             wantToPlay: prev.wantToPlay || e.wantToPlay,
             prevOwned: prev.prevOwned || e.prevOwned,
             userRating: Math.max(prev.userRating ?? 0, e.userRating ?? 0) || null,
+            plays: Math.max(prev.plays ?? 0, e.plays ?? 0) || null,
           }
         : e,
     );
@@ -144,6 +149,7 @@ export async function fetchCollection(username: string): Promise<BggCollectionEn
     wantToPlay: it.status?.wanttoplay === "1",
     prevOwned: it.status?.prevowned === "1",
     userRating: num(it.stats?.rating?.value),
+    plays: num(it.numplays),
   }));
 }
 
@@ -176,6 +182,7 @@ function toDetails(it: Node): BggGameDetails {
     minPlayers: num(attr(it.minplayers)),
     maxPlayers: num(attr(it.maxplayers)),
     bestPlayers: bestPlayerCounts(it.poll),
+    notRecommendedPlayers: notRecommendedCounts(it.poll),
     minPlaytime: num(attr(it.minplaytime)) ?? num(attr(it.playingtime)),
     maxPlaytime: num(attr(it.maxplaytime)) ?? num(attr(it.playingtime)),
     weight: num(attr(ratings?.averageweight)),
@@ -229,19 +236,33 @@ export function parseGeeklist(body: string): GeeklistEntry[] {
     .filter((e) => e.id);
 }
 
-/** Player counts where "Best" got the most votes in BGG's suggested_numplayers poll. */
-function bestPlayerCounts(polls: Node[] | undefined): number[] {
+/** Each player count's votes in BGG's suggested_numplayers poll ("4+" is more than the box says, and kept as 4) */
+function playerCountVotes(polls: Node[] | undefined): { n: number; plus: boolean; best: number; recommended: number; not: number }[] {
   const poll = polls?.find((p) => p.name === "suggested_numplayers");
-  const out: number[] = [];
-  for (const r of (poll?.results as Node[] | undefined) ?? []) {
-    // A game nobody has voted on yet has no results here, as with most games not out yet
+  // A game nobody has voted on yet has no results here, as with most games not out yet
+  return ((poll?.results as Node[] | undefined) ?? []).flatMap((r) => {
     const votes = Object.fromEntries(((r.result as Node[] | undefined) ?? []).map((x) => [x.value, Number(x.numvotes)]));
     const n = Number(String(r.numplayers).replace("+", ""));
-    if (votes.Best > 0 && votes.Best >= (votes.Recommended ?? 0) && votes.Best >= (votes["Not Recommended"] ?? 0)) {
-      if (!Number.isNaN(n)) out.push(n);
-    }
-  }
-  return out;
+    if (Number.isNaN(n)) return [];
+    return [{ n, plus: String(r.numplayers).endsWith("+"), best: votes.Best ?? 0, recommended: votes.Recommended ?? 0, not: votes["Not Recommended"] ?? 0 }];
+  });
+}
+
+/** Player counts where "Best" got the most votes in BGG's suggested_numplayers poll. */
+function bestPlayerCounts(polls: Node[] | undefined): number[] {
+  return playerCountVotes(polls)
+    .filter((v) => v.best > 0 && v.best >= v.recommended && v.best >= v.not)
+    .map((v) => v.n);
+}
+
+/** Votes a player count needs before its "Not Recommended" counts: a couple of votes isn't a verdict */
+const NOT_RECOMMENDED_MIN_VOTES = 5;
+
+/** Player counts the box allows where most voters say "Not Recommended", more than Best and Recommended together */
+function notRecommendedCounts(polls: Node[] | undefined): number[] {
+  return playerCountVotes(polls)
+    .filter((v) => !v.plus && v.best + v.recommended + v.not >= NOT_RECOMMENDED_MIN_VOTES && v.not > v.best + v.recommended)
+    .map((v) => v.n);
 }
 
 export async function searchGames(query: string): Promise<{ id: number; name: string; year: number | null }[]> {
@@ -289,6 +310,7 @@ export function parseCollectionCsv(csv: string): CsvImport {
       wantToPlay: row.wanttoplay === "1",
       prevOwned: row.prevowned === "1",
       userRating: num(row.rating),
+      plays: num(row.numplays),
     });
     details.push({
       id,
@@ -299,6 +321,7 @@ export function parseCollectionCsv(csv: string): CsvImport {
       minPlayers: num(row.minplayers),
       maxPlayers: num(row.maxplayers),
       bestPlayers: parseCountList(row.bggbestplayers),
+      ...csvNotRecommended(row),
       minPlaytime: num(row.minplaytime) ?? num(row.playingtime),
       maxPlaytime: num(row.maxplaytime) ?? num(row.playingtime),
       weight: num(row.avgweight),
@@ -326,4 +349,20 @@ function parseCountList(s: string | undefined): number[] {
     .split(/[,\s]+/)
     .map((x) => parseInt(x, 10))
     .filter((n) => !Number.isNaN(n));
+}
+
+/**
+ * The CSV has the counts voters recommend (bggrecplayers) but not the ones they don't: those are
+ * the rest of the box's range. Left out when the export doesn't say, so it's read from BGG later.
+ */
+function csvNotRecommended(row: Record<string, string>): { notRecommendedPlayers?: number[] } {
+  const min = num(row.minplayers);
+  const max = num(row.maxplayers);
+  const ok = new Set([...parseCountList(row.bggrecplayers), ...parseCountList(row.bggbestplayers)]);
+  if (!row.bggrecplayers?.trim() || ok.size === 0 || min === null || max === null || max - min > 20) return {};
+  // "3+" is 3 and up
+  const plus = /(\d+)\+/.exec(`${row.bggrecplayers} ${row.bggbestplayers ?? ""}`);
+  const counts: number[] = [];
+  for (let n = min; n <= max; n++) if (!ok.has(n) && !(plus && n >= +plus[1])) counts.push(n);
+  return { notRecommendedPlayers: counts };
 }

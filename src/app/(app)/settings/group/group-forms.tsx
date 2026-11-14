@@ -38,6 +38,7 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
   const [casual, setCasual] = useState(s.casualNight);
   const [casualSignIn, setCasualSignIn] = useState(s.casualSignIn);
   const [useClaude, setUseClaude] = useState(s.claude);
+  const [showBgg, setShowBgg] = useState(s.showBggRatings);
   const [names, setNames] = useState({ core: s.coreNightName, casual: s.casualNightName });
   const field = (key: SettingKey) => ({ id: key, error: errors[key] });
 
@@ -86,10 +87,16 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
       </Section>
 
       <Section title="Rankings">
-        <Panel className="p-4">
+        <Panel className="space-y-4 p-4">
           <Field label="Heavy from BGG weight" hint="Games this heavy or heavier are ranked with the heavy games, the rest with the light ones." {...field("heavyWeight")}>
             <input id="heavyWeight" name="heavyWeight" type="number" min={1} max={5} step={0.05} defaultValue={s.heavyWeight} className={clsx(input, "max-w-28")} />
           </Field>
+          <div className="border-t border-line pt-4">
+            <Toggle name="showBggRatings" checked={showBgg} onChange={setShowBgg} label="Show people's BGG ratings">
+              Beside each person&apos;s face on a game&apos;s page and the shelf, the rating they gave it on BGG. They count either way: they suggest
+              faces, settle clear calls when ranking, and stand in for a rating in the planner.
+            </Toggle>
+          </div>
         </Panel>
       </Section>
 

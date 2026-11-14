@@ -3,7 +3,10 @@ import { type ReactNode, Suspense } from "react";
 import { CASUAL_NIGHT, CLAUDE, CLAUDE_IDEAS_PER_DAY, MIN_PEOPLE, NIGHT_NAMES } from "@/config";
 import { MUST_PLAY_LIMIT, SENTIMENTS } from "@/db/enums";
 import { PageHeader, Panel, Skeleton, TextLink } from "@/components/ui";
+import { AVERAGE_RANGE, BANDS, OWN_AVERAGE_FROM, TYPICAL_AVERAGE } from "@/lib/bgg-ratings";
 import { MIN_EVIDENCE } from "@/lib/recommend";
+import { KNOWS_IT_PLAYS } from "@/lib/night";
+import { CLEAR_BGG_GAP } from "@/lib/ranking";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { inSentence } from "@/lib/text";
 import { requireUser } from "@/lib/session";
@@ -71,6 +74,7 @@ async function About() {
                     and rankings are what your taste is worked out from.
                   </>,
                 ],
+                ["Your BGG ratings", <BggRatings key="bgg" />],
                 [
                   "Want to play",
                   <>
@@ -102,7 +106,9 @@ async function About() {
             </p>
             <p>
               Each ranking is every game of that kind you&apos;ve played, best first. A new game is placed with a few &ldquo;which would you
-              rather play?&rdquo; questions, each halving the part of your list it could go in. Drag to adjust.
+              rather play?&rdquo; questions, each halving the part of your list it could go in. Drag to adjust. If you rate on BGG,{" "}
+              <em>Let my BGG ratings answer the clear ones</em> skips any question between two games {CLEAR_BGG_GAP} or more points apart in your
+              BGG ratings, so only the close calls are asked.
             </p>
             <p>
               The group list&apos;s <strong>Beats</strong> column: for each person who ranked a game, the share of their other games it&apos;s
@@ -146,7 +152,7 @@ async function About() {
               50% means no idea either way.
             </p>
             <p>
-              It comes from the mechanics, categories and weight they tend to rate highly, plus BGG&apos;s rating. It&apos;s checked against games
+              It comes from the mechanics, categories and weight they tend to rate highly (on BGG too: their own BGG ratings count), plus BGG&apos;s rating. It&apos;s checked against games
               they&apos;ve already rated: each one is predicted as if it were new, and the percentages are tuned so that on those games a 70% came
               true about 70% of the time. Someone with only a few ratings borrows from the whole group&apos;s, and with little to go on it stays
               near 50%.
@@ -158,6 +164,7 @@ async function About() {
                 ["Group number", "The average of everyone's percentages, the numbers along the bottom of each card."],
                 ["2-player games", "Games for 2 players at most are hidden unless you switch on Include 2-player games."],
                 ["Want it / Not for me", "Want it is a vote for the buy list. Not for me stops the game being suggested to you."],
+                ["Wanted", "Every game nobody owns that's on someone's BGG wishlist or the buy list, whatever kind of event it suits. Most wanted first: each wishlist it's on and each Want it vote counts one, then the group number."],
               ]}
             />
             {CLAUDE && (
@@ -186,7 +193,7 @@ async function About() {
                 [`${SENTIMENT_LABEL.meh.emoji} Meh / ${SENTIMENT_LABEL.nope.emoji} Not for me`, "−1 / −4"],
                 ["Want to play", "+2"],
                 ["🔥 Must play", "+4"],
-                ["Hasn't rated or ranked it", "−2 to +2 from their taste: the chance they'd like it, as on Discover"],
+                ["Hasn't rated or ranked it", "−2 to +2: from their own BGG rating if they gave it one, otherwise from their taste (the chance they'd like it, as on Discover)"],
               ]}
             />
             <p>Then, once per game:</p>
@@ -194,20 +201,25 @@ async function About() {
               rows={[
                 ["Rankings", "Up to +3 at the top of the lists of the people coming, −3 at the bottom, 0 in the middle or unranked"],
                 ["Best at this player count", "+1.5 (BGG voters)"],
+                ["Not recommended at this player count", "−1.5, when most BGG voters say so"],
                 ["Never played together", `+2 if nobody coming has played it with the group, else +1${CASUAL_NIGHT ? ` (always +1 at ${casual})` : ""}`],
                 ["Played in the last 2 weeks", "−2 (2–4 weeks: −1)"],
                 ["Not played in 4 months", "+0.5"],
                 ...(CASUAL_NIGHT
                   ? ([
                       [`Played 3+ times at ${casual}`, `+1, when planning the ${casual}`],
-                      ["Nobody coming has played it", `−1.5, when planning the ${casual}: someone has to teach it`],
+                      [
+                        "Nobody coming has played it",
+                        `−1.5, when planning the ${casual}: someone has to teach it. Not if someone coming has logged ${KNOWS_IT_PLAYS} or more plays of it on BGG`,
+                      ],
                     ] as [string, string][])
                   : []),
               ]}
             />
             <p>
-              The labels on each game (&ldquo;Sam loves it&rdquo;, &ldquo;Best at 4&rdquo;, &ldquo;Suits Sam&apos;s taste&rdquo;) say which of these
-              apply. The taste guess is what lets a game nobody has played yet compete with the group&apos;s favorites; tick &ldquo;Only games
+              The labels on each game (&ldquo;Sam loves it&rdquo;, &ldquo;Best at 4&rdquo;, &ldquo;Suits Sam&apos;s taste&rdquo;, &ldquo;Sam rates it 9
+              on BGG&rdquo;) say which of these apply. A game none of the people coming have played with the group says who has played it elsewhere
+              ({KNOWS_IT_PLAYS} or more plays logged on BGG), since they can teach it: &ldquo;Alex knows it: 12 plays on BGG&rdquo;. The taste guess is what lets a game nobody has played yet compete with the group&apos;s favorites; tick &ldquo;Only games
               nobody coming has played with the group&rdquo; to see just those. Legacy games (BGG&apos;s Legacy Game mechanic, like Gloomhaven or Pandemic
               Legacy) are left out, since they&apos;re a run of sessions rather than a pick for one.
             </p>
@@ -292,8 +304,8 @@ async function About() {
                   "Plays",
                   `Logged on the event's page once it starts, or on Plays (and posted to that kind's Discord channel), or written by hand in ${CASUAL_NIGHT ? "either channel" : "the channel"}. The sync reads hand-written posts every night and when anyone taps Sync from Discord, and picks up edits to posts for two weeks. A play logged both here and in Discord is only counted once.`,
                 ],
-                ["Shelf", "Everyone's BGG collection: from the BGG username in Settings, refreshed nightly, or a CSV export uploaded there. Editions of one game (Citadels from 2000 and 2016, say: BGG links them, and they have the same name) are one game on it, with everyone's copies and every play."],
-                ["Game details", "Player counts, best player counts, weight, mechanics and ratings come from BGG."],
+                ["Shelf", "Everyone's BGG collection: from the BGG username in Settings, refreshed nightly, or a CSV export uploaded there. It brings your own BGG ratings and logged plays too. Editions of one game (Citadels from 2000 and 2016, say: BGG links them, and they have the same name) are one game on it, with everyone's copies and every play."],
+                ["Game details", "Player counts, the counts BGG's voters call best or advise against, weight, mechanics and ratings come from BGG."],
                 ["Board Game Arena", "Which games are on BGA, matched to BGG by id, from BGA's public game list every night. BGG details for BGA's 400 most played games are fetched a batch a night so they can be recommended. BGA has no way to read anyone's plays without signing in."],
                 ...(CLAUDE
                   ? [
@@ -326,6 +338,7 @@ function CasualAbout({ casual }: { casual: string }) {
           <Facts
             rows={[
               ["Rating", <>How much you like it: {SENTIMENTS.map((s) => `${SENTIMENT_LABEL[s].emoji} ${SENTIMENT_LABEL[s].label}`).join(", ")}.</>],
+              ["Your BGG ratings", <BggRatings key="bgg" />],
               ["Want to play", "You'd like it on the table soon, whether you've played it or not. It clears once you play the game."],
               ["🔥 Must play", `The few games you really want next. You hold ${MUST_PLAY_LIMIT} at a time, and a vote comes back once you play its game.`],
             ]}
@@ -414,5 +427,24 @@ function Facts({ rows }: { rows: [ReactNode, ReactNode][] }) {
         ))}
       </dl>
     </Panel>
+  );
+}
+
+/** How someone's own BGG ratings are read as faces and where else they count, from bgg-ratings.ts */
+function BggRatings() {
+  const at = (sentiment: string) => BANDS.find((b) => b.sentiment === sentiment)!.from;
+  const points = (n: number) => `${Math.abs(n)} ${Math.abs(n) === 1 ? "point" : "points"}`;
+  const example = (sentiment: string) => TYPICAL_AVERAGE + at(sentiment);
+  return (
+    <>
+      If you add your BGG collection, the ratings you gave games there come with it. On Rate games and a game&apos;s page, a game you
+      haven&apos;t rated here has a face outlined from your BGG rating, read against your own average there (kept between {AVERAGE_RANGE[0]}{" "}
+      and {AVERAGE_RANGE[1]}, and {TYPICAL_AVERAGE} until you&apos;ve rated {OWN_AVERAGE_FROM}): {SENTIMENT_LABEL.love.emoji} from{" "}
+      {points(at("love"))} above it, {SENTIMENT_LABEL.like.emoji} from {points(at("like"))} below, {SENTIMENT_LABEL.meh.emoji} from{" "}
+      {points(at("meh"))} below, and {SENTIMENT_LABEL.nope.emoji} under that. With an average of {TYPICAL_AVERAGE}:{" "}
+      {SENTIMENT_LABEL.love.emoji} from {example("love")}, {SENTIMENT_LABEL.like.emoji} from {example("like")}, {SENTIMENT_LABEL.meh.emoji} from{" "}
+      {example("meh")}, {SENTIMENT_LABEL.nope.emoji} below {example("meh")}. Nothing counts as a rating until you tap it, or{" "}
+      <em>Use them</em> for all of them. Until then a BGG rating still counts toward your taste and stands in for a rating in the planner.
+    </>
   );
 }

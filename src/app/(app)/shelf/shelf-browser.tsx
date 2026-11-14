@@ -7,6 +7,7 @@ import clsx from "clsx";
 import type { MeepleColor, Sentiment } from "@/db/enums";
 import { Faces, GameCover, Meeple, bestAt, formatDate, playerRange, playtime } from "@/components/ui";
 import type { ShelfGame } from "@/lib/queries";
+import { formatBggRating } from "@/lib/bgg-ratings";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 
 type Member = { id: string; name: string; image: string | null; color: MeepleColor | null };
@@ -33,6 +34,7 @@ export function ShelfBrowser({
   initialShame,
   groups,
   linkIds,
+  showBgg,
 }: {
   games: ShelfGame[];
   /** Games that can be played on Board Game Arena */
@@ -47,6 +49,8 @@ export function ShelfBrowser({
   groups: { id: string; label: string; ownerIds: string[] }[];
   /** Owners whose names open their People page */
   linkIds: string[];
+  /** The group shows people's own BGG ratings beside their faces (SHOW_BGG_RATINGS) */
+  showBgg: boolean;
 }) {
   const [query, setQuery] = useState("");
   // "Plays 4" keeps anything 4 can play; "Best at 4" only what BGG's voters say is best at 4
@@ -241,7 +245,7 @@ export function ShelfBrowser({
                 {g.sentiments.length > 0 && (
                   <div className="mt-1 flex gap-1 text-sm leading-none">
                     {g.sentiments.map((s) => (
-                      <span key={s.userId} title={`${memberById.get(s.userId)?.name}: ${s.sentiment}`}>{SENTIMENT_LABEL[s.sentiment].emoji}</span>
+                      <Face key={s.userId} face={s} name={memberById.get(s.userId)?.name} showBgg={showBgg} />
                     ))}
                   </div>
                 )}
@@ -250,9 +254,20 @@ export function ShelfBrowser({
           ))}
         </ul>
       ) : (
-        <ShelfTable games={shown} memberById={memberById} chances={shameOnly ? chanceOf : null} linkable={linkable} />
+        <ShelfTable games={shown} memberById={memberById} chances={shameOnly ? chanceOf : null} linkable={linkable} showBgg={showBgg} />
       )}
     </div>
+  );
+}
+
+/** Someone's face for a game, with their own BGG rating of it after it when the group shows those */
+function Face({ face, name, showBgg }: { face: ShelfGame["sentiments"][number]; name: string | undefined; showBgg: boolean }) {
+  const bgg = showBgg && face.bgg !== null ? formatBggRating(face.bgg) : null;
+  return (
+    <span title={`${name}: ${SENTIMENT_LABEL[face.sentiment].label}${bgg ? `, ${bgg} on BGG` : ""}`} className={bgg ? "mr-1" : undefined}>
+      {SENTIMENT_LABEL[face.sentiment].emoji}
+      {bgg && <span className="tabular ml-px text-[0.65rem] text-slate">{bgg}</span>}
+    </span>
   );
 }
 
@@ -261,11 +276,13 @@ function ShelfTable({
   memberById,
   chances,
   linkable,
+  showBgg,
 }: {
   games: ShelfGame[];
   memberById: Map<string, Member>;
   chances: Map<number, number | null> | null;
   linkable: Set<string>;
+  showBgg: boolean;
 }) {
   const th = "px-2 py-2 text-left text-xs font-medium text-slate";
   return (
@@ -330,9 +347,7 @@ function ShelfTable({
               </td>
               <td className="pr-3 pl-2 text-xs whitespace-nowrap">
                 {g.sentiments.map((s) => (
-                  <span key={s.userId} title={`${memberById.get(s.userId)?.name}: ${SENTIMENT_LABEL[s.sentiment].label}`}>
-                    {SENTIMENT_LABEL[s.sentiment].emoji}
-                  </span>
+                  <Face key={s.userId} face={s} name={memberById.get(s.userId)?.name} showBgg={showBgg} />
                 ))}
                 {g.mustPlay.length > 0 && <span className="ml-1.5" title={g.mustPlay.map((id) => memberById.get(id)?.name).join(", ")}>🔥{g.mustPlay.length}</span>}
                 {g.wantToPlay.length > 0 && <span className="ml-1.5 text-slate">{g.wantToPlay.length} want to play</span>}

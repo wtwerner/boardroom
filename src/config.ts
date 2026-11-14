@@ -84,6 +84,9 @@ export let NIGHT_HOURS: number;
  */
 export let MIN_PEOPLE: Record<Night, number>;
 
+/** Whether people's own BGG ratings show beside their faces (a game's page, the shelf). Off, they still count, out of sight */
+export let SHOW_BGG_RATINGS: boolean;
+
 /**
  * Whether the site uses Claude: picks on Discover and a night's page, and reading hand-written
  * play posts the parser can't. It needs ANTHROPIC_API_KEY too. Off, the site never calls Claude
@@ -108,6 +111,7 @@ export function applySettings(s: GroupSettings) {
   CASUAL_SIGN_IN = s.casualNight && s.casualSignIn;
   GROUP_NIGHTS = s.casualNight ? ["core", "casual"] : ["core"];
   HEAVY_WEIGHT = s.heavyWeight;
+  SHOW_BGG_RATINGS = s.showBggRatings;
   REMINDER_HOURS = s.reminderHours;
   NIGHT_HOURS = s.nightHours;
   MIN_PEOPLE = { core: s.coreMinPeople, casual: s.casualMinPeople };

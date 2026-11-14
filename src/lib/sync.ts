@@ -428,12 +428,13 @@ async function replaceCollection(userId: string, all: BggCollectionEntry[]) {
         wantToPlay: e.wantToPlay,
         prevOwned: e.prevOwned,
         bggUserRating: e.userRating,
+        bggPlays: e.plays,
       })),
     );
   });
 }
 
-/** Pull full /thing details for games we've never detailed, haven't refreshed in 30 days, or detailed before we kept their editions. */
+/** Pull full /thing details for games we've never detailed, haven't refreshed in 30 days, or detailed before we kept their editions or advised player counts. */
 export async function refreshStaleGameDetails(limit = 60) {
   if (!hasBggToken()) return 0;
   const stale = await db
@@ -443,6 +444,8 @@ export async function refreshStaleGameDetails(limit = 60) {
       or(
         isNull(schema.game.detailsFetchedAt),
         isNull(schema.game.implementations),
+        // Detailed before the site kept which player counts BGG's voters advise against
+        isNull(schema.game.notRecommendedPlayers),
         lt(schema.game.detailsFetchedAt, new Date(Date.now() - 30 * 86_400_000)),
       ),
     )
@@ -470,6 +473,7 @@ export async function upsertGameDetails(details: BggGameDetails[], { markFetched
       ...(d.categories.length ? { categories: d.categories, mechanics: d.mechanics } : {}),
       ...(d.description ? { description: d.description } : {}),
       ...(d.implementations ? { implementations: d.implementations } : {}),
+      ...(d.notRecommendedPlayers ? { notRecommendedPlayers: d.notRecommendedPlayers } : {}),
       ...(markFetched ? { detailsFetchedAt: new Date() } : {}),
     };
     await db

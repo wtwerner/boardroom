@@ -97,6 +97,8 @@ export const game = sqliteTable("game", {
   maxPlayers: integer("max_players"),
   /** Player counts the BGG community voted "Best" */
   bestPlayers: text("best_players", { mode: "json" }).$type<number[]>(),
+  /** Player counts most of BGG's voters say not to play it at; null until read from BGG */
+  notRecommendedPlayers: text("not_recommended_players", { mode: "json" }).$type<number[]>(),
   minPlaytime: integer("min_playtime"),
   maxPlaytime: integer("max_playtime"),
   weight: real("weight"),
@@ -134,6 +136,8 @@ export const collectionItem = sqliteTable(
     prevOwned: integer("prev_owned", { mode: "boolean" }).notNull().default(false),
     /** The user's personal BGG rating (1-10) */
     bggUserRating: real("bgg_user_rating"),
+    /** Plays they've logged on BGG, with the group or anywhere else */
+    bggPlays: integer("bgg_plays"),
     ...timestamps,
   },
   (t) => [primaryKey({ columns: [t.userId, t.gameId] })],

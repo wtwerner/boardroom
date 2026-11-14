@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
+import { CASUAL_NIGHT, NIGHT_NAMES, SHOW_BGG_RATINGS } from "@/config";
 import { Empty, PageHeader, Skeleton, TextLink } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { getBgaByBggId, getMembers, getShelf, getWholeShelf } from "@/lib/queries";
@@ -71,6 +71,7 @@ async function Shelf({ searchParams }: { searchParams: PageProps<"/shelf">["sear
         initialShame={member && params.shame === "1"}
         // Everyone with an account has a People page
         linkIds={people.map((m) => m.id)}
+        showBgg={SHOW_BGG_RATINGS}
       />
     </div>
   );

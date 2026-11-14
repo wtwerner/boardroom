@@ -2,6 +2,7 @@ import "server-only";
 import { type Column, and, count, countDistinct, desc, eq, gte, inArray, isNotNull, isNull, max, ne, not, or, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { MUST_PLAY_LIMIT, TIERS, type MeepleColor, type Night, type Sentiment, type Tier } from "@/db/enums";
+import { suggestSentiments } from "./bgg-ratings";
 import { mergeEditions } from "./editions";
 import { localDate, recentMonths } from "./nights";
 import { playOrder } from "./log-post";
@@ -244,6 +245,7 @@ export async function getShelf(opts: { night?: Night; everyone?: boolean } = {})
       minPlayers: game.minPlayers,
       maxPlayers: game.maxPlayers,
       bestPlayers: game.bestPlayers,
+      notRecommendedPlayers: game.notRecommendedPlayers,
       minPlaytime: game.minPlaytime,
       maxPlaytime: game.maxPlaytime,
       weight: game.weight,
@@ -265,7 +267,7 @@ export async function getShelf(opts: { night?: Night; everyone?: boolean } = {})
     )
     .orderBy(game.name);
 
-  const [owners, plays, opinions] = await Promise.all([
+  const [owners, plays, opinions, bggRatings] = await Promise.all([
     db
       .select({ gameId: collectionItem.gameId, userId: collectionItem.userId })
       .from(collectionItem)
@@ -276,18 +278,24 @@ export async function getShelf(opts: { night?: Night; everyone?: boolean } = {})
       .where(and(isNotNull(play.gameId), opts.night ? eq(play.night, opts.night) : undefined))
       .groupBy(play.gameId),
     db.select().from(opinion).where(inCrowd(opinion.userId, crowd)),
+    db
+      .select({ gameId: collectionItem.gameId, userId: collectionItem.userId, rating: collectionItem.bggUserRating })
+      .from(collectionItem)
+      .where(and(isNotNull(collectionItem.bggUserRating), inCrowd(collectionItem.userId, crowd))),
   ]);
 
   const playMap = new Map(plays.map((p) => [p.gameId, p]));
+  const bggOf = new Map(bggRatings.map((r) => [`${r.userId}:${r.gameId}`, r.rating]));
   // Two people's copies of one game in different editions (BGG's reimplementations) are one game here, played or not
   return mergeEditions(games.map((g) => ({
     ...g,
     ownerIds: owners.filter((o) => o.gameId === g.id).map((o) => o.userId),
     plays: playMap.get(g.id)?.plays ?? 0,
     lastPlayed: playMap.get(g.id)?.lastPlayed ?? null,
+    // Each with their own BGG rating of it, for groups that show them
     sentiments: opinions
       .filter((o) => o.gameId === g.id && o.sentiment)
-      .map((o) => ({ userId: o.userId, sentiment: o.sentiment as Sentiment })),
+      .map((o) => ({ userId: o.userId, sentiment: o.sentiment as Sentiment, bgg: bggOf.get(`${o.userId}:${g.id}`) ?? null })),
     wantToPlay: opinions.filter((o) => o.gameId === g.id && o.wantToPlay).map((o) => o.userId),
     mustPlay: opinions.filter((o) => o.gameId === g.id && o.mustPlay).map((o) => o.userId),
   }))).filter((g) => g.ownerIds.length > 0);
@@ -430,9 +438,10 @@ export async function getRankingPool(userId: string, playerId: number | null, ra
   const others = extra.length
     ? await db.select({ id: game.id, name: game.name, thumbnail: game.thumbnail, image: game.image }).from(game).where(inArray(game.id, extra))
     : [];
+  const bgg = extra.length ? await getMyBggRatings(userId) : new Map<number, number>();
   return [
-    ...inTier.map((g) => ({ id: g.id, name: g.name, thumbnail: g.thumbnail, image: g.image, plays: g.plays })),
-    ...others.map((g) => ({ ...g, plays: 0 })),
+    ...inTier.map((g) => ({ id: g.id, name: g.name, thumbnail: g.thumbnail, image: g.image, plays: g.plays, bggRating: g.bggRating })),
+    ...others.map((g) => ({ ...g, plays: 0, bggRating: bgg.get(g.id) ?? null })),
   ];
 }
 
@@ -445,7 +454,7 @@ export async function getGame(id: number, viewerId: string) {
   const [g, owners, opinions, plays, [mine]] = await Promise.all([
     db.query.game.findFirst({ where: eq(game.id, id) }),
     db
-      .select({ userId: user.id, name: user.name, own: collectionItem.own, wishlist: collectionItem.wishlist, rating: collectionItem.bggUserRating })
+      .select({ userId: user.id, name: user.name, own: collectionItem.own, wishlist: collectionItem.wishlist, rating: collectionItem.bggUserRating, bggPlays: collectionItem.bggPlays })
       .from(collectionItem)
       .innerJoin(user, eq(user.id, collectionItem.userId))
       .where(and(eq(collectionItem.gameId, id), inCrowd(collectionItem.userId, "casual"))),
@@ -490,9 +499,37 @@ export async function getPlayedBy() {
   return byGame;
 }
 
-/** Games I've played (most played first), then shelf games I haven't, each with my opinion. The shelf is my night's crowd's (inCrowd). */
+/** Every game someone has rated on BGG, by id: what their collection sync brought in */
+export async function getMyBggRatings(userId: string) {
+  const rows = await db
+    .select({ gameId: collectionItem.gameId, rating: collectionItem.bggUserRating })
+    .from(collectionItem)
+    .where(and(eq(collectionItem.userId, userId), isNotNull(collectionItem.bggUserRating)));
+  return new Map(rows.map((r) => [r.gameId, r.rating!]));
+}
+
+/** Everyone's own BGG ratings of these games, and the plays they've logged there, each by game and then user id */
+export async function getBggFacts(gameIds: number[]) {
+  const ratings: Record<number, Record<string, number>> = {};
+  const plays: Record<number, Record<string, number>> = {};
+  if (gameIds.length === 0) return { ratings, plays };
+  const rows = await db
+    .select({ gameId: collectionItem.gameId, userId: collectionItem.userId, rating: collectionItem.bggUserRating, plays: collectionItem.bggPlays })
+    .from(collectionItem)
+    .where(and(inArray(collectionItem.gameId, gameIds), or(isNotNull(collectionItem.bggUserRating), isNotNull(collectionItem.bggPlays))));
+  for (const r of rows) {
+    if (r.rating !== null) (ratings[r.gameId] ??= {})[r.userId] = r.rating;
+    if (r.plays !== null) (plays[r.gameId] ??= {})[r.userId] = r.plays;
+  }
+  return { ratings, plays };
+}
+
+/**
+ * Games I've played (most played first), then shelf games I haven't, each with my opinion. The shelf is my night's crowd's (inCrowd).
+ * Each has my BGG rating, if I gave it one, and while I haven't rated it here, the face that rating suggests (bgg-ratings.ts).
+ */
 export async function getRateableGames(userId: string, playerId: number | null, night: Night = "core") {
-  const [played, shelf, mine] = await Promise.all([
+  const [played, shelf, mine, bgg] = await Promise.all([
     db
       .select({ id: game.id, name: game.name, thumbnail: game.thumbnail, image: game.image, plays: count(play.id), lastPlayed: max(play.playedOn) })
       .from(playPlayer)
@@ -509,11 +546,21 @@ export async function getRateableGames(userId: string, playerId: number | null, 
       .groupBy(game.id)
       .orderBy(game.name),
     getMyOpinions(userId),
+    getMyBggRatings(userId),
   ]);
   const playedIds = new Set(played.map((g) => g.id));
+  const suggested = suggestSentiments(bgg);
   const withOpinion = <T extends { id: number }>(g: T) => {
     const o = mine.get(g.id);
-    return { ...g, sentiment: o?.sentiment ?? null, wantToPlay: o?.wantToPlay ?? false, mustPlay: o?.mustPlay ?? false };
+    const sentiment = o?.sentiment ?? null;
+    return {
+      ...g,
+      sentiment,
+      wantToPlay: o?.wantToPlay ?? false,
+      mustPlay: o?.mustPlay ?? false,
+      bggRating: bgg.get(g.id) ?? null,
+      suggested: sentiment ? null : (suggested.get(g.id) ?? null),
+    };
   };
   return {
     played: played.map(withOpinion),

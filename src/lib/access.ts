@@ -95,7 +95,7 @@ export type Capability = {
  */
 export function capabilities(names: { core: string; casual: string }): Capability[] {
   return [
-    { area: "Their own", what: "Rate and rank games", admin: "yes", member: "yes", casual: "yes", actions: ["setOpinion", "saveRanking"] },
+    { area: "Their own", what: "Rate and rank games", admin: "yes", member: "yes", casual: "yes", actions: ["setOpinion", "acceptBggSuggestions", "saveRanking"] },
     {
       area: "Their own",
       what: "Name, color, calendar, BGG collection and Board Game Arena name",

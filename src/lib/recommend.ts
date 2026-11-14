@@ -308,6 +308,10 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
     .filter((c): c is Candidate => c !== null && notWidelyVetoed(c));
 
   const myClaude = unowned.filter((c) => isClaude(c, meId) && notVetoedByMe(c)).sort(byMine);
+  const onBuyList = (c: Candidate) => c.suggestion !== null && (c.suggestion.score > 0 || c.suggestion.source === "member");
+  /** How many want it: people with it on their BGG wishlist, plus Want it votes for the buy list */
+  const wantCount = (c: Candidate) =>
+    new Set(c.sources.flatMap((s) => (s.kind === "wishlist" ? s.userIds : []))).size + Math.max(0, c.suggestion?.score ?? 0);
   const forNight = (night: Night) => {
     const { fits, ...table } = byNight[night];
     /** Worth keeping an eye on for this night: best match first, then any there's nothing to score on */
@@ -336,7 +340,9 @@ export async function getRecommendations(meId: string, myPlayerId: number | null
     nights: { core: forNight("core"), casual: forNight("casual") },
     group: {
       /** Games someone asked for, most wanted first */
-      buyList: unowned.filter((c) => c.suggestion && (c.suggestion.score > 0 || c.suggestion.source === "member")).sort((a, b) => b.suggestion!.score - a.suggestion!.score || byMatch(a, b)),
+      buyList: unowned.filter(onBuyList).sort((a, b) => b.suggestion!.score - a.suggestion!.score || byMatch(a, b)),
+      /** Everything people want that nobody owns, whatever night it suits: wishlists and the buy list, most wanted first */
+      wanted: unowned.filter((c) => onBuyList(c) || wantCount(c) > 0).sort((a, b) => wantCount(b) - wantCount(a) || byMatch(a, b)),
       /** Games on BGA nobody owns or has played with the group, best match first */
       online: online.sort(byMatch).slice(0, 12),
     },
