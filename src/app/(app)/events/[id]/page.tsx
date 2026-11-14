@@ -14,7 +14,7 @@ import { Empty, Panel, Section, Skeleton, TextLink } from "@/components/ui";
 import { requireUser, seesNight } from "@/lib/session";
 import { getAllGamesForPicker, getMembers, getPlayedBy, getPlayers, getShelf, getTieredRankingLists } from "@/lib/queries";
 import { claudeReady } from "@/lib/ai";
-import { canPostToDiscord, postsNights } from "@/lib/discord";
+import { canListServer, canPostToDiscord, postsNights } from "@/lib/discord";
 import { isLegacy } from "@/lib/night";
 import { getTasteChances } from "@/lib/recommend";
 import { type NightDetail, loadNight } from "@/lib/events";
@@ -144,6 +144,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
               myPlayerId={me.playerId}
               members={members.map((m) => ({ id: m.id, name: m.name, color: m.color, playerName: players.find((p) => p.id === m.playerId)?.name ?? null }))}
               players={players}
+              inDiscord={canListServer()}
             />
           </Panel>
         )}

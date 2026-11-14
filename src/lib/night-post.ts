@@ -279,8 +279,9 @@ export function syncNightPostLater(
  * A player was just tied to a Discord account (or untied): the posts of the coming nights
  * they've answered show them by it now, and those nights' threads add them, rather than waiting
  * for each night's next change. Someone added on the site by name is a plain name until then.
+ * `except` is a night the caller is updating already.
  */
-export function playerLinkedLater(playerId: number) {
+export function playerLinkedLater(playerId: number, { except }: { except?: number } = {}) {
   after(async () => {
     const n = schema.gameNight;
     const answered = db.select({ id: schema.nightRsvp.gameNightId }).from(schema.nightRsvp).where(eq(schema.nightRsvp.playerId, playerId));
@@ -303,6 +304,7 @@ export function playerLinkedLater(playerId: number) {
         ),
       );
     for (const { id } of nights) {
+      if (id === except) continue;
       try {
         if (await syncNightPost(id)) await joinThread(id, [playerId]);
       } catch (err) {
