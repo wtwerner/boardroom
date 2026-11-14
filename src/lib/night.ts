@@ -1,4 +1,5 @@
 import type { Night, Sentiment } from "@/db/enums";
+import { formatBggRating } from "./bgg-ratings";
 import { groupRanking } from "./ranking";
 import { inSentence } from "./text";
 
@@ -8,6 +9,8 @@ export type NightGame = {
   minPlayers: number | null;
   maxPlayers: number | null;
   bestPlayers: number[] | null;
+  /** Player counts most of BGG's voters advise against */
+  notRecommendedPlayers: number[] | null;
   minPlaytime: number | null;
   maxPlaytime: number | null;
   weight: number | null;
@@ -58,6 +61,10 @@ export type NightInput = {
    * their taste (see getTasteChances). Without it a game nobody has played has nothing to go on.
    */
   chances?: Record<number, Record<string, number>>;
+  /** People's own BGG ratings by game, then user id: a guess that comes from one says so */
+  bggRatings?: Record<number, Record<string, number>>;
+  /** Plays people have logged on BGG, by game and then user id: someone who's played it elsewhere can teach it */
+  bggPlays?: Record<number, Record<string, number>>;
   today: string; // YYYY-MM-DD
 };
 
@@ -77,6 +84,10 @@ const CASUAL_NO_TEACHER_POINTS = 1.5;
 
 /** A taste guess is worth up to ±2 a person: more than a like, less than a love */
 const TASTE_POINTS = 4;
+/** Plays logged on BGG that make someone able to teach a game the group hasn't played */
+export const KNOWS_IT_PLAYS = 2;
+/** BGG's voters say "Best" at this count, or most say "Not Recommended" */
+const PLAYER_COUNT_POINTS = 1.5;
 /** On the core group's nights, for a game none of them have played: they prep, so it's a draw in itself */
 const NEW_GAME_POINTS = 2;
 
@@ -130,10 +141,19 @@ export function scoreNight(input: NightInput): ScoredGame[] {
     // What the people who haven't said would likely think, so an unplayed game can compete
     const guesses = Object.entries(input.chances?.[game.id] ?? {}).filter(([id]) => present.has(id));
     for (const [, chance] of guesses) score += (chance - 0.5) * TASTE_POINTS;
-    const suits = guesses.filter(([, c]) => c >= 0.65).map(([id]) => input.names[id]);
-    const unlikely = guesses.filter(([, c]) => c <= 0.35).map(([id]) => input.names[id]);
+    // Someone's own BGG rating answers their guess (getTasteChances), so the label names it
+    const onBgg = input.bggRatings?.[game.id] ?? {};
+    const fromTaste = guesses.filter(([id]) => onBgg[id] === undefined);
+    const fromBgg = guesses.filter(([id]) => onBgg[id] !== undefined);
+    const suits = fromTaste.filter(([, c]) => c >= 0.65).map(([id]) => input.names[id]);
+    const unlikely = fromTaste.filter(([, c]) => c <= 0.35).map(([id]) => input.names[id]);
     if (suits.length) reasons.push({ text: `Suits ${list(suits)}'s taste`, tone: "good" });
     if (unlikely.length) reasons.push({ text: `Not ${list(unlikely)}'s usual thing`, tone: "bad" });
+    const rated = (keep: (c: number) => boolean) => fromBgg.filter(([, c]) => keep(c)).map(([id]) => ({ name: input.names[id], rating: formatBggRating(onBgg[id]) }));
+    const high = rated((c) => c >= 0.65);
+    const low = rated((c) => c <= 0.35);
+    if (high.length) reasons.push({ text: bggReason(high, "highly"), tone: "good" });
+    if (low.length) reasons.push({ text: bggReason(low, "low"), tone: "bad" });
 
     // Up to ±3 from the top or bottom of everyone's list; a game in the middle, or unranked, adds nothing
     const rank = rankPoints.get(game.id);
@@ -144,8 +164,11 @@ export function scoreNight(input: NightInput): ScoredGame[] {
     }
 
     if (game.bestPlayers?.includes(input.playerCount)) {
-      score += 1.5;
+      score += PLAYER_COUNT_POINTS;
       reasons.push({ text: `Best at ${input.playerCount}`, tone: "good" });
+    } else if (game.notRecommendedPlayers?.includes(input.playerCount)) {
+      score -= PLAYER_COUNT_POINTS;
+      reasons.push({ text: `Not recommended at ${input.playerCount}`, tone: "bad" });
     }
 
     const casual = input.night === "casual";
@@ -167,8 +190,11 @@ export function scoreNight(input: NightInput): ScoredGame[] {
       }
     }
 
+    // Nobody coming has played it with the group, but someone may have elsewhere: they can teach it
+    const elsewhere = Object.entries(input.bggPlays?.[game.id] ?? {}).filter(([id, n]) => present.has(id) && n >= KNOWS_IT_PLAYS);
+    if (newToTable && elsewhere.length) reasons.push({ text: knowsIt(elsewhere.map(([id, n]) => ({ name: input.names[id], plays: n }))), tone: "neutral" });
     // Guests learn at the table, so someone coming has to know it well enough to teach it
-    if (casual && newToTable) {
+    else if (casual && newToTable) {
       score -= CASUAL_NO_TEACHER_POINTS;
       reasons.push({ text: "Nobody coming has played it", tone: "bad" });
     }
@@ -196,4 +222,16 @@ function daysBetween(from: string, to: string) {
 function list(names: string[]) {
   if (names.length <= 2) return names.join(" & ");
   return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+}
+
+/** "Sam rates it 9 on BGG", or for several, "Rated highly on BGG by Sam (9) & Alex (8.5)" */
+function bggReason(people: { name: string; rating: string }[], how: "highly" | "low") {
+  if (people.length === 1) return `${people[0].name} rates it ${people[0].rating} on BGG`;
+  return `Rated ${how} on BGG by ${list(people.map((p) => `${p.name} (${p.rating})`))}`;
+}
+
+/** "Alex knows it: 12 plays on BGG", or for several, "Alex & Sam know it from BGG" */
+function knowsIt(people: { name: string; plays: number }[]) {
+  if (people.length === 1) return `${people[0].name} knows it: ${people[0].plays} plays on BGG`;
+  return `${list(people.map((p) => p.name))} know it from BGG`;
 }

@@ -75,6 +75,8 @@ const SETTINGS = {
   // Newer than the settings page: off until an admin turns it on
   casualSignIn: { schema: flag, env: () => null },
   heavyWeight: { schema: number(1, 5, 2.75), env: "HEAVY_GAME_WEIGHT" },
+  // Newer than the settings page: off until an admin turns it on
+  showBggRatings: { schema: flag, env: () => null },
   reminderHours: { schema: number(0, 72, 3, "int"), env: "NIGHT_REMINDER_HOURS" },
   // Newer than the settings page, so there's no environment variable to fall back to
   nightHours: { schema: number(0.5, 24, 3), env: () => null },

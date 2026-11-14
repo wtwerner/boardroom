@@ -5,21 +5,25 @@ import { useOptimistic, useState, useTransition } from "react";
 import clsx from "clsx";
 import { MUST_PLAY_LIMIT, SENTIMENTS, type Sentiment } from "@/db/enums";
 import { setOpinion } from "@/app/actions";
+import { formatBggRating } from "@/lib/bgg-ratings";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
 
 type State = { sentiment: Sentiment | null; wantToPlay: boolean; mustPlay: boolean };
 
 /**
  * `mustPlayLeft` is how many must-play votes the member has free, not counting
- * this game. `compact` is the one-line version used in the rate-games list.
+ * this game. `compact` is the one-line version used in the rate-games list. `suggested` is the
+ * face your BGG rating (`bggRating`) points to, outlined until you've picked one.
  */
 export function OpinionControls({
   gameId,
   mustPlayLeft,
   compact = false,
   explain = true,
+  suggested = null,
+  bggRating = null,
   ...initial
-}: State & { gameId: number; mustPlayLeft: number; compact?: boolean; explain?: boolean }) {
+}: State & { gameId: number; mustPlayLeft: number; compact?: boolean; explain?: boolean; suggested?: Sentiment | null; bggRating?: number | null }) {
   const [state, setState] = useOptimistic<State, Partial<State>>(initial, (s, patch) => ({ ...s, ...patch }));
   const [error, setError] = useState<string | null>(null);
   const [, start] = useTransition();
@@ -38,6 +42,9 @@ export function OpinionControls({
       : `Use one of your must-play votes (${mustPlayLeft} of ${MUST_PLAY_LIMIT} left). It's freed once you play it.`;
   const toggleMustPlay = () => (outOfVotes ? setError(`${mustPlayTitle}. Take one back first.`) : update({ mustPlay: !state.mustPlay }));
   const wantTitle = "You'd like it on the table soon. Clears once you've played it.";
+  // Only while nothing's picked: once you choose, the outline goes
+  const hint = state.sentiment ? null : suggested;
+  const hintTitle = bggRating !== null ? ` (suggested by your ${formatBggRating(bggRating)} on BGG)` : "";
 
   if (compact) {
     const chip = (on: boolean) =>
@@ -53,13 +60,17 @@ export function OpinionControls({
               <button
                 key={s}
                 type="button"
-                title={SENTIMENT_LABEL[s].label}
-                aria-label={SENTIMENT_LABEL[s].label}
+                title={SENTIMENT_LABEL[s].label + (hint === s ? hintTitle : "")}
+                aria-label={SENTIMENT_LABEL[s].label + (hint === s ? hintTitle : "")}
                 aria-pressed={state.sentiment === s}
                 onClick={() => update({ sentiment: state.sentiment === s ? null : s })}
                 className={clsx(
                   "grid size-9 place-items-center rounded-full border text-lg transition-transform active:translate-y-0.5",
-                  state.sentiment === s ? "border-ink/80 bg-felt shadow-token" : "border-line bg-card grayscale-[60%] hover:grayscale-0",
+                  state.sentiment === s
+                    ? "border-ink/80 bg-felt shadow-token"
+                    : hint === s
+                      ? "border-dashed border-ink/60 bg-card"
+                      : "border-line bg-card grayscale-[60%] hover:grayscale-0",
                 )}
               >
                 {SENTIMENT_LABEL[s].emoji}
@@ -93,13 +104,22 @@ export function OpinionControls({
             onClick={() => update({ sentiment: state.sentiment === s ? null : s })}
             className={clsx(
               "rounded-full border px-3 py-1.5 text-sm transition-transform active:translate-y-0.5",
-              state.sentiment === s ? "border-ink/80 bg-felt text-felt-ink shadow-token" : "border-line bg-card hover:border-ink/40",
+              state.sentiment === s
+                ? "border-ink/80 bg-felt text-felt-ink shadow-token"
+                : hint === s
+                  ? "border-dashed border-ink/60 bg-card"
+                  : "border-line bg-card hover:border-ink/40",
             )}
           >
             <span aria-hidden>{SENTIMENT_LABEL[s].emoji}</span> {SENTIMENT_LABEL[s].label}
           </button>
         ))}
       </div>
+      {hint && bggRating !== null && (
+        <p className="-mt-1 text-xs text-slate">
+          You gave it {formatBggRating(bggRating)} on BGG, so {SENTIMENT_LABEL[hint].label} is outlined. Tap it to keep it, or pick another.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-4 text-sm">
         <label className="flex items-center gap-2" title={wantTitle}>
           <input type="checkbox" checked={state.wantToPlay} onChange={(e) => update({ wantToPlay: e.target.checked })} className="size-4 accent-[var(--felt)]" />

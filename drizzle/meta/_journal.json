@@ -113,6 +113,13 @@
       "when": 1794431158878,
       "tag": "0015_right_the_anarchist",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "6",
+      "when": 1794670640328,
+      "tag": "0016_talented_psylocke",
+      "breakpoints": true
     }
   ]
 }

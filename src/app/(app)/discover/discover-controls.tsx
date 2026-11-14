@@ -8,7 +8,7 @@ import { type ActionResult, addSuggestion, askClaudeForPicks, loadCatalog, setOp
 import { buttonClass } from "@/components/ui";
 import type { Night } from "@/db/enums";
 
-type View = "group" | "you" | "upcoming";
+type View = "group" | "you" | "wanted" | "upcoming";
 const discoverHref = (view: View, twoPlayer: boolean, night: Night) => {
   const q = new URLSearchParams({ ...(view !== "group" && { view }), ...(twoPlayer && { two: "1" }), ...(night === "casual" && { night }) }).toString();
   return q ? `/discover?${q}` : "/discover";
@@ -26,6 +26,7 @@ export function DiscoverTabs({
   group,
   nightNames,
   you,
+  wanted,
   upcoming,
 }: {
   initial: View;
@@ -36,6 +37,8 @@ export function DiscoverTabs({
   /** What each night is called, from the server's config */
   nightNames: Record<Night, string>;
   you: ReactNode;
+  /** Games people want that nobody owns, for every night at once; null leaves the tab out */
+  wanted: ReactNode | null;
   /** Coming up for each night, or null to leave the tab out when there's nothing on it for any night */
   upcoming: Partial<Record<Night, ReactNode>> | null;
 }) {
@@ -50,9 +53,10 @@ export function DiscoverTabs({
   const tabs: [View, string][] = [
     ["group", "For the group"],
     ["you", "For you"],
+    ...(wanted ? ([["wanted", "Wanted"]] as [View, string][]) : []),
     ...(upcoming ? ([["upcoming", "Coming up"]] as [View, string][]) : []),
   ];
-  const byNight = view === "upcoming" ? upcoming : group;
+  const byNight = view === "upcoming" ? upcoming : view === "group" ? group : null;
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -103,7 +107,9 @@ export function DiscoverTabs({
         <div key={v} role="tabpanel" id={`discover-${v}`} aria-labelledby={`discover-tab-${v}`} hidden={view !== v} className="space-y-8">
           {v === "you"
             ? you
-            : nights.map((n) => (
+            : v === "wanted"
+              ? wanted
+              : nights.map((n) => (
                 <div key={n} hidden={night !== n} className="space-y-8">
                   {v === "group" ? group[n] : upcoming?.[n]}
                 </div>

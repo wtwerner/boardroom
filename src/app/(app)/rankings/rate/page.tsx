@@ -3,12 +3,15 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { CLAUDE, NIGHT_NAMES } from "@/config";
 import { inSentence } from "@/lib/text";
-import { MUST_PLAY_LIMIT } from "@/db/enums";
+import { MUST_PLAY_LIMIT, SENTIMENTS } from "@/db/enums";
+import { formatBggRating } from "@/lib/bgg-ratings";
+import { SENTIMENT_LABEL } from "@/lib/sentiment";
 import { Empty, GameCover, PageHeader, Panel, Section, Skeleton, TextLink, formatDate } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { getMustPlayLeft, getRateableGames } from "@/lib/queries";
 import { OpinionControls } from "../../games/[id]/opinion-controls";
 import { RankingTabs } from "../tabs";
+import { AcceptBggSuggestions } from "./accept-bgg";
 
 export const metadata: Metadata = { title: "Rate games" };
 
@@ -35,6 +38,13 @@ async function Rate() {
   const rated = played.filter((g) => g.sentiment).length;
   // Unrated first so a return visit starts where you left off
   const byUnrated = <T extends { sentiment: unknown }>(a: T, b: T) => Number(Boolean(a.sentiment)) - Number(Boolean(b.sentiment));
+  const suggestions = [...played, ...unplayed].flatMap((g) => g.suggested ?? []);
+  // "4 😍, 9 🙂, 2 😐": what taking them all would do
+  const summary = SENTIMENTS.flatMap((s) => {
+    const n = suggestions.filter((x) => x === s).length;
+    return n ? [`${n} ${SENTIMENT_LABEL[s].emoji}`] : [];
+  }).join(", ");
+  const onBgg = (g: { bggRating: number | null }) => (g.bggRating !== null ? `, ${formatBggRating(g.bggRating)} on BGG` : "");
 
   return (
     <div className="max-w-3xl space-y-10">
@@ -49,13 +59,15 @@ async function Rate() {
         {MUST_PLAY_LIMIT}, and one comes back each time you play its game. You have {mustPlayLeft} left.
       </p>
 
+      {suggestions.length > 0 && <AcceptBggSuggestions count={suggestions.length} summary={summary} />}
+
       <Section
         title="Games you've played"
         action={played.length > 0 && <span className="tabular text-xs text-slate">{rated} of {played.length} rated</span>}
       >
         {played.length ? (
           <RateList
-            rows={[...played].sort(byUnrated).map((g) => ({ ...g, meta: `${g.plays}× with the group, last ${formatDate(g.lastPlayed!)}` }))}
+            rows={[...played].sort(byUnrated).map((g) => ({ ...g, meta: `${g.plays}× with the group, last ${formatDate(g.lastPlayed!)}${onBgg(g)}` }))}
             mustPlayLeft={mustPlayLeft}
           />
         ) : (
@@ -73,7 +85,7 @@ async function Rate() {
 
       <Section title={member ? "On the shelf, not played by you" : "Games people own that you haven't played"}>
         {unplayed.length ? (
-          <RateList rows={[...unplayed].sort(byUnrated).map((g) => ({ ...g, image: null, plays: 0, lastPlayed: null, meta: `owned by ${g.owners}` }))} mustPlayLeft={mustPlayLeft} />
+          <RateList rows={[...unplayed].sort(byUnrated).map((g) => ({ ...g, image: null, plays: 0, lastPlayed: null, meta: `owned by ${g.owners}${onBgg(g)}` }))} mustPlayLeft={mustPlayLeft} />
         ) : (
           <Empty>{member ? "You've played everything on the shelf." : "You've played everything people own."}</Empty>
         )}
@@ -101,6 +113,8 @@ function RateList({ rows, mustPlayLeft }: { rows: Row[]; mustPlayLeft: number })
             wantToPlay={g.wantToPlay}
             mustPlay={g.mustPlay}
             mustPlayLeft={g.mustPlay ? mustPlayLeft + 1 : mustPlayLeft}
+            suggested={g.suggested}
+            bggRating={g.bggRating}
           />
         </div>
       ))}

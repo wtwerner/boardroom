@@ -5,6 +5,7 @@ const game = (over: Partial<NightGame> & Pick<NightGame, "id" | "name">): NightG
   minPlayers: 2,
   maxPlayers: 4,
   bestPlayers: [],
+  notRecommendedPlayers: [],
   minPlaytime: 30,
   maxPlaytime: 60,
   weight: 2.5,
@@ -81,6 +82,40 @@ describe("scoreNight", () => {
     // Jordan isn't coming, so their guess doesn't count
     expect(result[0].reasons.map((r) => r.text)).toEqual(["Suits Sam & Alex's taste", "Never played together"]);
     expect(scoreNight({ ...base, games, chances: { 2: { a: 0.2 } } }).find((r) => r.game.id === 2)!.reasons[0]).toEqual({ text: "Not Sam's usual thing", tone: "bad" });
+  });
+
+  it("names someone's BGG rating when that's where their guess came from", () => {
+    const games = [game({ id: 2, name: "Unplayed", playCount: 0, lastPlayedOn: null, playedBy: [] })];
+    const chances = { 2: { a: 0.85, b: 0.7 } };
+    const reasons = (bggRatings: NightInput["bggRatings"]) => scoreNight({ ...base, games, chances, bggRatings })[0].reasons.map((r) => r.text);
+    expect(reasons({ 2: { a: 9 } })).toEqual(["Suits Alex's taste", "Sam rates it 9 on BGG", "Never played together"]);
+    expect(reasons({ 2: { a: 9, b: 8.5 } })).toEqual(["Rated highly on BGG by Sam (9) & Alex (8.5)", "Never played together"]);
+    expect(scoreNight({ ...base, games, chances: { 2: { a: 0.2 } }, bggRatings: { 2: { a: 4 } } })[0].reasons[0]).toEqual({ text: "Sam rates it 4 on BGG", tone: "bad" });
+  });
+
+  it("marks down a game BGG's voters advise against at this player count", () => {
+    const games = [game({ id: 1, name: "Good at 4", bestPlayers: [4] }), game({ id: 2, name: "Plain" }), game({ id: 3, name: "Bad at 4", notRecommendedPlayers: [4] })];
+    const result = scoreNight({ ...base, games });
+    // Each also gets +0.5 for not being played in 4 months
+    expect(result.map((r) => [r.game.name, r.score])).toEqual([
+      ["Good at 4", 2],
+      ["Plain", 0.5],
+      ["Bad at 4", -1],
+    ]);
+    expect(result[2].reasons).toContainEqual({ text: "Not recommended at 4", tone: "bad" });
+  });
+
+  it("counts someone who's played it elsewhere as able to teach it", () => {
+    const games = [game({ id: 1, name: "New here", playCount: 0, lastPlayedOn: null, playedBy: [] })];
+    const casual = { ...base, games, night: "casual" as const, nightName: "Open night" };
+    // Nobody coming has played it: a guest night needs a teacher
+    expect(scoreNight(casual)[0]).toMatchObject({ score: -0.5 });
+    // Alex has 12 plays on BGG; one play, or Jordan who isn't coming, wouldn't count
+    const known = scoreNight({ ...casual, bggPlays: { 1: { b: 12, a: 1, c: 30 } } })[0];
+    expect(known.score).toBe(1);
+    expect(known.reasons.map((r) => r.text)).toEqual(["Never played at open night", "Alex knows it: 12 plays on BGG"]);
+    // On the core group's nights it's still new to the group, and says who can teach it
+    expect(scoreNight({ ...base, games, bggPlays: { 1: { a: 3, b: 5 } } })[0].reasons.map((r) => r.text)).toEqual(["Never played together", "Sam & Alex know it from BGG"]);
   });
 
   it("gives a game nobody coming has played more of a lift on the core group's nights, and can show only those", () => {

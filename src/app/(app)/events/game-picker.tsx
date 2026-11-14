@@ -54,6 +54,10 @@ export function GamePicker(props: {
   opinions: NightOpinion[];
   rankings: Record<string, number[]>[];
   chances: Record<number, Record<string, number>>;
+  /** People's own BGG ratings, so a guess that comes from one can say so */
+  bggRatings: Record<number, Record<string, number>>;
+  /** Plays people have logged on BGG, so someone who knows a game from elsewhere counts as able to teach it */
+  bggPlays: Record<number, Record<string, number>>;
   today: string;
   aiEnabled: boolean;
   /** How it works is the members' for now, so a casual account isn't sent there */
@@ -81,6 +85,8 @@ export function GamePicker(props: {
         opinions: props.opinions,
         rankings: props.rankings,
         chances: props.chances,
+        bggRatings: props.bggRatings,
+        bggPlays: props.bggPlays,
         presentUserIds: [...present],
         names,
         playerCount,
@@ -93,7 +99,7 @@ export function GamePicker(props: {
         nightName: props.nightName,
         today: props.today,
       }),
-    [props.games, props.opinions, props.rankings, props.chances, present, names, playerCount, minutes, weight, ownedOnly, newOnly, props.night, props.nightName, props.today],
+    [props.games, props.opinions, props.rankings, props.chances, props.bggRatings, props.bggPlays, present, names, playerCount, minutes, weight, ownedOnly, newOnly, props.night, props.nightName, props.today],
   );
 
   const reset = () => {

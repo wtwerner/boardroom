@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-const { parseFamilyGames, parseGeeklist, parseThings } = await import("./bgg");
+const { parseCollectionCsv, parseFamilyGames, parseGeeklist, parseThings } = await import("./bgg");
 
 // Trimmed from a real /thing?stats=1 response
 const XML = `<?xml version="1.0" encoding="utf-8"?>
@@ -53,6 +53,21 @@ describe("parseThings", () => {
       expansion: false,
     });
     expect(exp).toMatchObject({ expansion: true, bggRank: null });
+  });
+
+  it("reads the player counts most voters say not to play at, once enough have voted", () => {
+    const [game] = parseThings(`<items><item type="boardgame" id="10000003">
+      <name type="primary" value="Crowded" /><minplayers value="1" /><maxplayers value="5" />
+      <poll name="suggested_numplayers" totalvotes="40">
+        <results numplayers="1"><result value="Best" numvotes="0" /><result value="Recommended" numvotes="1" /><result value="Not Recommended" numvotes="3" /></results>
+        <results numplayers="2"><result value="Best" numvotes="2" /><result value="Recommended" numvotes="3" /><result value="Not Recommended" numvotes="20" /></results>
+        <results numplayers="3"><result value="Best" numvotes="20" /><result value="Recommended" numvotes="5" /><result value="Not Recommended" numvotes="1" /></results>
+        <results numplayers="5"><result value="Best" numvotes="2" /><result value="Recommended" numvotes="8" /><result value="Not Recommended" numvotes="10" /></results>
+        <results numplayers="5+"><result value="Best" numvotes="0" /><result value="Recommended" numvotes="0" /><result value="Not Recommended" numvotes="30" /></results>
+      </poll></item></items>`);
+    // 1 has too few votes to say, 5 is split down the middle, and 5+ is past the box
+    expect(game).toMatchObject({ bestPlayers: [3], notRecommendedPlayers: [2] });
+    expect(parseThings(XML)[0].notRecommendedPlayers).toEqual([]);
   });
 
   it("reads a game nobody has voted on yet, whose poll has no results", () => {
@@ -115,7 +130,7 @@ describe("parseGeeklist", () => {
 describe("mergeCollectionEntries", () => {
   it("keeps one entry per game, with every status and the higher rating", async () => {
     const { mergeCollectionEntries } = await import("./bgg");
-    const base = { name: "Potion Explosion", year: 2015, thumbnail: null, image: null, wishlist: false, wantToPlay: false, prevOwned: false };
+    const base = { name: "Potion Explosion", year: 2015, thumbnail: null, image: null, wishlist: false, wantToPlay: false, prevOwned: false, plays: null };
     const merged = mergeCollectionEntries([
       { ...base, id: 180974, own: true, userRating: null },
       { ...base, id: 180974, own: false, wishlist: true, userRating: 7 },
@@ -123,5 +138,26 @@ describe("mergeCollectionEntries", () => {
     ]);
     expect(merged).toHaveLength(2);
     expect(merged[0]).toMatchObject({ id: 180974, own: true, wishlist: true, userRating: 7 });
+  });
+});
+
+describe("parseCollectionCsv", () => {
+  const csv = (rows: string[]) =>
+    ["objectid,objectname,objecttype,itemtype,own,rating,numplays,minplayers,maxplayers,bggrecplayers,bggbestplayers", ...rows].join("\n");
+
+  it("reads each person's own rating and logged plays", () => {
+    const { entries } = parseCollectionCsv(csv(["10000004,Sample,thing,standalone,1,8.5,12,2,4,2–4,3"]));
+    expect(entries[0]).toMatchObject({ id: 10000004, own: true, userRating: 8.5, plays: 12 });
+  });
+
+  it("works out the counts voters don't recommend from the ones they do", () => {
+    const { details } = parseCollectionCsv(
+      csv([
+        "10000005,Five Seats,thing,standalone,1,,0,1,5,\"2,3,4\",3",
+        "10000006,Open Ended,thing,standalone,1,,,2,6,3+,4",
+        "10000007,No Votes,thing,standalone,1,,,2,4,,",
+      ]),
+    );
+    expect(details.map((d) => d.notRecommendedPlayers)).toEqual([[1, 5], [2], undefined]);
   });
 });
