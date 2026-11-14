@@ -206,6 +206,9 @@ export const postsNights = (night: Night) => Boolean(process.env.DISCORD_BOT_TOK
 
 export const canPostToDiscord = (night: Night = "core") => Boolean(process.env.DISCORD_BOT_TOKEN && playsChannel(night));
 
+/** Whether the bot can look people up in the group's server, to answer a night for one of them */
+export const canListServer = () => Boolean(process.env.DISCORD_GUILD_ID && process.env.DISCORD_BOT_TOKEN);
+
 /**
  * Server members, for linking players to Discord accounts. Needs the bot's
  * "Server Members Intent"; returns [] (and the UI falls back) without it.

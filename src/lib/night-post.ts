@@ -275,6 +275,45 @@ export function syncNightPostLater(
   });
 }
 
+/**
+ * A player was just tied to a Discord account (or untied): the posts of the coming nights
+ * they've answered show them by it now, and those nights' threads add them, rather than waiting
+ * for each night's next change. Someone added on the site by name is a plain name until then.
+ * `except` is a night the caller is updating already.
+ */
+export function playerLinkedLater(playerId: number, { except }: { except?: number } = {}) {
+  after(async () => {
+    const n = schema.gameNight;
+    const answered = db.select({ id: schema.nightRsvp.gameNightId }).from(schema.nightRsvp).where(eq(schema.nightRsvp.playerId, playerId));
+    const voted = db
+      .select({ id: schema.datePoll.gameNightId })
+      .from(schema.datePollVote)
+      .innerJoin(schema.datePollOption, eq(schema.datePollOption.id, schema.datePollVote.optionId))
+      .innerJoin(schema.datePoll, eq(schema.datePoll.id, schema.datePollOption.pollId))
+      .where(eq(schema.datePollVote.playerId, playerId));
+    const nights = await db
+      .select({ id: n.id })
+      .from(n)
+      .where(
+        and(
+          isNotNull(n.messageId),
+          eq(n.cancelled, false),
+          // A night finding its date starts on its first date offered, which may have gone by
+          or(eq(n.findingDate, true), gte(n.startsAt, new Date(Date.now() - GRACE_MS))),
+          or(inArray(n.id, answered), inArray(n.id, voted)),
+        ),
+      );
+    for (const { id } of nights) {
+      if (id === except) continue;
+      try {
+        if (await syncNightPost(id)) await joinThread(id, [playerId]);
+      } catch (err) {
+        console.error(`Couldn't update night ${id}'s post in Discord for player ${playerId}`, err);
+      }
+    }
+  });
+}
+
 type NoteFields = { startsAt: Date; location: string | null; title: string };
 
 /** Tell the night's thread when it moves, is renamed, or changes place, and rename the thread to match */

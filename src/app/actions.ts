@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { refresh, updateTag } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -11,7 +11,7 @@ import { db, schema } from "@/db";
 import { ACCESS, type Access, DATE_ANSWERS, MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
 import { type BggGameDetails, fetchGameDetails, hasBggToken, searchGames } from "@/lib/bgg";
-import { canPostToDiscord, discordCode, getServerMember, giveMemberRole, hasInteractions, hasMemberRole, registerCommands, sendDirectMessage, takeMemberRole } from "@/lib/discord";
+import { canPostToDiscord, discordCode, getServerMember, giveMemberRole, hasInteractions, hasMemberRole, listGuildMembers, registerCommands, sendDirectMessage, takeMemberRole } from "@/lib/discord";
 import type { ParsedPlayer } from "@/lib/play-parser";
 import { isSyncOrigin } from "@/lib/calendar";
 import { feedTokenFor, replaceFeedToken } from "@/lib/calendar-store";
@@ -29,8 +29,8 @@ import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
 import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
 import { inSentence } from "@/lib/text";
-import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, leaveNights, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
-import { removePost, syncNightPostLater } from "@/lib/night-post";
+import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, leaveNights, ownNight, playerForDiscordUser, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
+import { playerLinkedLater, removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeCandidate, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
 import { accessChangeRefusal } from "@/lib/access";
 import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, setDecideBy, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
@@ -576,6 +576,7 @@ export async function setPlayerDiscord(playerId: number, discordId: string | nul
     if (other && other.id !== playerId) return { ok: false, error: `That account is already linked to ${other.name}. Merge the two instead.` };
   }
   await db.update(schema.player).set({ discordId: id }).where(eq(schema.player.id, playerId));
+  if (id !== p.discordId) playerLinkedLater(playerId);
   refresh();
   return { ok: true };
 }
@@ -1110,22 +1111,57 @@ export async function getNightsVersion(nightId?: number): Promise<string> {
 export async function setRsvp(
   nightId: number,
   status: RsvpStatus | null,
-  opts: { guests?: number; playerId?: number; name?: string; isNew?: boolean } = {},
+  opts: { guests?: number; playerId?: number; name?: string; isNew?: boolean; discordId?: string } = {},
 ): Promise<ActionResult> {
   // Anyone on a night they see can answer for themselves or for someone they're bringing
   const me = await requireNight(await nightKind(nightId));
   if (status !== null && !RSVP_STATUSES.includes(status)) return { ok: false, error: "Pick going, maybe or can't." };
   try {
+    const inDiscord = opts.discordId !== undefined ? await serverPerson(String(opts.discordId)) : null;
     const playerId =
-      opts.playerId ?? (opts.name !== undefined ? await playerNamed(String(opts.name), { isNew: opts.isNew === true }) : await playerForUser(me));
+      opts.playerId ??
+      (inDiscord
+        ? inDiscord.playerId
+        : opts.name !== undefined
+          ? await playerNamed(String(opts.name), { isNew: opts.isNew === true })
+          : await playerForUser(me));
     const waiting = await waitingFor(nightId);
     await saveRsvp({ nightId, playerId, status, guests: opts.guests, via: "site" });
     syncNightPostLater(nightId, { join: playerId, waiting });
+    // A name already on the list who's now linked shows by their account on their other nights too
+    if (inDiscord?.linked) playerLinkedLater(playerId, { except: nightId });
   } catch (err) {
     return fail(err);
   }
   refresh();
   return { ok: true };
+}
+
+/**
+ * Someone picked from the group's Discord server: their player, found or made as the bot's
+ * buttons would (by their account, their member account, or the one unlinked player with their
+ * server name), so posts tag them and threads add them. `linked` when no player had their
+ * account before (one just made has no other nights, so updating those finds none).
+ */
+async function serverPerson(discordId: string) {
+  if (!/^\d{15,21}$/.test(discordId)) throw new Error("That doesn't look like a Discord account.");
+  const member = await getServerMember(discordId);
+  if (!member || member.bot) throw new Error("They aren't in the Discord server anymore.");
+  const had = await db.query.player.findFirst({ where: eq(schema.player.discordId, discordId), columns: { id: true } });
+  const player = await playerForDiscordUser(discordId, member.name);
+  return { playerId: player.id, linked: !had };
+}
+
+/** People in the group's Discord server who aren't on the list yet, to answer a night for */
+export async function serverPeopleFor(nightId: number): Promise<{ id: string; name: string; username: string }[]> {
+  await requireNight(await nightKind(nightId));
+  const [server, players, users] = await Promise.all([
+    listGuildMembers(),
+    db.select({ id: schema.player.discordId }).from(schema.player).where(isNotNull(schema.player.discordId)),
+    db.select({ id: schema.user.discordId }).from(schema.user).where(isNotNull(schema.user.discordId)),
+  ]);
+  const listed = new Set([...players, ...users].map((p) => p.id));
+  return server.filter((m) => !listed.has(m.id)).map(({ id, name, username }) => ({ id, name, username }));
 }
 
 /** Others coming to a night added here who aren't named, counted by hand */

@@ -113,7 +113,7 @@ export function capabilities(names: { core: string; casual: string }): Capabilit
       admin: "yes",
       member: "yes",
       casual: "casual",
-      actions: ["setRsvp", "setOthersComing", "answerDate", "noDatesWork"],
+      actions: ["setRsvp", "serverPeopleFor", "setOthersComing", "answerDate", "noDatesWork"],
     },
     { area: "Events", what: "Suggest a date", admin: "yes", member: "yes", casual: "casual", actions: ["suggestPollDate"] },
     { area: "Events", what: "Bring games and ask others to bring", admin: "yes", member: "yes", casual: "casual", actions: ["addGameToNight", "askToBring", "answerBringAsk", "dropPlan"] },
