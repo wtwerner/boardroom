@@ -30,7 +30,7 @@ import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
 import { inSentence } from "@/lib/text";
 import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, leaveNights, ownNight, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
-import { removePost, syncNightPostLater } from "@/lib/night-post";
+import { playerLinkedLater, removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeCandidate, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
 import { accessChangeRefusal } from "@/lib/access";
 import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, setDecideBy, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
@@ -576,6 +576,7 @@ export async function setPlayerDiscord(playerId: number, discordId: string | nul
     if (other && other.id !== playerId) return { ok: false, error: `That account is already linked to ${other.name}. Merge the two instead.` };
   }
   await db.update(schema.player).set({ discordId: id }).where(eq(schema.player.id, playerId));
+  if (id !== p.discordId) playerLinkedLater(playerId);
   refresh();
   return { ok: true };
 }

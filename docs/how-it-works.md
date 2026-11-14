@@ -143,7 +143,7 @@ To run one: a Vercel project and a Turso database of its own, with `DEMO=on`, `C
 | **Discovery catalog** | BGG's hot list plus a curated, rank-checked list of well-loved games, so Discover has unowned games to score even before anyone asks Claude. | Nightly cron, or "Load popular games" on Discover |
 | **Coming up** | BGG's crowdfunding families and a geeklist of campaigns yet to open, through BGG's API. | Nightly cron |
 
-**People.** Anyone in a play log is a *player*. A player is linked to a Discord account when they're @-mentioned in an imported message, when they sign in, or by hand in Settings. Settings also merges duplicates like "Sammy" and "Sam".
+**People.** Anyone in a play log is a *player*. A player is linked to a Discord account when they're @-mentioned in an imported message, when they sign in, when they use a night's buttons, or by hand in Settings. Someone added to a night on the site by name is a plain name on its post until then; linking them by hand tags them on the posts of the coming nights they've answered and adds them to those threads (`playerLinkedLater`). Settings also merges duplicates like "Sammy" and "Sam".
 
 A player is their id; their name is only what's shown, so two people can both be called Lee. Wherever two players share a name, lists and pickers add when each started playing ("Lee (since Sep 2025)"); a last initial in Settings tells them apart for good. A name written in a hand-written post or a Discord name is matched by `matchByName` (`src/lib/players.ts`): a player's name, alias or member's account name. It never picks between two:
 - a play log line that names a shared name seats the likeliest (a member before a guest, then whoever's been around longest) and asks *Who was it?* on Plays, a night at a time;
