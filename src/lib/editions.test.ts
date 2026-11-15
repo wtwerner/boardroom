@@ -5,6 +5,7 @@ type Game = {
   id: number;
   name: string;
   implementations: number[] | null;
+  containedIn: number[] | null;
   ownerIds: string[];
   plays: number;
   lastPlayed: string | null;
@@ -16,6 +17,7 @@ const game = (id: number, name: string, extra: Partial<Game> = {}): Game => ({
   id,
   name,
   implementations: null,
+  containedIn: null,
   ownerIds: [],
   plays: 0,
   lastPlayed: null,
@@ -63,6 +65,14 @@ describe("mergeEditions", () => {
     expect(merged.mustPlay).toEqual(["jordan"]);
   });
 
+  it("counts a play of a special edition for a copy of the original", () => {
+    const shelf = mergeEditions([
+      game(84876, "The Castles of Burgundy", { ownerIds: ["sam"], containedIn: [271320, 363622] }),
+      game(363622, "The Castles of Burgundy: Special Edition", { ownerIds: ["alex"], plays: 1, lastPlayed: "2026-11-12" }),
+    ]);
+    expect(shelf.map((g) => [g.id, g.ownerIds, g.plays])).toEqual([[363622, ["sam", "alex"], 1]]);
+  });
+
   it("leaves games with different names alone", () => {
     const shelf = [game(1, "Citadels"), game(2, "Citadels: Dark City")];
     expect(mergeEditions(shelf)).toEqual(shelf);
@@ -72,11 +82,11 @@ describe("mergeEditions", () => {
 describe("editionGroups", () => {
   it("needs both BGG's link and the same name", () => {
     const groups = editionGroups([
-      { id: 478, name: "Citadels", implementations: [205398, 462402, 13291] },
-      { id: 205398, name: "Citadels", implementations: null },
-      { id: 462402, name: "Citadels Duel", implementations: [478] },
-      { id: 13291, name: "Citadels: The Dark City", implementations: null },
-      { id: 9, name: "Citadels", implementations: [] },
+      { id: 478, name: "Citadels", implementations: [205398, 462402, 13291], containedIn: null },
+      { id: 205398, name: "Citadels", implementations: null, containedIn: null },
+      { id: 462402, name: "Citadels Duel", implementations: [478], containedIn: null },
+      { id: 13291, name: "Citadels: The Dark City", implementations: null, containedIn: null },
+      { id: 9, name: "Citadels", implementations: [], containedIn: null },
     ]);
     expect([...groups]).toEqual([
       [478, 478],
@@ -87,11 +97,31 @@ describe("editionGroups", () => {
     ]);
   });
 
+  it("joins a big box or special edition with the game inside it, when it's named for it", () => {
+    const groups = editionGroups([
+      { id: 84876, name: "The Castles of Burgundy", implementations: [191977], containedIn: [271320, 363622, 10000001] },
+      { id: 271320, name: "The Castles of Burgundy", implementations: null, containedIn: null },
+      { id: 363622, name: "The Castles of Burgundy: Special Edition", implementations: null, containedIn: null },
+      // A bundle of other games, and an expansion in the big box
+      { id: 10000001, name: "Stefan Feld Collection", implementations: null, containedIn: null },
+      { id: 264104, name: "The Castles of Burgundy: 10th Expansion – Solo", implementations: null, containedIn: [271320] },
+      { id: 191977, name: "The Castles of Burgundy: The Card Game", implementations: [84876], containedIn: null },
+    ]);
+    expect([...groups]).toEqual([
+      [84876, 84876],
+      [271320, 84876],
+      [363622, 84876],
+      [10000001, 10000001],
+      [264104, 264104],
+      [191977, 191977],
+    ]);
+  });
+
   it("joins a chain of editions, each linked only to the one before", () => {
     const groups = editionGroups([
-      { id: 3, name: "Tikal", implementations: [2] },
-      { id: 2, name: "Tikal", implementations: [1] },
-      { id: 1, name: "Tikal", implementations: null },
+      { id: 3, name: "Tikal", implementations: [2], containedIn: null },
+      { id: 2, name: "Tikal", implementations: [1], containedIn: null },
+      { id: 1, name: "Tikal", implementations: null, containedIn: null },
     ]);
     expect(new Set(groups.values())).toEqual(new Set([1]));
   });

@@ -1,7 +1,7 @@
 /**
- * Editions of one game: BGG lists Citadels (2000) and Citadels (2016) as two games, so two people's
- * copies of it can land on the shelf as two games, with a play counted against only one of them.
- * Pure, so it's tested.
+ * Editions of one game: BGG lists Citadels (2000) and Citadels (2016) as two games, and The Castles
+ * of Burgundy's Special Edition as a third, so people's copies of one game can land on the shelf
+ * as several, with a play counted against only one of them. Pure, so it's tested.
  */
 
 /** A title compared loosely: case, accents, punctuation and "&" for "and" don't matter */
@@ -19,6 +19,8 @@ type ShelfGame = {
   name: string;
   /** BGG's reimplementation links (game.implementations), null until fetched */
   implementations: number[] | null;
+  /** The BGG compilations it's in (game.containedIn), null until fetched */
+  containedIn: number[] | null;
   ownerIds: string[];
   plays: number;
   lastPlayed: string | null;
@@ -28,21 +30,30 @@ type ShelfGame = {
 };
 
 /**
- * Which games are editions of one another: BGG links them as reimplementations (either one
- * listing the other is enough) and they have the same name. The link alone isn't enough, since
- * BGG files new games built on an old one there too (Citadels Duel, Masters Gallery for
- * Modern Art), and the name alone could join two unrelated games. Each game maps to the
- * lowest id of its editions.
+ * Which games are editions of one another. Either BGG links them as reimplementations (either one
+ * listing the other is enough) and they have the same name, or one is a compilation with the
+ * other inside, named for it: a big box or special edition ("The Castles of Burgundy: Special
+ * Edition" has The Castles of Burgundy in it). The link alone isn't enough, since BGG files new
+ * games built on an old one as reimplementations too (Citadels Duel, Masters Gallery for Modern
+ * Art) and a compilation can be a bundle of other games, and the name alone could join two
+ * unrelated games. Each game maps to the lowest id of its editions.
  */
-export function editionGroups(games: { id: number; name: string; implementations: number[] | null }[]): Map<number, number> {
+export function editionGroups(
+  games: { id: number; name: string; implementations: number[] | null; containedIn: number[] | null }[],
+): Map<number, number> {
   const root = new Map(games.map((g) => [g.id, g.id]));
   const find = (id: number): number => (root.get(id) === id ? id : find(root.get(id)!));
+  const join = (x: number, y: number) => {
+    const [a, b] = [find(x), find(y)];
+    if (a !== b) root.set(Math.max(a, b), Math.min(a, b));
+  };
   const title = new Map(games.map((g) => [g.id, normalizeTitle(g.name)]));
   for (const g of games) {
-    for (const other of g.implementations ?? []) {
-      if (!root.has(other) || title.get(other) !== title.get(g.id)) continue;
-      const [a, b] = [find(g.id), find(other)];
-      if (a !== b) root.set(Math.max(a, b), Math.min(a, b));
+    const name = title.get(g.id)!;
+    for (const other of g.implementations ?? []) if (title.get(other) === name) join(g.id, other);
+    for (const box of g.containedIn ?? []) {
+      const boxName = title.get(box);
+      if (boxName !== undefined && (boxName === name || boxName.startsWith(`${name} `))) join(g.id, box);
     }
   }
   return new Map(games.map((g) => [g.id, find(g.id)]));

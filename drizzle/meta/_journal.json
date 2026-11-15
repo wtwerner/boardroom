@@ -120,6 +120,13 @@
       "when": 1794670640328,
       "tag": "0016_talented_psylocke",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1794711948633,
+      "tag": "0017_plain_shard",
+      "breakpoints": true
     }
   ]
 }

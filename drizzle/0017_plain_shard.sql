@@ -1,0 +1,1 @@
+ALTER TABLE `game` ADD `contained_in` text;

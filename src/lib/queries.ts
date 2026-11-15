@@ -253,6 +253,7 @@ export async function getShelf(opts: { night?: Night; everyone?: boolean } = {})
       bggRating: game.bggRating,
       mechanics: game.mechanics,
       implementations: game.implementations,
+      containedIn: game.containedIn,
     })
     .from(game)
     // What's owned, and what's been played: a play of an edition nobody owns counts for another edition someone does
@@ -286,7 +287,7 @@ export async function getShelf(opts: { night?: Night; everyone?: boolean } = {})
 
   const playMap = new Map(plays.map((p) => [p.gameId, p]));
   const bggOf = new Map(bggRatings.map((r) => [`${r.userId}:${r.gameId}`, r.rating]));
-  // Two people's copies of one game in different editions (BGG's reimplementations) are one game here, played or not
+  // Two people's copies of one game in different editions (BGG's reimplementations, or a big box with it inside) are one game here, played or not
   return mergeEditions(games.map((g) => ({
     ...g,
     ownerIds: owners.filter((o) => o.gameId === g.id).map((o) => o.userId),

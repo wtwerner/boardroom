@@ -434,9 +434,17 @@ async function replaceCollection(userId: string, all: BggCollectionEntry[]) {
   });
 }
 
-/** Pull full /thing details for games we've never detailed, haven't refreshed in 30 days, or detailed before we kept their editions or advised player counts. */
+/**
+ * Pull full /thing details for games we've never detailed, haven't refreshed in 30 days, or detailed
+ * before we kept their editions or advised player counts. Games on the shelf (owned or played) go
+ * first, so its editions come together before the catalog's games are caught up.
+ */
 export async function refreshStaleGameDetails(limit = 60) {
   if (!hasBggToken()) return 0;
+  const onShelf = or(
+    inArray(schema.game.id, db.select({ id: schema.collectionItem.gameId }).from(schema.collectionItem).where(eq(schema.collectionItem.own, true))),
+    inArray(schema.game.id, db.select({ id: schema.play.gameId }).from(schema.play).where(isNotNull(schema.play.gameId))),
+  );
   const stale = await db
     .select({ id: schema.game.id })
     .from(schema.game)
@@ -446,9 +454,11 @@ export async function refreshStaleGameDetails(limit = 60) {
         isNull(schema.game.implementations),
         // Detailed before the site kept which player counts BGG's voters advise against
         isNull(schema.game.notRecommendedPlayers),
+        isNull(schema.game.containedIn),
         lt(schema.game.detailsFetchedAt, new Date(Date.now() - 30 * 86_400_000)),
       ),
     )
+    .orderBy(sql`case when ${onShelf} then 0 else 1 end`)
     .limit(limit);
   if (stale.length === 0) return 0;
   const details = await fetchGameDetails(stale.map((g) => g.id));
@@ -474,6 +484,7 @@ export async function upsertGameDetails(details: BggGameDetails[], { markFetched
       ...(d.description ? { description: d.description } : {}),
       ...(d.implementations ? { implementations: d.implementations } : {}),
       ...(d.notRecommendedPlayers ? { notRecommendedPlayers: d.notRecommendedPlayers } : {}),
+      ...(d.containedIn ? { containedIn: d.containedIn } : {}),
       ...(markFetched ? { detailsFetchedAt: new Date() } : {}),
     };
     await db

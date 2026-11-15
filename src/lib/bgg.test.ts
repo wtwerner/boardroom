@@ -23,6 +23,8 @@ const XML = `<?xml version="1.0" encoding="utf-8"?>
     <link type="boardgamemechanic" id="2040" value="Hand Management" />
     <link type="boardgameimplementation" id="28720" value="Brass: Lancashire" inbound="true"/>
     <link type="boardgameimplementation" id="10000002" value="Brass: Somewhere Else" />
+    <link type="boardgamecompilation" id="10000003" value="Brass: Birmingham Deluxe Edition" />
+    <link type="boardgamecompilation" id="10000004" value="Brass: Birmingham – Some Expansion" inbound="true"/>
     <statistics page="1"><ratings>
       <average value="8.56" />
       <ranks>
@@ -50,6 +52,7 @@ describe("parseThings", () => {
       categories: ["Economic"],
       mechanics: ["Hand Management"],
       implementations: [28720, 10000002],
+      containedIn: [10000003],
       expansion: false,
     });
     expect(exp).toMatchObject({ expansion: true, bggRank: null });
