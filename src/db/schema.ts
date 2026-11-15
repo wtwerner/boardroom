@@ -111,6 +111,11 @@ export const game = sqliteTable("game", {
    * Null until its details are next fetched. See editions.ts.
    */
   implementations: text("implementations", { mode: "json" }).$type<number[]>(),
+  /**
+   * The BGG compilations it's in, such as a big box or special edition with the game inside
+   * (Castles of Burgundy's 2019 big box and Special Edition). Null until its details are next fetched.
+   */
+  containedIn: text("contained_in", { mode: "json" }).$type<number[]>(),
   description: text("description"),
   /** Set by hand to rank it with the other tier's games; null means its BGG weight decides (see tier.ts) */
   tier: text("tier", { enum: TIERS }),

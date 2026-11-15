@@ -45,6 +45,8 @@ export type BggGameDetails = {
   expansion: boolean;
   /** BGG games this one reimplements or is reimplemented by (editions.ts); left out where BGG wasn't asked */
   implementations?: number[];
+  /** BGG compilations this one is in, such as a big box or special edition (editions.ts); left out where BGG wasn't asked */
+  containedIn?: number[];
 };
 
 const xml = new XMLParser({
@@ -191,6 +193,8 @@ function toDetails(it: Node): BggGameDetails {
     categories: links.filter((l) => l.type === "boardgamecategory").map((l) => l.value),
     mechanics: links.filter((l) => l.type === "boardgamemechanic").map((l) => l.value),
     implementations: links.filter((l) => l.type === "boardgameimplementation").map((l) => Number(l.id)).filter(Boolean),
+    // A compilation lists what's in it as inbound links; a game lists the compilations it's in as outbound ones
+    containedIn: links.filter((l) => l.type === "boardgamecompilation" && l.inbound !== "true").map((l) => Number(l.id)).filter(Boolean),
     description: typeof it.description === "string" ? bggText(it.description).slice(0, 2000) : null,
     expansion: it.type === "boardgameexpansion",
   };
