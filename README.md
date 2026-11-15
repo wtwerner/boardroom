@@ -114,7 +114,7 @@ Sign in with Discord and open **Settings → Group settings**. Until someone's a
 | A casual night too | off | A second, casual night with its own name, title and channels (see [Core and casual nights](docs/how-it-works.md#core-and-casual-nights)) |
 | Casual players can sign in | off | With a casual night: anyone in the Discord server without the member role signs in with an account for the casual night only. Admins move people up, down or out on **People and access** (see [Casual accounts](docs/how-it-works.md#casual-accounts)) |
 | Heavy from BGG weight | 2.75 | Where the two rankings, Heavy games and Light games, split. Set it to the weight your group's heavier games start at |
-| Show people's BGG ratings | off | Each person's own BGG rating beside their face on a game's page and the shelf. Off, BGG ratings still suggest faces, settle clear calls when ranking and count in the planner, out of sight |
+| Show people's BGG ratings | off | Each person's own BGG rating beside their face on a game's page, and on the shelf when you point at a face. Off, BGG ratings still suggest faces, settle clear calls when ranking and count in the planner, out of sight |
 | Use Claude | off | Claude's picks and reading hand-written play posts the parser can't. Shown once `ANTHROPIC_API_KEY` is set. Off, the site never calls Claude or mentions it |
 | Picks a day | 5 | Claude's picks each person can ask for in a day |
 | Member role | none | Who's a member the first time they sign in; after that admins decide on **People and access**, and the bot keeps the role in step (see [Who can sign in](docs/how-it-works.md#who-can-sign-in)) |

@@ -93,7 +93,7 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
           </Field>
           <div className="border-t border-line pt-4">
             <Toggle name="showBggRatings" checked={showBgg} onChange={setShowBgg} label="Show people's BGG ratings">
-              Beside each person&apos;s face on a game&apos;s page and the shelf, the rating they gave it on BGG. They count either way: they suggest
+              Beside each person&apos;s face on a game&apos;s page (on the shelf, when you point at it), the rating they gave it on BGG. They count either way: they suggest
               faces, settle clear calls when ranking, and stand in for a rating in the planner.
             </Toggle>
           </div>

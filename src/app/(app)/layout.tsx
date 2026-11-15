@@ -14,7 +14,7 @@ import poweredByBgg from "./powered-by-bgg.png";
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   await loadSettings();
   return (
-    <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
+    <div className="min-h-dvh md:grid md:grid-cols-[15rem_minmax(0,1fr)]">
       <aside className="sticky top-0 hidden h-dvh flex-col bg-felt p-4 text-felt-ink md:flex">
         <Link href="/" className="mb-8 flex items-center gap-2 px-2 pt-1">
           <Meeple color="yellow" className="size-7" />
