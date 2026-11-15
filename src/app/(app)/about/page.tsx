@@ -443,8 +443,8 @@ function BggRatings() {
       {points(at("love"))} above it, {SENTIMENT_LABEL.like.emoji} from {points(at("like"))} below, {SENTIMENT_LABEL.meh.emoji} from{" "}
       {points(at("meh"))} below, and {SENTIMENT_LABEL.nope.emoji} under that. With an average of {TYPICAL_AVERAGE}:{" "}
       {SENTIMENT_LABEL.love.emoji} from {example("love")}, {SENTIMENT_LABEL.like.emoji} from {example("like")}, {SENTIMENT_LABEL.meh.emoji} from{" "}
-      {example("meh")}, {SENTIMENT_LABEL.nope.emoji} below {example("meh")}. Nothing counts as a rating until you tap it, or{" "}
-      <em>Use them</em> for all of them. Until then a BGG rating still counts toward your taste and stands in for a rating in the planner.
+      {example("meh")}, {SENTIMENT_LABEL.nope.emoji} below {example("meh")}. Nothing counts as a rating until you tap it, or
+      review them all in one list (<em>Review them</em> on Rate games), where you can change or skip any before rating them together. Until then a BGG rating still counts toward your taste and stands in for a rating in the planner.
     </>
   );
 }

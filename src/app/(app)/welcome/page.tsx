@@ -9,7 +9,7 @@ import { db, schema } from "@/db";
 import { Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass } from "@/components/ui";
 import { channelUrl, commandName, eventsChannel, postsNights } from "@/lib/discord";
 import { discordAppUrl } from "@/lib/discord-components";
-import { getPlayers, getSetupStatus } from "@/lib/queries";
+import { getPlayers, getRateableGames, getSetupStatus } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
 import { type SetupStep, setupProgress, setupSteps } from "@/lib/setup";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
@@ -38,11 +38,14 @@ async function Welcome() {
   const limited = me.access !== "member";
   const night = limited ? "casual" : "core";
   const casual = inSentence(NIGHT_NAMES.casual);
-  const [status, players, [profile]] = await Promise.all([
+  const [status, players, [profile], rateable] = await Promise.all([
     getSetupStatus(me),
     getPlayers(),
     db.select({ bga: schema.user.bgaUsername, premium: schema.user.bgaPremium }).from(schema.user).where(eq(schema.user.id, me.id)),
+    getRateableGames(me.id, me.playerId, night),
   ]);
+  // Games their BGG ratings could rate for them, after a look
+  const fromBgg = [...rateable.played, ...rateable.unplayed].filter((g) => g.suggested).length;
   const steps = setupSteps(status, { casual: limited });
   const progress = setupProgress(steps);
   const events = postsNights(night) ? eventsChannel(night) : null;
@@ -68,9 +71,22 @@ async function Welcome() {
           <em>Must play</em> for the ones you want on the table next.
           {status.played > 0 ? ` ${status.played - status.unratedPlayed} of ${status.played} rated.` : " Nothing's logged with you in it yet, so this fills in after your first game."}
         </p>
-        <Link href="/rankings/rate" className={buttonClass(status.rateDone ? "secondary" : "primary")}>
-          Rate games
-        </Link>
+        {fromBgg > 0 && (
+          <p>
+            Your BGG ratings suggest faces for {fromBgg === 1 ? "1 game" : `${fromBgg} games`} here. Review them in one list and rate them
+            together.
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {fromBgg > 0 && (
+            <Link href="/rankings/rate/bgg" className={buttonClass("primary")}>
+              Review BGG suggestions
+            </Link>
+          )}
+          <Link href="/rankings/rate" className={buttonClass(status.rateDone || fromBgg > 0 ? "secondary" : "primary")}>
+            Rate games
+          </Link>
+        </div>
       </>
     ),
     rank: (

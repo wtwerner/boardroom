@@ -21,7 +21,7 @@ import { buildGroupContext, buildNightContext } from "@/lib/insights";
 import { describeTaste, getRecommendations, getTasteChances } from "@/lib/recommend";
 import { PICK_COUNT, askFor, choosePicks } from "@/lib/picks";
 import { refreshCatalog } from "@/lib/catalog";
-import { type SeatNight, getGameTiers, getPlayerNights, getRateableGames, inCrowd } from "@/lib/queries";
+import { type SeatNight, getGameTiers, getPlayerNights, inCrowd } from "@/lib/queries";
 import { nightsVersion } from "@/lib/events";
 import { replaceTier } from "@/lib/tier";
 import { type CurrentUser, PREVIEW_COOKIE, requireAdmin, requireMember, requireUser, seesNight } from "@/lib/session";
@@ -107,21 +107,43 @@ export async function setOpinion(gameId: number, patch: z.infer<typeof OpinionPa
 }
 
 /** Save a member's ranking of one tier's games; their other list stays as it is. */
+const BggPicks = z.array(z.object({ gameId: z.number().int(), sentiment: z.enum(SENTIMENTS) })).max(2000);
+type BggPicks = z.infer<typeof BggPicks>;
+
 /**
- * Rate every game on Rate games I haven't rated yet with the face my BGG rating suggests
- * (bgg-ratings.ts). Games I've rated here keep what I said.
+ * Rate the games I picked faces for on Review BGG suggestions (each starts as what my BGG rating
+ * suggests, bgg-ratings.ts). Only games still unrated here are rated, so a face picked in another
+ * tab stays. `rated` is what changed, for Undo.
  */
-export async function acceptBggSuggestions(): Promise<ActionResult> {
+export async function acceptBggSuggestions(picks: BggPicks): Promise<ActionResult & { rated?: BggPicks }> {
   const me = await requireUser();
-  const { played, unplayed } = await getRateableGames(me.id, me.playerId, me.access === "member" ? "core" : "casual");
-  const rows = [...played, ...unplayed].flatMap((g) => (g.suggested ? [{ userId: me.id, gameId: g.id, sentiment: g.suggested }] : []));
-  if (rows.length) {
-    await db
-      .insert(schema.opinion)
-      .values(rows)
-      // Only where it's still blank: a face tapped since the page loaded stays
-      .onConflictDoUpdate({ target: [schema.opinion.userId, schema.opinion.gameId], set: { sentiment: sql`excluded.sentiment` }, setWhere: isNull(schema.opinion.sentiment) });
-  }
+  const rows = BggPicks.parse(picks).map((p) => ({ userId: me.id, ...p }));
+  const rated = rows.length
+    ? await db
+        .insert(schema.opinion)
+        .values(rows)
+        .onConflictDoUpdate({ target: [schema.opinion.userId, schema.opinion.gameId], set: { sentiment: sql`excluded.sentiment` }, setWhere: isNull(schema.opinion.sentiment) })
+        .returning({ gameId: schema.opinion.gameId, sentiment: schema.opinion.sentiment })
+    : [];
+  refresh();
+  return { ok: true, rated: rated.flatMap((r) => (r.sentiment ? [{ gameId: r.gameId, sentiment: r.sentiment }] : [])) };
+}
+
+/** Undo for acceptBggSuggestions: unrates those games, unless I've changed one since */
+export async function undoBggSuggestions(picks: BggPicks): Promise<ActionResult> {
+  const me = await requireUser();
+  const parsed = BggPicks.parse(picks);
+  // One update per face rather than per game
+  await db.transaction(async (tx) => {
+    for (const sentiment of SENTIMENTS) {
+      const ids = parsed.filter((p) => p.sentiment === sentiment).map((p) => p.gameId);
+      if (!ids.length) continue;
+      await tx
+        .update(schema.opinion)
+        .set({ sentiment: null })
+        .where(and(eq(schema.opinion.userId, me.id), inArray(schema.opinion.gameId, ids), eq(schema.opinion.sentiment, sentiment)));
+    }
+  });
   refresh();
   return { ok: true };
 }
