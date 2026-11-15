@@ -6,12 +6,11 @@ import { inSentence } from "@/lib/text";
 import { MUST_PLAY_LIMIT, SENTIMENTS } from "@/db/enums";
 import { formatBggRating } from "@/lib/bgg-ratings";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
-import { Empty, GameCover, PageHeader, Panel, Section, Skeleton, TextLink, formatDate } from "@/components/ui";
+import { Empty, GameCover, PageHeader, Panel, Section, Skeleton, TextLink, buttonClass, formatDate } from "@/components/ui";
 import { requireUser } from "@/lib/session";
 import { getMustPlayLeft, getRateableGames } from "@/lib/queries";
 import { OpinionControls } from "../../games/[id]/opinion-controls";
 import { RankingTabs } from "../tabs";
-import { AcceptBggSuggestions } from "./accept-bgg";
 
 export const metadata: Metadata = { title: "Rate games" };
 
@@ -59,7 +58,19 @@ async function Rate() {
         {MUST_PLAY_LIMIT}, and one comes back each time you play its game. You have {mustPlayLeft} left.
       </p>
 
-      {suggestions.length > 0 && <AcceptBggSuggestions count={suggestions.length} summary={summary} />}
+      {suggestions.length > 0 && (
+        <div className="flex flex-col gap-3 rounded-xl border border-dashed border-ink/50 bg-card p-4 sm:flex-row sm:items-center">
+          <p className="flex-1 text-sm">
+            <strong className="font-semibold">
+              Your BGG ratings suggest faces for {suggestions.length === 1 ? "1 game" : `${suggestions.length} games`}
+            </strong>{" "}
+            you haven&apos;t rated here ({summary}). Check them in one list, change or skip any, then rate them together.
+          </p>
+          <Link href="/rankings/rate/bgg" className={buttonClass("primary", "shrink-0")}>
+            Review them
+          </Link>
+        </div>
+      )}
 
       <Section
         title="Games you've played"
