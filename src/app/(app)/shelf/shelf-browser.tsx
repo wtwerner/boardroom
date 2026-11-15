@@ -5,7 +5,7 @@ import { useDeferredValue, useMemo, useState, useSyncExternalStore } from "react
 import { LayoutGrid, List, Search } from "lucide-react";
 import clsx from "clsx";
 import type { MeepleColor, Sentiment } from "@/db/enums";
-import { Faces, GameCover, Meeple, bestAt, formatDate, playerRange, playtime } from "@/components/ui";
+import { Face, Faces, GameCover, bestAt, formatDate, playerRange, playtime } from "@/components/ui";
 import type { ShelfGame } from "@/lib/queries";
 import { formatBggRating } from "@/lib/bgg-ratings";
 import { SENTIMENT_LABEL } from "@/lib/sentiment";
@@ -244,9 +244,7 @@ export function ShelfBrowser({
                 )}
                 {g.sentiments.length > 0 && (
                   <div className="mt-1 flex gap-1 text-sm leading-none">
-                    {g.sentiments.map((s) => (
-                      <Face key={s.userId} face={s} name={memberById.get(s.userId)?.name} showBgg={showBgg} />
-                    ))}
+                    <GroupFaces sentiments={g.sentiments} memberById={memberById} showBgg={showBgg} />
                   </div>
                 )}
               </Link>
@@ -260,15 +258,22 @@ export function ShelfBrowser({
   );
 }
 
-/** Someone's face for a game, with their own BGG rating of it after it when the group shows those */
-function Face({ face, name, showBgg }: { face: ShelfGame["sentiments"][number]; name: string | undefined; showBgg: boolean }) {
-  const bgg = showBgg && face.bgg !== null ? formatBggRating(face.bgg) : null;
-  return (
-    <span title={`${name}: ${SENTIMENT_LABEL[face.sentiment].label}${bgg ? `, ${bgg} on BGG` : ""}`} className={bgg ? "mr-1" : undefined}>
-      {SENTIMENT_LABEL[face.sentiment].emoji}
-      {bgg && <span className="tabular ml-px text-[0.65rem] text-slate">{bgg}</span>}
-    </span>
-  );
+/**
+ * How the group feels about a game: everyone's faces, most liked first, so they read as a tally.
+ * Their own BGG ratings, when the group shows those, are in each face's hover: beside every face
+ * they made the shelf too busy to scan (a game's page shows them in full).
+ */
+function GroupFaces({ sentiments, memberById, showBgg }: { sentiments: ShelfGame["sentiments"]; memberById: Map<string, Member>; showBgg: boolean }) {
+  return [...sentiments]
+    .sort((a, b) => SENTIMENT_SCORE[b.sentiment] - SENTIMENT_SCORE[a.sentiment])
+    .map((s) => {
+      const bgg = showBgg && s.bgg !== null ? formatBggRating(s.bgg) : null;
+      return (
+        <span key={s.userId} title={`${memberById.get(s.userId)?.name}: ${SENTIMENT_LABEL[s.sentiment].label}${bgg ? `, ${bgg} on BGG` : ""}`}>
+          {SENTIMENT_LABEL[s.sentiment].emoji}
+        </span>
+      );
+    });
 }
 
 function ShelfTable({
@@ -285,75 +290,86 @@ function ShelfTable({
   showBgg: boolean;
 }) {
   const th = "px-2 py-2 text-left text-xs font-medium text-slate";
+  const none = <span className="text-slate/60">–</span>;
   return (
     <div className="overflow-x-auto rounded-xl border border-line bg-card">
-      <table className="w-full min-w-[52rem] text-sm">
+      <table className="w-full min-w-[48rem] text-sm">
         <thead className="border-b border-line">
           <tr>
             <th className={clsx(th, "pl-3")}>Game</th>
             <th className={th}>Players</th>
             <th className={th}>Time</th>
-            <th className={th} title="BGG weight, 1 (light) to 5 (heavy)">Weight</th>
-            <th className={th}>BGG</th>
-            <th className={th}>Played</th>
+            <th className={clsx(th, "text-right")} title="BGG weight, 1 (light) to 5 (heavy)">Weight</th>
+            <th className={clsx(th, "text-right")} title="BGG's average rating">BGG</th>
+            <th className={clsx(th, "pl-4")}>Last played</th>
             <th className={th}>Owners</th>
             <th className={clsx(th, "pr-3")}>The group</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
-          {games.map((g) => (
-            <tr key={g.id} className="hover:bg-felt-soft/50">
-              <td className="py-1.5 pr-2 pl-3">
-                <Link href={`/games/${g.id}`} className="flex items-center gap-2.5 hover:underline">
-                  <GameCover src={g.thumbnail} name={g.name} size="sm" />
-                  <span className="min-w-0">
-                    <span className="block max-w-64 truncate font-medium">{g.name}</span>
-                    {g.year && <span className="block text-xs text-slate">{g.year}</span>}
+          {games.map((g) => {
+            const owners = g.ownerIds.flatMap((id) => memberById.get(id) ?? []);
+            const chance = chances?.get(g.id);
+            return (
+              <tr key={g.id} className="hover:bg-felt-soft/50">
+                <td className="py-1.5 pr-2 pl-3">
+                  <Link href={`/games/${g.id}`} className="flex items-center gap-2.5 hover:underline">
+                    <GameCover src={g.thumbnail} name={g.name} size="sm" />
+                    <span className="min-w-0">
+                      <span className="block max-w-72 truncate font-medium" title={g.name}>{g.name}</span>
+                      {g.year && <span className="tabular block text-xs text-slate">{g.year}</span>}
+                    </span>
+                  </Link>
+                </td>
+                <td className="tabular px-2 whitespace-nowrap">
+                  {playerRange(g.minPlayers, g.maxPlayers) ?? none}
+                  {g.bestPlayers?.length ? <span className="text-xs text-slate"> · {bestAt(g.bestPlayers)}</span> : null}
+                </td>
+                <td className="tabular px-2 whitespace-nowrap">{playtime(g.minPlaytime, g.maxPlaytime) ?? none}</td>
+                <td className="tabular px-2 text-right">{g.weight ? g.weight.toFixed(1) : none}</td>
+                <td className="tabular px-2 text-right">{g.bggRating ? g.bggRating.toFixed(1) : none}</td>
+                <td className="tabular py-1.5 pr-2 pl-4 whitespace-nowrap">
+                  {g.lastPlayed ? (
+                    <>
+                      {formatDate(g.lastPlayed, { month: "short", year: "numeric" })}
+                      <span className="text-xs text-slate"> · {g.plays}×</span>
+                    </>
+                  ) : (
+                    <span className="text-slate/60">never</span>
+                  )}
+                  {chance != null && <span className="block text-xs font-semibold text-accent">{Math.round(chance * 100)}% group chance</span>}
+                </td>
+                <td className="px-2">
+                  <span className="flex gap-1">
+                    {owners.map((p) =>
+                      linkable.has(p.id) ? (
+                        <Link key={p.id} href={`/people/${p.id}`} title={p.name} aria-label={p.name} className="rounded-full hover:ring-2 hover:ring-felt">
+                          <Face src={p.image} name={p.name} color={p.color} className="block" />
+                        </Link>
+                      ) : (
+                        <span key={p.id} role="img" title={p.name} aria-label={p.name}>
+                          <Face src={p.image} name={p.name} color={p.color} className="block" />
+                        </span>
+                      ),
+                    )}
                   </span>
-                </Link>
-              </td>
-              <td className="tabular px-2 whitespace-nowrap">
-                {playerRange(g.minPlayers, g.maxPlayers) ?? "–"}
-                {g.bestPlayers?.length ? <span className="block text-xs text-slate">{bestAt(g.bestPlayers)}</span> : null}
-              </td>
-              <td className="tabular px-2 whitespace-nowrap">{playtime(g.minPlaytime, g.maxPlaytime) ?? "–"}</td>
-              <td className="tabular px-2">{g.weight ? g.weight.toFixed(1) : "–"}</td>
-              <td className="tabular px-2">{g.bggRating ? g.bggRating.toFixed(1) : "–"}</td>
-              <td className="tabular px-2 whitespace-nowrap">
-                {g.plays ? `${g.plays}×` : <span className="text-slate">never</span>}
-                {g.lastPlayed && <span className="block text-xs text-slate">{formatDate(g.lastPlayed, { month: "short", day: "numeric", year: "numeric" })}</span>}
-                {chances?.get(g.id) != null && <span className="block text-xs font-semibold text-accent">{Math.round(chances.get(g.id)! * 100)}% group chance</span>}
-              </td>
-              <td className="px-2">
-                <span className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
-                  {g.ownerIds.map((id) => {
-                    const who = (
-                      <>
-                        <Meeple color={memberById.get(id)?.color ?? null} className="size-3.5" />
-                        {memberById.get(id)?.name}
-                      </>
-                    );
-                    return linkable.has(id) ? (
-                      <Link key={id} href={`/people/${id}`} className="inline-flex items-center gap-1 hover:underline">
-                        {who}
-                      </Link>
-                    ) : (
-                      <span key={id} className="inline-flex items-center gap-1">
-                        {who}
-                      </span>
-                    );
-                  })}
-                </span>
-              </td>
-              <td className="pr-3 pl-2 text-xs whitespace-nowrap">
-                {g.sentiments.map((s) => (
-                  <Face key={s.userId} face={s} name={memberById.get(s.userId)?.name} showBgg={showBgg} />
-                ))}
-                {g.mustPlay.length > 0 && <span className="ml-1.5" title={g.mustPlay.map((id) => memberById.get(id)?.name).join(", ")}>🔥{g.mustPlay.length}</span>}
-                {g.wantToPlay.length > 0 && <span className="ml-1.5 text-slate">{g.wantToPlay.length} want to play</span>}
-              </td>
-            </tr>
-          ))}
+                </td>
+                <td className="pr-3 pl-2 whitespace-nowrap">
+                  <GroupFaces sentiments={g.sentiments} memberById={memberById} showBgg={showBgg} />
+                  {g.mustPlay.length > 0 && (
+                    <span className="ml-1.5 text-xs" title={`Must play: ${g.mustPlay.map((id) => memberById.get(id)?.name).join(", ")}`}>
+                      🔥{g.mustPlay.length}
+                    </span>
+                  )}
+                  {g.wantToPlay.length > 0 && (
+                    <span className="ml-1.5 text-xs text-slate" title={`Want to play: ${g.wantToPlay.map((id) => memberById.get(id)?.name).join(", ")}`}>
+                      +{g.wantToPlay.length} want
+                    </span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
