@@ -1,6 +1,7 @@
-# Actions are pinned to commit SHAs, which don't pick up fixes on their own. Dependabot opens one
-# PR a week to move them, and keeps the version comment next to each SHA right. It leaves out
-# releases less than a week old, so a bad one has time to be caught.
+# Actions are pinned to commit SHAs and packages by the lockfile, so neither picks up fixes on its own.
+# Dependabot opens one PR a week for each, and keeps the version comment next to each action's SHA
+# right. It leaves out releases less than a week old, so a bad one has time to be caught; security
+# fixes come straight away. A package's new major version gets a PR of its own.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -12,3 +13,13 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      packages:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
