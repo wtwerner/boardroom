@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import clsx from "clsx";
 import { Check, Copy } from "lucide-react";
 import { type ActionResult, closeInvite, makeInvite, makePasswordLink } from "@/app/actions";
@@ -11,20 +11,25 @@ const input = "rounded-lg border border-line bg-table px-3 py-2 text-sm";
 /** A link just made, to copy. It isn't kept, so it's only here until the page is left */
 function NewLink({ link, note }: { link: string; note: string }) {
   const [copied, setCopied] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
   // Without the site's address set, the server only knows the path
   const url = link.startsWith("/") && typeof window !== "undefined" ? `${window.location.origin}${link}` : link;
   return (
     <div className="w-full space-y-1.5 rounded-lg border border-felt/50 bg-felt/10 p-3" role="status">
       <div className="flex flex-wrap items-center gap-2">
-        <input readOnly aria-label="The link" value={url} onFocus={(e) => e.currentTarget.select()} className={clsx(input, "min-w-0 flex-1 bg-card font-mono text-xs")} />
+        <input ref={field} readOnly aria-label="The link" value={url} onFocus={(e) => e.currentTarget.select()} className={clsx(input, "min-w-0 flex-1 bg-card font-mono text-xs")} />
         <button
           type="button"
-          onClick={() =>
-            navigator.clipboard.writeText(url).then(
-              () => setCopied(true),
-              () => setCopied(false),
-            )
-          }
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(url);
+              setCopied(true);
+            } catch {
+              // No clipboard over plain http, and some in-app browsers refuse: select it, so they can copy it themselves
+              setCopied(false);
+              field.current?.focus();
+            }
+          }}
           className={buttonClass("secondary", "gap-1.5 px-2.5 py-1.5 text-xs")}
         >
           {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}

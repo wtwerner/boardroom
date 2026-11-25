@@ -14,6 +14,8 @@ pnpm dev
 
 Locally, the sign-in page has **Sign in as…** buttons for the seeded members. Before seeding, with nobody in the database, it opens on setting up a new site instead (no code needed). That shortcut only exists under `pnpm dev` with a local `file:` database; production builds strip it out, except on a demo (`DEMO=on`, see [The demo](docs/how-it-works.md#the-demo)), where it signs in as the seeded members and no one else. Sam is the seeded group's admin, for **Settings → Group settings**. Add `CASUAL_NIGHT=on` to `.env.local` and run `pnpm seed:dev` again to see the casual night's side of the site with plays and an event (seeding clears Group settings back to `.env.local`). Claude's picks need an `ANTHROPIC_API_KEY`, then **Use Claude** on Group settings (or `CLAUDE=on`).
 
+Open the dev server at the address in `BETTER_AUTH_URL` (`localhost` in `.env.example`). To try it on a phone, start it with the computer's address on your network, `BETTER_AUTH_URL=http://192.168.1.20:3000 pnpm dev`, and open that: at any other address the buttons don't work, links point to the wrong place, and passwords are refused.
+
 Read [docs/how-it-works.md](docs/how-it-works.md) before changing scoring, sync or votes. It's how the product works, where the data comes from, and where the code lives.
 
 ### Testing against a Discord server of your own

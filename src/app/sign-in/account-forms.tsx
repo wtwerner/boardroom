@@ -63,6 +63,7 @@ function NameAndEmail({ name: given = "", emailHint }: { name?: string; emailHin
 const REFUSED: Record<string, string> = {
   passwords_off: "This site doesn't use passwords. Sign in with Discord.",
   missing_role: "Couldn't sign you in.",
+  INVALID_ORIGIN: "This isn't the site's own address, so you can't sign in with a password here. The site's admin can check BETTER_AUTH_URL.",
 };
 
 export function PasswordSignIn({ canReset }: { canReset: boolean }) {
@@ -70,7 +71,9 @@ export function PasswordSignIn({ canReset }: { canReset: boolean }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   return (
+    // Sent before the page's scripts are ready, the browser submits it itself: as a post, so the password isn't in the address
     <form
+      method="post"
       className="space-y-4"
       onSubmit={async (e) => {
         e.preventDefault();

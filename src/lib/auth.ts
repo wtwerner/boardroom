@@ -7,7 +7,7 @@ import { and, eq, isNull, ne } from "drizzle-orm";
 import { CASUAL_NIGHT, CASUAL_SIGN_IN, DISCORD_SIGN_IN, PASSWORD_SIGN_IN, SITE_URL } from "@/config";
 import { db, schema } from "@/db";
 import type { Access } from "@/db/enums";
-import { passwordAccess, signInAccess } from "./access";
+import { passwordAccess, signInAccess, startedByPassword } from "./access";
 import { getServerMember } from "./discord";
 import { discordAccountEmail } from "./discord-email";
 import { pickColor } from "./meeple";
@@ -148,7 +148,7 @@ export const auth = betterAuth({
         before: async (session, ctx) => {
           if (checkedJustNow(session.userId)) return;
           // By password: an invite let them in, so it's the group's passwords and their access that count
-          if (ctx?.path === "/sign-in/email") {
+          if (startedByPassword(ctx?.path)) {
             await loadSettings({ fresh: true });
             const u = await db.query.user.findFirst({ where: eq(schema.user.id, session.userId), columns: { access: true } });
             const decision = passwordAccess({ enabled: PASSWORD_SIGN_IN, existing: u?.access ?? null, casualNight: CASUAL_NIGHT });

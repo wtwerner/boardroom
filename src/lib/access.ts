@@ -42,6 +42,9 @@ export function signInAccess(f: SignInFacts): { ok: true; access: "member" | "ca
   return { ok: false, refusal: "missing_role" };
 }
 
+/** Better Auth's routes that start a session from a password: signing in, and changing it on Settings, which ends the sessions before it */
+export const startedByPassword = (path: string | undefined) => path === "/sign-in/email" || path === "/change-password";
+
 /**
  * Whether someone with a password can sign in: not while the group doesn't use them, and by the
  * same rules as anyone once they're past that. Whoever invited them decided what they are.

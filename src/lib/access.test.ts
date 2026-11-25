@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { accessChangeRefusal, capabilities, passwordAccess, roleMismatch, signInAccess } from "./access";
+import { accessChangeRefusal, capabilities, passwordAccess, roleMismatch, signInAccess, startedByPassword } from "./access";
 
 const first = { inServer: true, hasRole: false, existing: null, casualSignIn: false, casualNight: true } as const;
 
@@ -51,6 +51,15 @@ describe("accessChangeRefusal", () => {
     expect(accessChangeRefusal("u-sam", sam, "casual")).toMatch(/your own/);
     expect(accessChangeRefusal("u-alex", sam, "removed")).toMatch(/admin/);
     expect(accessChangeRefusal("u-alex", sam, "member")).toBeNull();
+  });
+});
+
+describe("startedByPassword", () => {
+  it("is signing in with one, or changing it, and not coming back from Discord", () => {
+    expect(startedByPassword("/sign-in/email")).toBe(true);
+    expect(startedByPassword("/change-password")).toBe(true);
+    expect(startedByPassword("/callback/:id")).toBe(false);
+    expect(startedByPassword(undefined)).toBe(false);
   });
 });
 
