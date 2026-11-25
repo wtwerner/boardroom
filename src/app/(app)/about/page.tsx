@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { type ReactNode, Suspense } from "react";
-import { CASUAL_NIGHT, CLAUDE, CLAUDE_IDEAS_PER_DAY, MIN_PEOPLE, NIGHT_NAMES } from "@/config";
+import { CASUAL_NIGHT, CLAUDE, CLAUDE_IDEAS_PER_DAY, DISCORD_BOT, MIN_PEOPLE, NIGHT_NAMES } from "@/config";
+import { emailReady } from "@/lib/email";
 import { MUST_PLAY_LIMIT, SENTIMENTS } from "@/db/enums";
 import { PageHeader, Panel, Skeleton, TextLink } from "@/components/ui";
 import { AVERAGE_RANGE, BANDS, OWN_AVERAGE_FROM, TYPICAL_AVERAGE } from "@/lib/bgg-ratings";
@@ -93,7 +94,7 @@ async function About() {
               ]}
             />
             <p>
-              Only a play dated on or after a vote clears it. If an old event is imported from Discord later, votes you cast since then stay put.
+              Only a play dated on or after a vote clears it. {DISCORD_BOT ? "If an old event is imported from Discord later" : "If an old play is logged later"}, votes you cast since then stay put.
             </p>
           </Part>
 
@@ -256,15 +257,17 @@ async function About() {
               A date where everyone it waits on can come says so; otherwise the best date is marked, as long as enough can come and no other date is level with it (
               {MIN_PEOPLE.core}
               {CASUAL_NIGHT && MIN_PEOPLE.casual !== MIN_PEOPLE.core ? ` for ${core}, ${MIN_PEOPLE.casual} for ${casual}` : ""}, counting guests too), and a date
-              with fewer says too few. Once the last of them answers, whoever started it is pinged in its thread to set the date.
+              with fewer says too few. {DISCORD_BOT
+                ? "Once the last of them answers, whoever started it is pinged in its thread to set the date."
+                : emailReady() && "Once the last of them answers, whoever started it is emailed to set the date."}
             </p>
           </Part>
 
           {CASUAL_NIGHT && (
             <Part id="nights" title={`${NIGHT_NAMES.core} and ${casual}`}>
               <p>
-                {NIGHT_NAMES.core} and {casual} log plays in their own Discord channels. Both are read, and every play says which kind of event it was.
-                Only the group can sign in here; people who only come to {casual} show up as names in the logs, and if one of them joins later,
+                {DISCORD_BOT && `${NIGHT_NAMES.core} and ${casual} log plays in their own Discord channels. Both are read, and every `}
+                {DISCORD_BOT ? "play" : "Every play"} says which kind of event it was. Only the group can sign in here; people who only come to {casual} show up as names in the logs, and if one of them joins later,
                 their history is already waiting.
               </p>
               <Facts
@@ -302,7 +305,7 @@ async function About() {
               rows={[
                 [
                   "Plays",
-                  `Logged on the event's page once it starts, or on Plays (and posted to that kind's Discord channel), or written by hand in ${CASUAL_NIGHT ? "either channel" : "the channel"}. The sync reads hand-written posts every night and when anyone taps Sync from Discord, and picks up edits to posts for two weeks. A play logged both here and in Discord is only counted once.`,
+                  !DISCORD_BOT ? "Logged on the event's page once it starts, or on Plays." : `Logged on the event's page once it starts, or on Plays (and posted to that kind's Discord channel), or written by hand in ${CASUAL_NIGHT ? "either channel" : "the channel"}. The sync reads hand-written posts every night and when anyone taps Sync from Discord, and picks up edits to posts for two weeks. A play logged both here and in Discord is only counted once.`,
                 ],
                 ["Shelf", "Everyone's BGG collection: from the BGG username in Settings, refreshed nightly, or a CSV export uploaded there. It brings your own BGG ratings and logged plays too. Editions of one game are one game on it, with everyone's copies and every play: ones BGG links with the same name (Citadels from 2000 and 2016), and a big box or special edition named for the game inside (The Castles of Burgundy: Special Edition)."],
                 ["Game details", "Player counts, the counts BGG's voters call best or advise against, weight, mechanics and ratings come from BGG."],
@@ -311,7 +314,7 @@ async function About() {
                   ? [
                       [
                         "What Claude sees",
-                        "Names, recent plays and who played them, everyone's ratings, votes and rankings, the shared shelf, BGG wishlists and the taste summary. Nothing from Discord accounts. It's only asked when someone taps a Claude button.",
+                        "Names, recent plays and who played them, everyone's ratings, votes and rankings, the shared shelf, BGG wishlists and the taste summary. Nothing about people's accounts. It's only asked when someone taps a Claude button.",
                       ] as [string, string],
                     ]
                   : []),
@@ -395,8 +398,7 @@ function CasualAbout({ casual }: { casual: string }) {
             games; pick {casual}&apos;s regulars to see what could come.
           </p>
           <p>
-            After the event, log what was played on its page. The morning after, the bot messages you in Discord with any games you played and
-            haven&apos;t rated yet.
+            After the event, log what was played on its page. {(DISCORD_BOT || emailReady()) && `The morning after, you get ${DISCORD_BOT ? "a message from the bot in Discord" : "an email"} with any games you played and haven't rated yet.`}
           </p>
         </Part>
       </div>

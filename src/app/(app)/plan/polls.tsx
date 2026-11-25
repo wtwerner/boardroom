@@ -138,7 +138,7 @@ export function PollCard({
           {poll.decideBy && <span className="text-slate">Decide by {poll.decideBy}</span>}
           {poll.canNudge && !limited && (
             <button type="button" disabled={pending} onClick={() => run(() => nudgeForDates(poll.id))} className={buttonClass("ghost", "px-2 py-1 text-xs")}>
-              Nudge {poll.progress.waiting.length === 1 ? "them" : "them all"} in Discord
+              Nudge {poll.progress.waiting.length === 1 ? "them" : "them all"}{poll.url ? " in Discord" : ""}
             </button>
           )}
         </div>

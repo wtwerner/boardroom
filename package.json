@@ -22,6 +22,7 @@
     "move:posts": "tsx --conditions=react-server scripts/move-posts.ts",
     "refresh:posts": "tsx --conditions=react-server scripts/refresh-posts.ts",
     "refresh:logs": "tsx --conditions=react-server scripts/refresh-logs.ts",
+    "password:link": "tsx --conditions=react-server scripts/password-link.ts",
     "retitle:nights": "tsx --conditions=react-server scripts/retitle-nights.ts"
   },
   "dependencies": {
@@ -37,6 +38,7 @@
     "fast-xml-parser": "^5.11.2",
     "lucide-react": "^1.61.0",
     "next": "16.4.3",
+    "nodemailer": "^10.6.1",
     "papaparse": "^5.7.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -47,6 +49,7 @@
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.2",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",

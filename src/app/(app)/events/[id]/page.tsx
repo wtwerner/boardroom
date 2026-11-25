@@ -131,7 +131,7 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
         <NightHeader n={n} limited={limited} staying={staying} decideBy={poll?.decideBy ? localDate(new Date(poll.decideBy)) : null} calendar={calendar} addToCalendar={addToCalendar} />
         {poll ? (
           // Finding its date: everyone says which dates work, and their answers are who's coming once one's set
-          <PollCard poll={pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} calendar={calendar} limited={limited} />
+          <PollCard poll={await pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} calendar={calendar} limited={limited} />
         ) : (
           <Panel className="p-4">
             <People

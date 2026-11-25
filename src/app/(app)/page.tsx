@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import clsx from "clsx";
-import { CASUAL_NIGHT, NIGHT_NAMES } from "@/config";
+import { CASUAL_NIGHT, NIGHT_NAMES, PASSWORD_SIGN_IN } from "@/config";
+import { canPostToDiscord, postsNights } from "@/lib/discord";
 import { AttendanceBars, MonthColumns } from "@/components/charts";
 import type { MeepleColor, Tier } from "@/db/enums";
 import { NightRow, isOn } from "@/components/night-row";
@@ -10,7 +11,7 @@ import { findingPolls } from "@/lib/poll-store";
 import { Chips, alike, whoLikes } from "@/components/taste";
 import { Avatar, Empty, GameCover, Meeple, PlayerChip, Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass, formatDate } from "@/components/ui";
 import { dayWord, localDate } from "@/lib/nights";
-import { type CurrentUser, requireUser } from "@/lib/session";
+import { canManageGroup, type CurrentUser, requireUser } from "@/lib/session";
 import {
   getAttendance,
   getGroupRanking,
@@ -73,7 +74,7 @@ async function Home() {
   const onNow = plans.filter(isOn);
   const comingUp = plans.filter((n) => !isOn(n));
 
-  if (stats.all.plays === 0) return <FirstRun name={me.name} />;
+  if (stats.all.plays === 0) return <FirstRun name={me.name} canInvite={PASSWORD_SIGN_IN && (await canManageGroup())} />;
 
   const reviewCount = review.reduce((n, r) => n + r.count, 0);
   // A game played twice that night gets one cover
@@ -558,7 +559,7 @@ async function CasualHome({ me }: { me: CurrentUser }) {
       ) : (
         picking.length === 0 && (
           <Section title="Coming up">
-            <Empty>Nothing&apos;s on the calendar yet. The next {casual} shows up here, and in Discord, once it&apos;s planned.</Empty>
+            <Empty>Nothing&apos;s on the calendar yet. The next {casual} shows up here{postsNights("casual") ? ", and in Discord," : ""} once it&apos;s planned.</Empty>
           </Section>
         )
       )}
@@ -663,16 +664,29 @@ function NightTag({ tier }: { tier: Tier }) {
   );
 }
 
-function FirstRun({ name }: { name: string }) {
+function FirstRun({ name, canInvite }: { name: string; canInvite: boolean }) {
   return (
     <div className="max-w-xl">
       <h1 className="font-display text-4xl">Welcome, {name}</h1>
-      <p className="mt-3 text-slate">Nothing&apos;s been logged yet. Two things get the table set:</p>
+      <p className="mt-3 text-slate">Nothing&apos;s been logged yet. {canInvite ? "A few" : "Two"} things get the table set:</p>
       <Panel className="mt-6 divide-y divide-line">
-        <Link href="/plays" className="block p-4 hover:bg-felt-soft">
-          <span className="font-semibold">Import plays from Discord</span>
-          <span className="block text-sm text-slate">Reads the plays channel and fills in your history.</span>
-        </Link>
+        {canInvite && (
+          <Link href="/settings/access#invite" className="block p-4 hover:bg-felt-soft">
+            <span className="font-semibold">Invite the group</span>
+            <span className="block text-sm text-slate">Make a link and send it however you talk.</span>
+          </Link>
+        )}
+        {canPostToDiscord() ? (
+          <Link href="/plays" className="block p-4 hover:bg-felt-soft">
+            <span className="font-semibold">Import plays from Discord</span>
+            <span className="block text-sm text-slate">Reads the plays channel and fills in your history.</span>
+          </Link>
+        ) : (
+          <Link href="/plays" className="block p-4 hover:bg-felt-soft">
+            <span className="font-semibold">Log a play</span>
+            <span className="block text-sm text-slate">The last game you played together is a good start.</span>
+          </Link>
+        )}
         <Link href="/settings" className="block p-4 hover:bg-felt-soft">
           <span className="font-semibold">Add your BGG collection</span>
           <span className="block text-sm text-slate">Your games join the shared shelf.</span>

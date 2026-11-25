@@ -136,7 +136,7 @@ export function PlayerDiscordLink({
   const known = members.find((m) => m.id === discordId);
 
   if (isMember) {
-    return <span className="text-xs text-slate">{known ? `@${known.username}` : "Linked through sign-in"}</span>;
+    return <span className="text-xs text-slate">{known ? `@${known.username}` : discordId ? "Linked through sign-in" : "Not on Discord"}</span>;
   }
 
   const save = (next: string) =>

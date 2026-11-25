@@ -6,6 +6,7 @@ import { db, schema } from "@/db";
 import { type AllowedMentions, type MessageBody, addToThread, announceChannel, deleteMessage, deleteThread, nightPingSetting, editMessage, eventsChannel, fetchAppEmoji, isForumChannel, messageUrl, postMessage, postWithThread, postsNights, renameThread } from "./discord";
 import { buildNightAnnouncement, buildPollAnnouncement } from "./announce-message";
 import { type Announcement, removeAnnouncement, syncAnnouncement } from "./announce-post";
+import { type Actor, emailNewNight, emailNightChanged, emailNightOff, emailSeated } from "./event-email";
 import { type NightDetail, loadNight } from "./events";
 import { type CardPerson, type NightCard, type NightPing, buildNightMessage, buildNightThreadCopy, changeNote, goneMessage, nightPing, seatOpenedNote, threadName } from "./night-message";
 import { waitingFor } from "./night-store";
@@ -246,14 +247,16 @@ export async function joinThread(nightId: number, playerIds?: number[], alsoPlay
  * thread for a title that changed without saying so (it follows the locked-in game). `waiting`
  * is who was waiting for a seat before the change (waitingFor): anyone who has one now is told
  * in the thread, and `say` is said there. A Discord hiccup is logged; the next change to the
- * night posts it again.
+ * night posts it again. Whoever Discord doesn't reach is emailed (event-email.ts): about what
+ * `note` says changed, a seat, or that it's `news`: new, called off or back on.
  */
 export function syncNightPostLater(
   nightId: number,
   opts: {
     join?: number;
     creator?: number;
-    note?: { before: NoteFields; by: CardPerson };
+    note?: { before: NoteFields; by: CardPerson; userId?: string };
+    news?: { what: "new" | "off" | "on"; by: Actor };
     renamed?: boolean;
     waiting?: number[];
     say?: string | { body: MessageBody; allowedMentions: AllowedMentions };
@@ -272,6 +275,10 @@ export function syncNightPostLater(
     } catch (err) {
       console.error(`Couldn't update night ${nightId}'s post in Discord`, err);
     }
+    if (opts.news?.what === "new") await emailNewNight(nightId, opts.news.by);
+    else if (opts.news) await emailNightOff(nightId, opts.news.by, opts.news.what === "on");
+    if (opts.note) await emailNightChanged(nightId, opts.note.before, { name: opts.note.by.name, userId: opts.note.userId });
+    if (opts.waiting?.length) await emailSeated(nightId, opts.waiting);
   });
 }
 

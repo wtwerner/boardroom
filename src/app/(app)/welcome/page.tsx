@@ -4,7 +4,7 @@ import { Suspense, type ReactNode } from "react";
 import { Check } from "lucide-react";
 import clsx from "clsx";
 import { eq } from "drizzle-orm";
-import { NIGHT_NAMES, SITE_NAME } from "@/config";
+import { DISCORD_SIGN_IN, NIGHT_NAMES, SITE_NAME } from "@/config";
 import { db, schema } from "@/db";
 import { Panel, ProgressBar, Section, Skeleton, TextLink, buttonClass } from "@/components/ui";
 import { channelUrl, commandName, eventsChannel, postsNights } from "@/lib/discord";
@@ -54,7 +54,7 @@ async function Welcome() {
   const body: Record<SetupStep["key"], ReactNode> = {
     name: (
       <>
-        <p>It&apos;s what everyone sees on plays, rankings and events. It starts as your Discord name, but most people here go by their first name.</p>
+        <p>It&apos;s what everyone sees on plays, rankings and events.{DISCORD_SIGN_IN && " Signing in with Discord starts it as your Discord name, but most people here go by their first name."}</p>
         {me.playerId && <RenamePlayerForm players={[{ id: me.playerId, name: me.name }]} myPlayerId={me.playerId} label="Your name" />}
       </>
     ),
@@ -143,7 +143,8 @@ async function Welcome() {
   return (
     <div className="max-w-2xl space-y-10">
       <header>
-        <h1 className="font-display text-3xl sm:text-4xl">{progress.complete ? `You're set up, ${me.name}` : `Welcome, ${me.name}`}</h1>
+        <h1 className="font-display text-3xl sm:text-4xl">{/* Someone new with nothing to rate yet has nothing left to do, but hasn't set anything up either */}
+          {progress.complete && status.played > 0 ? `You're set up, ${me.name}` : `Welcome, ${me.name}`}</h1>
         <p className="mt-2 text-slate">
           {limited
             ? `${SITE_NAME} is where the ${casual} gets planned: who's coming, who's bringing what, and the games people like best. A few minutes here help pick games you'll enjoy.`

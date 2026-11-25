@@ -2,10 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { asc, count, eq } from "drizzle-orm";
-import { DEMO, SETTINGS } from "@/config";
+import { DEMO, DISCORD_BOT, DISCORD_SIGN_IN, SETTINGS } from "@/config";
 import { db, schema } from "@/db";
 import { DemoNote, PageHeader, Panel, Section, Skeleton } from "@/components/ui";
 import { hasAnthropicKey } from "@/lib/ai";
+import { emailReady } from "@/lib/email";
 import { hasInteractions, listGuildChannels, listGuildRoles } from "@/lib/discord";
 import { canManageGroup, requireMemberPage } from "@/lib/session";
 import { AdminList, GroupSettingsForm } from "./group-forms";
@@ -25,7 +26,7 @@ export default function GroupSettingsPage() {
 
 async function GroupSettings() {
   const me = await requireMemberPage();
-  const discord = Boolean(process.env.DISCORD_GUILD_ID && process.env.DISCORD_BOT_TOKEN);
+  const discord = DISCORD_BOT;
   const [canManage, members, [saved], channels, roles] = await Promise.all([
     canManageGroup(),
     // Everyone who has signed in
@@ -61,8 +62,9 @@ async function GroupSettings() {
       )}
       {!saved.n && !DEMO && (
         <p className="text-sm text-slate">
-          These start from the site&apos;s environment variables. Once you save here, the site uses what&apos;s saved instead, and the variables
-          can go.
+          {DISCORD_BOT
+            ? "These start from the site's environment variables. Once you save here, the site uses what's saved instead, and the variables can go."
+            : "Start with the group's name and time zone, then invite everyone from People and access, on Settings."}
         </p>
       )}
 
@@ -71,6 +73,7 @@ async function GroupSettings() {
         timeZones={["UTC", ...Intl.supportedValuesOf("timeZone").filter((tz) => tz !== "UTC")]}
         claude={hasAnthropicKey()}
         discord={discord ? { channels, roles, interactions: hasInteractions() } : null}
+        site={{ discordSignIn: DISCORD_SIGN_IN, email: emailReady() }}
         readOnly={DEMO}
       />
 

@@ -16,12 +16,14 @@ export const isDemoMember = (userId: string) => DEMO_PEOPLE.some((p) => p.id ===
 
 /**
  * Why this site can't be a demo, or null when it is. A demo wipes its database every night, so
- * it needs DEMO=on and no Discord bot or server: a real group's site never runs as one.
+ * it needs DEMO=on and none of what a real group's site has set: a Discord bot or server, or a
+ * setup code. resetDemo also refuses a database with real accounts in it.
  */
 export function demoRefusal(env: Record<string, string | undefined>): string | null {
   if (env.DEMO?.trim() !== "on") return "DEMO isn't on";
-  const discord = ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID"].filter((name) => env[name]?.trim());
-  if (discord.length) return `${discord.join(" and ")} ${discord.length === 1 ? "is" : "are"} set, so this is a real group's site`;
+  // A group without Discord sets itself up with SETUP_CODE, so either says it's a real one
+  const real = ["DISCORD_BOT_TOKEN", "DISCORD_GUILD_ID", "SETUP_CODE"].filter((name) => env[name]?.trim());
+  if (real.length) return `${real.join(" and ")} ${real.length === 1 ? "is" : "are"} set, so this is a real group's site`;
   return null;
 }
 

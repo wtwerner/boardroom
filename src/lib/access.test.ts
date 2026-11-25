@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { accessChangeRefusal, capabilities, roleMismatch, signInAccess } from "./access";
+import { accessChangeRefusal, capabilities, passwordAccess, roleMismatch, signInAccess } from "./access";
 
 const first = { inServer: true, hasRole: false, existing: null, casualSignIn: false, casualNight: true } as const;
 
@@ -51,6 +51,25 @@ describe("accessChangeRefusal", () => {
     expect(accessChangeRefusal("u-sam", sam, "casual")).toMatch(/your own/);
     expect(accessChangeRefusal("u-alex", sam, "removed")).toMatch(/admin/);
     expect(accessChangeRefusal("u-alex", sam, "member")).toBeNull();
+  });
+});
+
+describe("passwordAccess", () => {
+  const riley = { enabled: true, existing: "member", casualNight: true } as const;
+
+  it("lets in members, and casual accounts while there's a casual night", () => {
+    expect(passwordAccess(riley)).toEqual({ ok: true });
+    expect(passwordAccess({ ...riley, existing: "casual" })).toEqual({ ok: true });
+    expect(passwordAccess({ ...riley, existing: "casual", casualNight: false })).toEqual({ ok: false, refusal: "missing_role" });
+  });
+
+  it("keeps out someone taken off the site", () => {
+    expect(passwordAccess({ ...riley, existing: "removed" })).toEqual({ ok: false, refusal: "missing_role" });
+    expect(passwordAccess({ ...riley, existing: null })).toEqual({ ok: false, refusal: "missing_role" });
+  });
+
+  it("lets nobody in by password while the group doesn't use them", () => {
+    expect(passwordAccess({ ...riley, enabled: false })).toEqual({ ok: false, refusal: "passwords_off" });
   });
 });
 

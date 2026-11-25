@@ -35,7 +35,7 @@ export async function DevLogin() {
   );
 }
 
-/** A demo's sign-in, in place of Discord's: one tap to be one of the made-up members */
+/** A demo's sign-in, in place of a real group's: one tap to be one of the made-up members */
 export function DemoLogin() {
   return (
     <>
@@ -48,7 +48,7 @@ export function DemoLogin() {
           </button>
         ))}
       </form>
-      <p className="mt-6 text-xs text-felt-ink/60">A real group signs in with Discord. Play around here: it all resets every night.</p>
+      <p className="mt-6 text-xs text-felt-ink/60">In a real group, everyone has an account of their own. Play around here: it all resets every night.</p>
     </>
   );
 }

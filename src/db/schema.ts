@@ -8,7 +8,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/sqlite-core";
-import { ACCESS, DATE_ANSWERS, type MeepleColor, NIGHTS, RSVP_STATUSES, SENTIMENTS, TIERS } from "./enums";
+import { ACCESS, DATE_ANSWERS, LINK_KINDS, type MeepleColor, NIGHTS, RSVP_STATUSES, SENTIMENTS, TIERS } from "./enums";
 
 const timestamps = {
   createdAt: integer("created_at", { mode: "timestamp_ms" })
@@ -42,6 +42,8 @@ export const user = sqliteTable("user", {
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
   /** A member of the core group, or a casual account that only sees the casual night (ACCESS) */
   access: text("access", { enum: ACCESS }).notNull().default("member"),
+  /** Wants emails about events, on a site that sends them. Only someone Discord doesn't reach gets any (reach.ts) */
+  emailUpdates: integer("email_updates", { mode: "boolean" }).notNull().default(true),
   ...timestamps,
 });
 
@@ -79,6 +81,42 @@ export const verification = sqliteTable("verification", {
   identifier: text("identifier").notNull(),
   value: text("value").notNull(),
   expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  ...timestamps,
+});
+
+/** How often each address has tried to sign in, so passwords can't be guessed quickly (Better Auth) */
+export const rateLimit = sqliteTable("rate_limit", {
+  id: text("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  count: integer("count").notNull(),
+  lastRequest: integer("last_request").notNull(),
+});
+
+/**
+ * A link that lets someone in without Discord (account-store.ts): an invite, a new password, or
+ * confirming an email. Only a hash of its token is kept, so the table alone opens nothing.
+ */
+export const accessLink = sqliteTable("access_link", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  kind: text("kind", { enum: LINK_KINDS }).notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  /** Invites: what whoever uses it becomes */
+  access: text("access", { enum: ACCESS }),
+  /** Invites: who it's for, as whoever made it put it */
+  label: text("label"),
+  /** Invites: works for one person, rather than everyone in the group's chat */
+  once: integer("once", { mode: "boolean" }).notNull().default(true),
+  /** Invites: the player in past plays they are */
+  playerId: integer("player_id").references(() => player.id, { onDelete: "set null" }),
+  /** Passwords and emails: whose */
+  userId: text("user_id").references(() => user.id, { onDelete: "cascade" }),
+  /** Emails: the address it confirms */
+  email: text("email"),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+  uses: integer("uses").notNull().default(0),
+  /** Turned off by an admin, or replaced by a newer one */
+  closedAt: integer("closed_at", { mode: "timestamp_ms" }),
   ...timestamps,
 });
 

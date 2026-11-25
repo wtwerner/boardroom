@@ -387,7 +387,7 @@ export async function dateFellThrough(nightId: number, dates: Date[], userId: st
       pollId,
       night: n.night,
       was: n.startsAt,
-      going: rsvps.filter((r) => r.status === "going" || r.status === "waitlist").map((r) => ({ name: r.name, discordId: r.discordId })),
+      going: rsvps.filter((r) => r.status === "going" || r.status === "waitlist").map((r) => ({ name: r.name, discordId: r.discordId, playerId: r.playerId })),
       games: games.length,
     };
   });
