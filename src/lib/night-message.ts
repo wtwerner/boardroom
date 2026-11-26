@@ -61,7 +61,7 @@ export type NightCard = {
 export function buildNightMessage(n: NightCard, ping?: NightPing | null): { flags: number; components: Component[] } {
   const e = n.emoji ?? {};
   const unix = Math.floor(Date.parse(n.startsAt) / 1000);
-  const title = n.cancelled ? `## ~~${escape(n.title)}~~\n${icon(e, "cancelled")} **Cancelled**` : `## ${escape(n.title)}`;
+  const title = n.cancelled ? `## ~~${escape(n.title)}~~\n${icon(e, "cancelled")} **Canceled**` : `## ${escape(n.title)}`;
   const header = [title, n.kindName && `-# ${escape(n.kindName)}`].filter(Boolean).join("\n");
   const lockedIn = n.plan.kind === "vote" ? n.plan.lockedIn : null;
   const count = headcount(n);
@@ -104,7 +104,7 @@ const headcount = (n: NightCard) => n.going.reduce((sum, p) => sum + 1 + (p.gues
  */
 export function buildNightThreadCopy(n: NightCard): { flags: number; components: Component[] } {
   const e = n.emoji ?? {};
-  const tally = n.cancelled ? `${icon(e, "cancelled")} Cancelled` : answerTally(n, e);
+  const tally = n.cancelled ? `${icon(e, "cancelled")} Canceled` : answerTally(n, e);
   return {
     flags: COMPONENTS_V2,
     components: [{ type: TEXT, content: `-# ${tally}` }, ...nightRows(n, e).map((components) => ({ type: ACTION_ROW, components }))],

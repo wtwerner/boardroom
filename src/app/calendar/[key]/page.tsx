@@ -44,7 +44,7 @@ async function AddToCalendar({ params, searchParams }: Pick<PageProps<"/calendar
   const session = await auth.api.getSession({ headers: requestHeaders });
   const event = calendarEvent(night);
   const when = nightWhen(event.startsAt.toISOString(), TIME_ZONE);
-  const closed = night.findingDate ? "This event doesn't have a date yet. Come back once it's set." : night.cancelled ? "This event was cancelled." : nightIsOver(night) ? "This event is over." : null;
+  const closed = night.findingDate ? "This event doesn't have a date yet. Come back once it's set." : night.cancelled ? "This event was canceled." : nightIsOver(night) ? "This event is over." : null;
   const device = deviceFrom(requestHeaders.get("user-agent"));
   // Signed out usually means Discord's own browser, which has no site session. Most of a casual
   // night's people have no account, so the site would only stop them at sign-in.
@@ -78,7 +78,7 @@ async function AddToCalendar({ params, searchParams }: Pick<PageProps<"/calendar
       <Panel className="space-y-3 p-4">
         <div>
           <h2 className="font-semibold">All your events</h2>
-          <p className="text-sm text-slate">Every event you say Going or Maybe to, kept up to date when they move or get cancelled.</p>
+          <p className="text-sm text-slate">Every event you say Going or Maybe to, kept up to date when they move or get canceled.</p>
         </div>
         {session ? (
           <form action={openCalendarSync}>

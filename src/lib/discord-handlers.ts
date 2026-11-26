@@ -128,7 +128,7 @@ async function command(i: Interaction) {
   if (sub === "edit") return editForm(await ownNight(nightId));
   if (sub === "cancel") {
     const n = await ownNight(nightId);
-    if (n.cancelled) return reply("That event is already cancelled.");
+    if (n.cancelled) return reply("That event is already canceled.");
     return ask(`Cancel **${n.title}** (<t:${unix(n.startsAt)}:F>)? Its post will say so, and it leaves the list of events.`, [
       { label: "Cancel the event", customId: actionId({ kind: "cancel", nightId: n.id }), danger: true },
     ]);
@@ -190,7 +190,7 @@ async function component(i: Interaction) {
   }
   if (action.kind === "for") {
     if (!(await mayAnswer(i, n.night))) return reply(NOT_THIS_ONE());
-    if (n.cancelled) return reply("That event was cancelled.");
+    if (n.cancelled) return reply("That event was canceled.");
     return modal(actionId({ kind: "for", nightId: n.id }), "Answer for someone else", [
       { id: "who", label: "Who", user: true, placeholder: "Someone in the server" },
       { id: "name", label: "Or their name", placeholder: "Someone who isn't in Discord", maxLength: 40 },
@@ -206,13 +206,13 @@ async function component(i: Interaction) {
   after(async () => {
     try {
       await syncNightPost(n.id);
-      await postInThread(n.id, `❌ <@${i.member!.user.id}> cancelled the event.`);
+      await postInThread(n.id, `❌ <@${i.member!.user.id}> canceled the event.`);
     } catch (err) {
       console.error(`Couldn't mark night ${n.id} cancelled in Discord`, err);
     }
     await emailNightOff(n.id, { name: memberName(i) });
   });
-  return updateReply(`Cancelled **${n.title}**.`);
+  return updateReply(`Canceled **${n.title}**.`);
 }
 
 /** Their links for adding this night, with a sync link once they're a player (answering makes them one) */
@@ -267,7 +267,7 @@ async function submitted(i: Interaction) {
  * they say, and which dates on offer stay
  */
 async function refindForm(n: typeof schema.gameNight.$inferSelect) {
-  if (n.cancelled) return reply("That event was cancelled.");
+  if (n.cancelled) return reply("That event was canceled.");
   if (n.findingDate) return reply("It's finding a date already.");
   const staying = await datesStaying(n.id);
   return modal(actionId({ kind: "refind", nightId: n.id }), "Date fell through", [
@@ -455,7 +455,7 @@ async function newNight(i: Interaction, form: Record<string, string>, capacity: 
 }
 
 function editForm(n: typeof schema.gameNight.$inferSelect) {
-  if (n.cancelled) return reply("That event was cancelled.");
+  if (n.cancelled) return reply("That event was canceled.");
   const shown = formatForForm(n.startsAt, TIME_ZONE);
   return modal(actionId({ kind: "edit", nightId: n.id }), "Change the event", [
     { id: "title", label: "Title", value: n.title, required: true, maxLength: 100 },

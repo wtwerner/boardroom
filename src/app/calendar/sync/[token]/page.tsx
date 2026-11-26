@@ -74,7 +74,7 @@ async function SyncCalendar({ params, searchParams }: Pick<PageProps<"/calendar/
     <CalendarShell {...shell}>
       <header className="space-y-1">
         <h1 className="font-display text-2xl leading-tight">Sync my events</h1>
-        <p className="text-slate">Your calendar shows every event you say Going or Maybe to, and updates when they move or get cancelled.</p>
+        <p className="text-slate">Your calendar shows every event you say Going or Maybe to, and updates when they move or get canceled.</p>
       </header>
 
       <Panel className="space-y-3 p-4">

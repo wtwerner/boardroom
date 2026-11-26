@@ -77,7 +77,7 @@ describe("buildNightAnnouncement", () => {
 
   it("says a night was cancelled, without its answers", () => {
     const text = componentText(buildNightAnnouncement({ ...night, cancelled: true }, post).components);
-    expect(text).toContain("~~11/12 Game Night — TBD~~\n🚫 **Cancelled**");
+    expect(text).toContain("~~11/12 Game Night — TBD~~\n🚫 **Canceled**");
     expect(text).not.toContain("going");
   });
 

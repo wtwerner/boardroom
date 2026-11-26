@@ -375,7 +375,7 @@ function NightHeader({
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="font-display text-2xl leading-tight sm:text-3xl">{n.title}</h1>
           <NightTag night={n.night} />
-          {n.cancelled && <span className="rounded-full bg-meeple-red/12 px-2 py-0.5 text-xs font-medium">Cancelled</span>}
+          {n.cancelled && <span className="rounded-full bg-meeple-red/12 px-2 py-0.5 text-xs font-medium">Canceled</span>}
         </div>
         <p className="text-slate">
           {n.findingDate ? (

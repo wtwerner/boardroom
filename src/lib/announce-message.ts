@@ -16,7 +16,7 @@ const unix = (iso: string) => Math.floor(Date.parse(iso) / 1000);
 export function buildNightAnnouncement(n: NightCard, postUrl: string | null, ping?: NightPing | null): { flags: number; components: Component[] } {
   const e = n.emoji ?? {};
   const at = unix(n.startsAt);
-  const title = n.cancelled ? `### ~~${escape(n.title)}~~\n${icon(e, "cancelled")} **Cancelled**` : `### ${escape(n.title)}`;
+  const title = n.cancelled ? `### ~~${escape(n.title)}~~\n${icon(e, "cancelled")} **Canceled**` : `### ${escape(n.title)}`;
   const header = [title, n.kindName && `-# ${escape(n.kindName)}`].filter(Boolean).join("\n");
   const lockedIn = n.plan.kind === "vote" ? n.plan.lockedIn : null;
   const details = [
