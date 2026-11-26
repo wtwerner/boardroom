@@ -100,6 +100,13 @@ export const auth = betterAuth({
   // Discord's own profile). Profile fields mapped onto the user are dropped when the
   // field is `input: false`, and making it `input: true` would let people edit it.
   databaseHooks: {
+    user: {
+      create: {
+        // Discord says whether it checked the address, but that's not the same as someone choosing to get
+        // emails at it: emails about events go to an address confirmed here (reach.ts)
+        before: async (user) => ({ data: { ...user, emailVerified: false } }),
+      },
+    },
     account: {
       create: {
         // The first sign-in: the member role decides whether they're a member or a casual account.

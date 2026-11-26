@@ -13,7 +13,7 @@ import { hasBggToken } from "@/lib/bgg";
 import { emailReady } from "@/lib/email";
 import { isPlaceholderEmail } from "@/lib/join";
 import { ConnectDiscord, ConfirmEmail, EmailForm, EmailUpdates, PasswordForm } from "./account-forms";
-import { anyServerMemberCanSignIn, listGuildMembers } from "@/lib/discord";
+import { anyServerMemberCanSignIn, listGuildMembers, postsNights } from "@/lib/discord";
 import { BgaForm, BggForm, CalendarSync, ColorPicker, CsvForm, MergePlayersForm, PlayerDiscordLink, RenamePlayerForm, SignOutButton, SplitPlayerForm } from "./settings-forms";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -52,7 +52,7 @@ async function Settings() {
     db.select({ name: schema.user.name }).from(schema.user).where(eq(schema.user.isAdmin, true)),
     me.playerId ? db.query.player.findFirst({ where: eq(schema.player.id, me.playerId), columns: { calendarToken: true } }) : null,
     db
-      .select({ email: schema.user.email, verified: schema.user.emailVerified, updates: schema.user.emailUpdates, discordId: schema.user.discordId })
+      .select({ email: schema.user.email, verified: schema.user.emailVerified, updates: schema.user.emailUpdates, too: schema.user.emailToo, discordId: schema.user.discordId })
       .from(schema.user)
       .where(eq(schema.user.id, me.id)),
     db.select({ provider: schema.account.providerId }).from(schema.account).where(eq(schema.account.userId, me.id)),
@@ -127,9 +127,9 @@ async function Settings() {
             {emailReady() && !isPlaceholderEmail(account.email) && (
               <div className="space-y-3 border-t border-line pt-4 first:border-0 first:pt-0">
                 {account.verified ? (
-                  <EmailUpdates on={account.updates} discord={DISCORD_BOT && Boolean(account.discordId)} email={account.email} />
+                  <EmailUpdates on={account.updates} too={account.too} discord={DISCORD_BOT && Boolean(account.discordId) && postsNights(me.access === "member" ? "core" : "casual")} email={account.email} />
                 ) : (
-                  <ConfirmEmail email={account.email} />
+                  <ConfirmEmail email={account.email} password={hasPassword} />
                 )}
               </div>
             )}

@@ -42,8 +42,10 @@ export const user = sqliteTable("user", {
   isAdmin: integer("is_admin", { mode: "boolean" }).notNull().default(false),
   /** A member of the core group, or a casual account that only sees the casual night (ACCESS) */
   access: text("access", { enum: ACCESS }).notNull().default("member"),
-  /** Wants emails about events, on a site that sends them. Only someone Discord doesn't reach gets any (reach.ts) */
+  /** Wants emails about events, on a site that sends them, to a confirmed address (reach.ts) */
   emailUpdates: integer("email_updates", { mode: "boolean" }).notNull().default(true),
+  /** Someone Discord reaches who wants emails about events as well */
+  emailToo: integer("email_too", { mode: "boolean" }).notNull().default(false),
   ...timestamps,
 });
 

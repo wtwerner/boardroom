@@ -15,6 +15,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   // Icons and link previews must load before anyone is signed in. A night's calendar pages open
   // from Discord, signed in or not: the secret in their address is what lets people in. So are
-  // invites, and links to choose a password or confirm an email; a new site is set up before anyone can be.
-  matcher: ["/((?!sign-in|setup$|join/|password/|confirm/|calendar/|api|_next|icon|apple-icon|opengraph-image|.*\\.).*)"],
+  // invites, links to choose a password or confirm an email, and an email's link to stop them; a new site is set up before anyone can be.
+  matcher: ["/((?!sign-in|setup$|join/|password/|confirm/|email/stop/|calendar/|api|_next|icon|apple-icon|opengraph-image|.*\\.).*)"],
 };

@@ -8,7 +8,7 @@ import { LINK_HOURS, expiryFor, hashToken, linkPath, linkProblem, newToken } fro
 import { auth } from "./auth";
 import { isDevLoginEnabled } from "./dev-login";
 import { emailReady, sendEmail } from "./email";
-import { confirmEmail as confirmMessage, passwordReset } from "./email-message";
+import { buildEmail, confirmEmail as confirmMessage, passwordReset } from "./email-message";
 import { type JoinFields, isPlaceholderEmail } from "./join";
 import { linkPlayer } from "./player-link";
 import { setupProblem } from "./setup-code";
@@ -230,7 +230,7 @@ export async function sendPasswordReset(email: string) {
   const uses = await db.query.account.findFirst({ where: and(eq(schema.account.userId, u.id), eq(schema.account.providerId, "credential")), columns: { id: true } });
   if (!uses || (await sentLately("password", u.id))) return;
   const path = await makePasswordLink(u.id, null);
-  await sendEmail(u.email, passwordReset({ name: u.name }, { siteName: SITE_NAME, url: `${SITE_URL}${path}` }));
+  await sendEmail(u.email, buildEmail(passwordReset({ name: u.name, siteName: SITE_NAME }, { url: `${SITE_URL}${path}` }), { siteName: SITE_NAME }));
 }
 
 /** Email someone a link to confirm their address. False when the site can't, or just did */
@@ -238,8 +238,9 @@ export async function sendConfirmation(userId: string) {
   if (!emailReady()) return false;
   const u = await db.query.user.findFirst({ where: eq(schema.user.id, userId) });
   if (!u || u.emailVerified || isPlaceholderEmail(u.email) || (await sentLately("email", userId))) return false;
+  const password = await db.query.account.findFirst({ where: and(eq(schema.account.userId, userId), eq(schema.account.providerId, "credential")), columns: { id: true } });
   const path = await makeLink({ kind: "email", userId, email: u.email }, LINK_HOURS.email);
-  return sendEmail(u.email, confirmMessage({ name: u.name }, { siteName: SITE_NAME, url: `${SITE_URL}${path}` }));
+  return sendEmail(u.email, buildEmail(confirmMessage({ name: u.name, siteName: SITE_NAME, password: Boolean(password) }, { url: `${SITE_URL}${path}` }), { siteName: SITE_NAME }));
 }
 
 /** Their address is theirs. One they've changed since doesn't count */

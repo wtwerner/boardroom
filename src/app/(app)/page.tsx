@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import clsx from "clsx";
 import { CASUAL_NIGHT, NIGHT_NAMES, PASSWORD_SIGN_IN } from "@/config";
 import { canPostToDiscord, postsNights } from "@/lib/discord";
@@ -33,6 +33,7 @@ import { TIER_LABEL, TIER_TAG } from "@/lib/tier";
 import { listNames } from "@/lib/discord-components";
 import { setupProgress, setupSteps } from "@/lib/setup";
 import { tierHref } from "./rankings/tabs";
+import { EmailPrompt } from "./email-prompt";
 import { inSentence } from "@/lib/text";
 
 export default function HomePage() {
@@ -74,7 +75,7 @@ async function Home() {
   const onNow = plans.filter(isOn);
   const comingUp = plans.filter((n) => !isOn(n));
 
-  if (stats.all.plays === 0) return <FirstRun name={me.name} canInvite={PASSWORD_SIGN_IN && (await canManageGroup())} />;
+  if (stats.all.plays === 0) return <FirstRun name={me.name} canInvite={PASSWORD_SIGN_IN && (await canManageGroup())} prompt={<EmailPrompt me={me} />} />;
 
   const reviewCount = review.reduce((n, r) => n + r.count, 0);
   // A game played twice that night gets one cover
@@ -101,6 +102,7 @@ async function Home() {
   return (
     <div className="space-y-10">
       <SetupNudge name={me.name} status={setup} toRank={toRank} />
+      <EmailPrompt me={me} />
       <NewMembers members={newMembers.filter((m) => m.id !== me.id)} />
       {onNow.length > 0 && <HappeningNow nights={onNow} members={members} />}
       {toAnswer.length > 0 && <DatesToAnswer events={toAnswer} />}
@@ -552,6 +554,7 @@ async function CasualHome({ me }: { me: CurrentUser }) {
   return (
     <div className="space-y-10">
       <SetupNudge name={me.name} status={setup} toRank={toRank} casual />
+      <EmailPrompt me={me} />
       {onNow.length > 0 && <HappeningNow nights={onNow} members={crowd} />}
       {picking.length > 0 && <CasualDatesToAnswer events={picking} />}
       {comingUp.length > 0 ? (
@@ -664,9 +667,10 @@ function NightTag({ tier }: { tier: Tier }) {
   );
 }
 
-function FirstRun({ name, canInvite }: { name: string; canInvite: boolean }) {
+function FirstRun({ name, canInvite, prompt }: { name: string; canInvite: boolean; prompt: ReactNode }) {
   return (
     <div className="max-w-xl">
+      <div className="mb-6 empty:hidden">{prompt}</div>
       <h1 className="font-display text-4xl">Welcome, {name}</h1>
       <p className="mt-3 text-slate">Nothing&apos;s been logged yet. {canInvite ? "A few" : "Two"} things get the table set:</p>
       <Panel className="mt-6 divide-y divide-line">

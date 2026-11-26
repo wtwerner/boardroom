@@ -2,7 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import clsx from "clsx";
-import { type ActionResult, saveEmail, sendConfirmation, setEmailUpdates } from "@/app/actions";
+import { type ActionResult, type EmailChoice, saveEmail, sendConfirmation, setEmailChoice } from "@/app/actions";
 import { buttonClass } from "@/components/ui";
 import { authClient } from "@/lib/auth-client";
 import { PASSWORD_MAX, PASSWORD_MIN } from "@/lib/join";
@@ -128,46 +128,60 @@ export function ConnectDiscord() {
   );
 }
 
-export function EmailUpdates({ on, discord, email }: { on: boolean; /** Events reach them in Discord */ discord: boolean; email: string }) {
+/** Whether I get emails about events. Someone Discord reaches picks between it alone, it and email, or no email at all */
+export function EmailUpdates({ on, too, discord, email }: { on: boolean; too: boolean; /** Events reach them in Discord */ discord: boolean; email: string }) {
   const [pending, start] = useTransition();
-  const [checked, setChecked] = useState(on);
-  return (
-    <label className="flex items-start gap-3">
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={pending}
-        onChange={(e) => {
-          const next = e.target.checked;
-          setChecked(next);
-          start(async () => {
-            const res = await setEmailUpdates(next);
-            if (!res.ok) setChecked(!next);
-          });
-        }}
-        className="mt-0.5 size-4 accent-[var(--felt)]"
-      />
-      <span>
-        <span className="block text-sm font-medium">Email me about events</span>
-        <span className="block text-xs text-slate">
-          New ones, dates to pick, changes and reminders, to {email}.{discord && " What you hear about in Discord isn't emailed too."}
+  const [choice, setChoice] = useState<EmailChoice>(!on ? "off" : too ? "both" : "discord");
+  const choose = (next: EmailChoice) => {
+    const was = choice;
+    setChoice(next);
+    start(async () => {
+      if (!(await setEmailChoice(next)).ok) setChoice(was);
+    });
+  };
+  if (!discord) {
+    return (
+      <label className="flex items-start gap-3">
+        <input type="checkbox" checked={choice !== "off"} disabled={pending} onChange={(e) => choose(e.target.checked ? "discord" : "off")} className="mt-0.5 size-4 accent-[var(--felt)]" />
+        <span>
+          <span className="block text-sm font-medium">Email me about events</span>
+          <span className="block text-xs text-slate">New ones, dates to pick, changes and reminders, to {email}.</span>
         </span>
-      </span>
-    </label>
+      </label>
+    );
+  }
+  const options: { value: EmailChoice; label: string; hint: string }[] = [
+    { value: "discord", label: "In Discord", hint: "And by email only when Discord can't reach you, like a DM you don't take." },
+    { value: "both", label: "In Discord and by email", hint: `New events, dates to pick, changes and reminders to ${email} as well.` },
+    { value: "off", label: "Never by email", hint: "Only in Discord." },
+  ];
+  return (
+    <fieldset className="space-y-2" disabled={pending}>
+      <legend className="mb-1 text-sm font-medium">Where you hear about events</legend>
+      {options.map((o) => (
+        <label key={o.value} className="flex items-start gap-3">
+          <input type="radio" name="email-choice" checked={choice === o.value} onChange={() => choose(o.value)} className="mt-0.5 size-4 accent-[var(--felt)]" />
+          <span>
+            <span className="block text-sm">{o.label}</span>
+            <span className="block text-xs text-slate">{o.hint}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
   );
 }
 
-export function ConfirmEmail({ email }: { email: string }) {
+/** For someone who signs in with Discord, the address is Discord's. `password`: they can sign in with one too */
+export function ConfirmEmail({ email, password }: { email: string; password: boolean }) {
   const [pending, start] = useTransition();
   const [state, setState] = useState<ActionResult | null>(null);
   return (
     <div className="space-y-2">
       <p className="text-sm text-slate">
-        Confirm <strong className="font-medium text-ink">{email}</strong> to get emails about events, and to get back in if you forget your password. The link was
-        emailed to you.
+        Confirm <strong className="font-medium text-ink">{email}</strong> to get emails about events{password && ", and to get back in if you forget your password"}.
       </p>
       <button type="button" disabled={pending} onClick={() => start(async () => setState(await sendConfirmation()))} className={buttonClass("secondary")}>
-        {pending ? "Sending…" : "Send it again"}
+        {pending ? "Sending…" : "Email me a link"}
       </button>
       <Result state={state} />
     </div>

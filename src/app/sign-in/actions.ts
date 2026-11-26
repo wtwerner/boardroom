@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { APIError } from "better-auth/api";
 import { DEMO } from "@/config";
 import { acceptInvite, choosePassword, confirmEmailFrom, sendPasswordReset, setupSite } from "@/lib/account-store";
+import { stopEmails } from "@/lib/email-stop-store";
 import { auth } from "@/lib/auth";
 import { EmailInput, JoinInput, PasswordInput } from "@/lib/join";
 import { loadSettings } from "@/lib/settings-store";
@@ -101,4 +102,14 @@ export async function confirmEmail(token: string): Promise<SignInResult> {
     return failed(err);
   }
   return { ok: true, message: "Thanks, that's confirmed." };
+}
+
+/** From an email's stop link: the signed key says whose emails, so it works without signing in */
+export async function stopEmailsFrom(key: string): Promise<SignInResult> {
+  try {
+    if (!(await stopEmails(key))) return { ok: false, error: "That link isn't one of ours. Sign in and turn emails off on Settings instead." };
+  } catch (err) {
+    return failed(err);
+  }
+  return { ok: true, message: "Done: no more emails about events. You can turn them back on in Settings." };
 }

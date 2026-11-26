@@ -99,9 +99,12 @@ export async function sendLogNudges(now = new Date()) {
     try {
       await sendDirectMessage(creator.discordId, logNudgeDm({ title: row.title, url: SITE_URL ? `${SITE_URL}/events/${row.id}#log` : null, siteName: SITE_NAME }));
       nudged.push(row.id);
+      // Asked for email as well
+      await emailLogNudge(row.createdBy!, row);
     } catch (err) {
-      // Asked once: someone who doesn't take DMs (50007) won't start to by the next tick
+      // Asked once: someone who doesn't take DMs (50007) won't start to by the next tick, so they're emailed instead
       if (discordCode(err) !== 50007) console.error(`Couldn't ask about logging night ${row.id}`, err);
+      if (await emailLogNudge(row.createdBy!, row, { dmFailed: true })) nudged.push(row.id);
     }
   }
   return nudged;
@@ -165,8 +168,10 @@ export async function sendRateNudges(now = new Date()) {
       try {
         await sendDirectMessage(discordId, rateNudgeDm({ title: row.title, games: ask.games, url: SITE_URL ? `${SITE_URL}/rankings/rate` : null, siteName: SITE_NAME }));
         asked.push(ask.userId);
+        await emailRateNudge(ask.userId, row, ask.games);
       } catch (err) {
         if (discordCode(err) !== 50007) console.error(`Couldn't ask ${ask.userId} to rate night ${row.id}'s games`, err);
+        if (await emailRateNudge(ask.userId, row, ask.games, { dmFailed: true })) asked.push(ask.userId);
       }
     }
   }

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { buttonClass } from "@/components/ui";
 import { authClient } from "@/lib/auth-client";
 import { PASSWORD_MAX, PASSWORD_MIN } from "@/lib/join";
-import { type SignInResult, confirmEmail, forgotPassword, joinGroup, setPassword, setUpSite } from "./actions";
+import { type SignInResult, confirmEmail, forgotPassword, joinGroup, setPassword, setUpSite, stopEmailsFrom } from "./actions";
 
 const input = "w-full rounded-lg border border-felt-ink/40 bg-black/20 px-3 py-2.5 text-base text-felt-ink placeholder:text-felt-ink/50";
 
@@ -218,6 +218,20 @@ export function ConfirmForm({ token }: { token: string }) {
       <Said state={state} />
       <Submit pending={pending} busy="Confirming…">
         Confirm my email
+      </Submit>
+    </form>
+  );
+}
+
+/** A button, not the link itself: mail programs open links to check them */
+export function StopEmailsForm({ stopKey }: { stopKey: string }) {
+  const [state, action, pending] = useActionState<SignInResult | null>(() => stopEmailsFrom(stopKey), null);
+  if (state?.ok) return <Said state={state} />;
+  return (
+    <form action={action} className="space-y-4">
+      <Said state={state} />
+      <Submit pending={pending} busy="Stopping…">
+        Stop emails about events
       </Submit>
     </form>
   );

@@ -35,7 +35,7 @@ import { canWelcome, welcomeCandidate, welcomeName, welcomeToGroup as welcome } 
 import { accessChangeRefusal } from "@/lib/access";
 import { changeEmail, closeInvite as saveInviteClosed, makeInvite as saveInvite, makePasswordLink as savePasswordLink, sendConfirmation as emailConfirmation } from "@/lib/account-store";
 import { EmailInput } from "@/lib/join";
-import { canEmailAny, emailBeforeDelete, emailBringAsk } from "@/lib/event-email";
+import { canEmailAny, emailBeforeDelete, emailBringAsk, emailMadeMember } from "@/lib/event-email";
 import { addPollDate, createPoll, dateFellThrough as saveFellThrough, loadPoll, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, setDecideBy, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
 import { announceDateSetLater, announceFellThroughLater, answeredLater, nudgeLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
@@ -609,13 +609,16 @@ export async function saveEmail(_prev: ActionResult | null, form: FormData): Pro
 export async function sendConfirmation(): Promise<ActionResult> {
   const me = await requireUser();
   const sent = await emailConfirmation(me.id);
-  return sent ? { ok: true, message: "Sent. Open the link in it." } : { ok: false, error: "One went a few minutes ago. Check your spam, or try again in a bit." };
+  return sent ? { ok: true, message: "Sent. Open the link in it, and check spam if it isn't there in a few minutes." } : { ok: false, error: "One went a few minutes ago. Check your spam, or try again in a bit." };
 }
 
-/** Whether I get emails about events */
-export async function setEmailUpdates(on: boolean): Promise<ActionResult> {
+export type EmailChoice = "discord" | "both" | "off";
+
+/** Whether I get emails about events: only what Discord doesn't tell me, all of them, or none (reach.ts) */
+export async function setEmailChoice(choice: EmailChoice): Promise<ActionResult> {
   const me = await requireUser();
-  await db.update(schema.user).set({ emailUpdates: on === true }).where(eq(schema.user.id, me.id));
+  if (!["discord", "both", "off"].includes(choice)) return { ok: false, error: "Pick one." };
+  await db.update(schema.user).set({ emailUpdates: choice !== "off", emailToo: choice === "both" }).where(eq(schema.user.id, me.id));
   refresh();
   return { ok: true };
 }
@@ -866,7 +869,9 @@ export async function setAccess(userId: string, to: Access): Promise<ActionResul
     }
 
     const discord = await matchRole(target.discordId, to, me.name);
-    return { ok: true, message: [said + events, discord].filter(Boolean).join(" ") };
+    // Nobody welcomed them in Discord, so they hear it by email if they can
+    const emailed = to === "member" && target.access === "casual" && (await emailMadeMember(userId, me.name));
+    return { ok: true, message: [said + events, emailed && "They've been emailed to say so.", discord].filter(Boolean).join(" ") };
   } catch (err) {
     return fail(err);
   }
@@ -1388,11 +1393,14 @@ export async function askToBring(nightId: number, gameId: number, ownerId: strin
       owner.discordId,
       bringAskDm({ planId, game: g.name, night: { title: n.title, startsAt: n.startsAt.toISOString() }, by: me.name, url: SITE_URL ? `${SITE_URL}/events/${n.id}` : null }),
     );
+    // Asked for email as well
+    await emailBringAsk(owner.id, n, g.name, me.name);
     return { ok: true, message: `Asked ${owner.name}. They've got a DM to answer.` };
   } catch (err) {
     if (discordCode(err) !== 50007) console.error(`Couldn't DM ${owner.id} about bringing ${gameId}`, err);
+    if (await emailBringAsk(owner.id, n, g.name, me.name, { dmFailed: true })) return { ok: true, message: `Asked ${owner.name} by email, since Discord wouldn't take a DM.` };
     const why = discordCode(err) === 50007 ? "they don't take DMs" : "the DM didn't go through";
-    return { ok: true, message: `Asked ${owner.name}, but ${why}, so give them a nudge.` };
+    return { ok: true, message: `Asked ${owner.name}, but ${why}, so give them a nudge. They'll see it on the event's page.` };
   }
 }
 

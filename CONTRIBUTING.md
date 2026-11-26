@@ -46,7 +46,7 @@ Nights' buttons and `/event` need Discord to reach your machine: give the test a
 - Config values are live bindings that `loadSettings()` fills in: read them where they're used, never into a constant at the top of a module. A new page, route or script awaits `loadSettings()` (or `requireUser()`, which does it) before reading one.
 - Mutations that change the group's settings start with `requireAdmin()` instead.
 - Casual-night UI and copy only show when `CASUAL_NIGHT` is on, so the site reads right for a group with one kind of night.
-- The same goes for Discord: text that mentions it only shows when the site has it (`DISCORD_BOT`, `DISCORD_SIGN_IN`, or `postsNights` and `canPostToDiscord` for what's posted). Anything people are told in Discord about an event, people it doesn't reach are emailed (`src/lib/event-email.ts`, from the same place). A route people open signed out goes in `src/proxy.ts`'s matcher.
+- The same goes for Discord: text that mentions it only shows when the site has it (`DISCORD_BOT`, `DISCORD_SIGN_IN`, or `postsNights` and `canPostToDiscord` for what's posted). Anything people are told in Discord about an event, people it doesn't reach are emailed (`src/lib/event-email.ts`, from the same place), and a DM that doesn't go through falls back to email. A route people open signed out goes in `src/proxy.ts`'s matcher.
 - And for Claude and `CLAUDE`: off, the site never calls Claude or mentions it. Check `claudeReady()` from `src/lib/ai.ts` before calling it.
 - `src/config.ts` is server only. Client components get its values as props.
 - When a number, score or vote rule changes, update the site's How it works page (`src/app/(app)/about/page.tsx`) and [docs/how-it-works.md](docs/how-it-works.md).

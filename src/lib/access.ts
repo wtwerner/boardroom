@@ -117,7 +117,7 @@ export function capabilities(names: { core: string; casual: string }, { discord 
       admin: "yes",
       member: "yes",
       casual: "yes",
-      actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv", "saveBgaProfile", "saveEmail", "sendConfirmation", "setEmailUpdates"],
+      actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv", "saveBgaProfile", "saveEmail", "sendConfirmation", "setEmailChoice"],
     },
     { area: "Seeing", what: "Every page: Home, Plan, Plays, Shelf, Rankings, People, Discover, Online", admin: "yes", member: "yes", casual: "yes", actions: [] },
     { area: "Seeing", what: `The ${names.core}'s events, plays and group list`, admin: "yes", member: "yes", casual: "no", actions: [] },

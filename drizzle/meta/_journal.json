@@ -134,6 +134,13 @@
       "when": 1795576297161,
       "tag": "0018_nice_harrier",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1795665213978,
+      "tag": "0019_regular_shotgun",
+      "breakpoints": true
     }
   ]
 }
