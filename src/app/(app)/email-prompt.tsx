@@ -29,12 +29,12 @@ export async function EmailPrompt({ me }: { me: CurrentUser }) {
     <section aria-labelledby="email-prompt" className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border border-line bg-card px-4 py-3">
       <div className="min-w-0 flex-1 basis-64">
         <h2 id="email-prompt" className="text-sm font-semibold">
-          {link ? "Check your email" : "Get emails about events?"}
+          {link ? "Check your email" : "Want emails about events?"}
         </h2>
         <p className="text-sm text-slate">
           {link
-            ? `A link to confirm ${u.email} is on its way. Open it, and new events, date polls and reminders come to you there.`
-            : `New events, date polls and reminders, to ${u.email}. Confirm it's yours first.`}
+            ? `We sent a link to ${u.email}. Click it and you're set.`
+            : `We can email ${u.email} about new events, date polls and reminders. You'll need to confirm the address first.`}
         </p>
       </div>
       <EmailPromptButtons sent={Boolean(link)} />

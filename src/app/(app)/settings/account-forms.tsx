@@ -145,19 +145,19 @@ export function EmailUpdates({ on, too, discord, email }: { on: boolean; too: bo
         <input type="checkbox" checked={choice !== "off"} disabled={pending} onChange={(e) => choose(e.target.checked ? "discord" : "off")} className="mt-0.5 size-4 accent-[var(--felt)]" />
         <span>
           <span className="block text-sm font-medium">Email me about events</span>
-          <span className="block text-xs text-slate">New ones, dates to pick, changes and reminders, to {email}.</span>
+          <span className="block text-xs text-slate">New events, date polls, changes and reminders, sent to {email}.</span>
         </span>
       </label>
     );
   }
   const options: { value: EmailChoice; label: string; hint: string }[] = [
-    { value: "discord", label: "In Discord", hint: "And by email only when Discord can't reach you, like a DM you don't take." },
-    { value: "both", label: "In Discord and by email", hint: `New events, dates to pick, changes and reminders to ${email} as well.` },
-    { value: "off", label: "Never by email", hint: "Only in Discord." },
+    { value: "discord", label: "Discord", hint: "We'll only email you when Discord can't reach you, like when your DMs are closed." },
+    { value: "both", label: "Discord and email", hint: `Everything also goes to ${email}.` },
+    { value: "off", label: "Discord only", hint: "Never email me." },
   ];
   return (
     <fieldset className="space-y-2" disabled={pending}>
-      <legend className="mb-1 text-sm font-medium">Where you hear about events</legend>
+      <legend className="mb-1 text-sm font-medium">How you hear about events</legend>
       {options.map((o) => (
         <label key={o.value} className="flex items-start gap-3">
           <input type="radio" name="email-choice" checked={choice === o.value} onChange={() => choose(o.value)} className="mt-0.5 size-4 accent-[var(--felt)]" />
@@ -178,10 +178,10 @@ export function ConfirmEmail({ email, password }: { email: string; password: boo
   return (
     <div className="space-y-2">
       <p className="text-sm text-slate">
-        Confirm <strong className="font-medium text-ink">{email}</strong> to get emails about events{password && ", and to get back in if you forget your password"}.
+        Confirm <strong className="font-medium text-ink">{email}</strong> to get emails about events{password && " and to be able to reset your password"}.
       </p>
       <button type="button" disabled={pending} onClick={() => start(async () => setState(await sendConfirmation()))} className={buttonClass("secondary")}>
-        {pending ? "Sending…" : "Email me a link"}
+        {pending ? "Sending…" : "Send the link"}
       </button>
       <Result state={state} />
     </div>

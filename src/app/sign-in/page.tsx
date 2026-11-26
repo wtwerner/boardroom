@@ -66,7 +66,7 @@ async function WaysIn() {
         </Suspense>
       )}
       <PasswordSignIn canReset={emailReady()} />
-      <p className="mt-6 text-xs text-felt-ink/60">New here? Ask someone who looks after the group for an invite.</p>
+      <p className="mt-6 text-xs text-felt-ink/60">New here? Ask whoever runs the group for an invite.</p>
     </>
   );
 }

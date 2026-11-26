@@ -120,11 +120,11 @@ export function InviteForm({ players, casual, limit }: { players: Player[]; /** 
       </div>
       <p className="text-xs text-slate">
         {group
-          ? `Anyone with the link can make an account for ${limit.days === 1 ? "a day" : `${limit.days} days`}, up to ${limit.people === 1 ? "1 person" : `${limit.people} people`}. Send it only where the group talks. The limits are on Group settings.`
-          : "Works once, for two weeks. Choosing their name in past plays gives them those plays."}
+          ? `Anyone with this link can join for the next ${limit.days === 1 ? "day" : `${limit.days} days`}, up to ${limit.people === 1 ? "1 person" : `${limit.people} people`}. Only share it where the group talks. You can change these limits in Group settings.`
+          : "It works once and expires in two weeks. If you pick their name from past plays, those plays become theirs."}
         {access === "member" && " Members can edit and delete the group's plays and events."}
       </p>
-      {result?.ok && result.link && <NewLink link={result.link} note="Copy it now: it's only shown this once. You can turn it off below." />}
+      {result?.ok && result.link && <NewLink link={result.link} note="Copy it now. You won't see it again, but you can turn it off below." />}
       <Failed result={result} />
     </form>
   );
@@ -159,7 +159,7 @@ export function PasswordLinkButton({ userId, name }: { userId: string; name: str
       >
         Password link
       </button>
-      {result?.ok && result.link && <NewLink link={result.link} note={`Send it to ${name} and nobody else. It works once, for a day.`} />}
+      {result?.ok && result.link && <NewLink link={result.link} note={`Send it to ${name} and nobody else. It works once, for the next 24 hours.`} />}
       <Failed result={result} />
     </>
   );

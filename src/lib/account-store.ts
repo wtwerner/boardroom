@@ -27,7 +27,7 @@ const PROBLEM = {
   used: "That link has been used already. Ask for a new one.",
   expired: "That link has expired. Ask for a new one.",
   closed: "That link was turned off. Ask for a new one.",
-  gone: "That link doesn't work. Check you have all of it, or ask for a new one.",
+  gone: "That link doesn't work. Make sure you copied all of it, or ask for a new one.",
 };
 
 const EMAIL_TAKEN = "There's already an account with that email. Sign in, or use another.";

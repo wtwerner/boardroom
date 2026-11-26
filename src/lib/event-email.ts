@@ -217,8 +217,10 @@ export const emailPollReady = (poll: PollDetail, why: "answered" | "decide", bes
   quietly(`poll ${poll.id}`, async () => {
     const n = await loadNight(poll.nightId);
     if (!n || !poll.createdBy) return;
-    const line = best ? `${say.emailWhen(best.startsAt, TIME_ZONE)}, when ${best.coming} can come` : null;
-    const draft = say.pollReady({ title: n.title || NIGHT_NAMES[n.night], why, best: line, waiting: poll.waiting.length }, await frame(poll.nightId));
+    const draft = say.pollReady(
+      { title: n.title || NIGHT_NAMES[n.night], why, best: best && { when: say.emailWhen(best.startsAt, TIME_ZONE), coming: best.coming }, waiting: poll.waiting.length },
+      await frame(poll.nightId),
+    );
     await emailAbout(n.night, n.posted, (a) => a.userId === poll.createdBy, () => draft);
   });
 

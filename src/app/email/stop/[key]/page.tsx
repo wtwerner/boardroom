@@ -24,11 +24,11 @@ async function Stop({ params }: Pick<PageProps<"/email/stop/[key]">, "params">) 
   const { key } = await params;
   await connection();
   const u = await stopLinkFor(key);
-  if (!u) return <Notice>That link isn&apos;t one of ours. Sign in and turn emails off on Settings instead.</Notice>;
-  if (!u.emailUpdates) return <p className="text-felt-ink/75">Emails about events to {u.email} are already off. You can turn them back on in Settings.</p>;
+  if (!u) return <Notice>This link doesn&apos;t work. Sign in and turn emails off in Settings instead.</Notice>;
+  if (!u.emailUpdates) return <p className="text-felt-ink/75">Event emails to {u.email} are already off. You can turn them back on in Settings.</p>;
   return (
     <>
-      <p className="mb-6 text-felt-ink/75">Stop emails about events to {u.email}? You&apos;ll still see everything on the site.</p>
+      <p className="mb-6 text-felt-ink/75">Stop sending event emails to {u.email}? Everything will still be on the site.</p>
       <StopEmailsForm stopKey={key} />
     </>
   );

@@ -13,7 +13,7 @@ describe("buildEmail", () => {
   it("says everything as text and as HTML, with the event, the button and where to stop it", () => {
     const e = send(nightMade({ ...night, by: "Sam" }, f));
     for (const body of [e.text, e.html]) {
-      expect(body).toContain("Sam added an event.");
+      expect(body).toContain("Sam added a new event. Can you make it?");
       expect(body).toContain("10/29/26 Game Night");
       expect(plain(body)).toContain("Thursday, October 29 at 7:00 PM CDT");
       expect(body).toContain(f.url);
@@ -69,13 +69,13 @@ describe("emailWhen and emailSoon", () => {
 describe("nightChanged", () => {
   it("says what moved, and what it was", () => {
     const placed = send(nightChanged(night, { ...night, location: "Alex's", by: "Sam" }, f)).text;
-    expect(placed).toContain("Sam changed where it is.");
-    expect(placed).toContain("Now at: Alex's");
+    expect(placed).toContain("Sam moved 10/29/26 Game Night to Alex's.");
+    expect(placed).toContain("Where: Alex's");
     expect(placed).toContain("It was at Sam's.");
     const moved = send(nightChanged(night, { ...night, startsAt: "2026-10-31T00:00:00Z", by: "Sam" }, f)).text;
-    expect(moved).toContain("Now: Friday, October 30");
+    expect(plain(moved)).toContain("Sam moved 10/29/26 Game Night to Friday, October 30 at 7:00 PM CDT.");
     expect(moved).toContain("It was Thursday, October 29");
-    expect(send(nightChanged(night, { ...night, location: null, by: "Sam" }, f)).text).toContain("Now at: No place set yet");
+    expect(send(nightChanged(night, { ...night, location: null, by: "Sam" }, f)).text).toContain("Sam cleared the place for 10/29/26 Game Night.");
   });
 
   it("stays quiet about a new name", () => {
@@ -83,10 +83,10 @@ describe("nightChanged", () => {
   });
 });
 
-describe("what someone's down as", () => {
+describe("what someone answered", () => {
   it("is on the date being set, with the calendar unless they can't come", () => {
-    expect(send(dateSet({ ...night, status: "maybe" }, f)).text).toContain("You're down as a maybe.");
-    expect(send(dateSet({ ...night, status: null }, f)).text).toContain("Say if you're coming");
+    expect(send(dateSet({ ...night, status: "maybe" }, f)).text).toContain("You said maybe to that date, so you're a maybe for now.");
+    expect(send(dateSet({ ...night, status: null }, f)).text).toContain("has a date. Can you make it?");
     expect(send(dateSet({ ...night, status: "declined" }, f)).attachments).toBeUndefined();
     expect(send(dateSet({ ...night, status: "going" }, f)).subject).toBe("10/29/26 Game Night is on Thursday, October 29");
   });
@@ -94,17 +94,17 @@ describe("what someone's down as", () => {
   it("is on the reminder, with what they're bringing and how soon", () => {
     const e = send(reminder({ ...night, status: "going", bringing: ["Azul", "Skull"] }, f, new Date("2026-10-29T20:00:00Z")));
     expect(plain(e.subject)).toBe("Tonight at 7:00 PM CDT: 10/29/26 Game Night");
-    expect(e.text).toContain("Don't forget to bring Azul, Skull.");
-    expect(e.text).toContain("You're down as going.");
-    expect(send(reminder({ ...night, status: "maybe", bringing: [] }, f)).text).toContain("Say if you're coming");
+    expect(e.text).toContain("You said you'd bring Azul and Skull.");
+    expect(e.text).not.toContain("down as");
+    expect(send(reminder({ ...night, status: "maybe", bringing: [] }, f)).text).toContain("you're still a maybe. Can you make it?");
   });
 });
 
 describe("other messages", () => {
   it("say when an event's off, with no button", () => {
     const e = send(nightOff({ title: "Game Night", by: "Sam", on: false, startsAt: night.startsAt }, f));
-    expect(e.subject).toBe("Called off: Game Night");
-    expect(e.text).toContain("It was set for Thursday, October 29");
+    expect(e.subject).toBe("Game Night is off");
+    expect(plain(e.text)).toContain("Sam called off Game Night, planned for Thursday, October 29 at 7:00 PM CDT.");
     expect(e.text).not.toContain("See the event");
   });
 

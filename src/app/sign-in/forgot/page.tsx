@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Forgot your password" };
 export default async function ForgotPage() {
   await loadSettings();
   return (
-    <SignInShell intro="Give the email you sign in with, and a link to choose a new password comes to it.">
+    <SignInShell intro="Enter the email you sign in with and we'll send you a link to choose a new password.">
       <Suspense>
         <Forgot />
       </Suspense>

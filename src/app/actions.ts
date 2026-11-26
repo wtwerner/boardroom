@@ -609,7 +609,7 @@ export async function saveEmail(_prev: ActionResult | null, form: FormData): Pro
 export async function sendConfirmation(): Promise<ActionResult> {
   const me = await requireUser();
   const sent = await emailConfirmation(me.id);
-  return sent ? { ok: true, message: "Sent. Open the link in it, and check spam if it isn't there in a few minutes." } : { ok: false, error: "One went a few minutes ago. Check your spam, or try again in a bit." };
+  return sent ? { ok: true, message: "Sent. If it's not there in a few minutes, check your spam folder." } : { ok: false, error: "We just sent one. Give it a few minutes, and check your spam folder." };
 }
 
 export type EmailChoice = "discord" | "both" | "off";
@@ -871,7 +871,7 @@ export async function setAccess(userId: string, to: Access): Promise<ActionResul
     const discord = await matchRole(target.discordId, to, me.name);
     // Nobody welcomed them in Discord, so they hear it by email if they can
     const emailed = to === "member" && target.access === "casual" && (await emailMadeMember(userId, me.name));
-    return { ok: true, message: [said + events, emailed && "They've been emailed to say so.", discord].filter(Boolean).join(" ") };
+    return { ok: true, message: [said + events, emailed && "We emailed them to let them know.", discord].filter(Boolean).join(" ") };
   } catch (err) {
     return fail(err);
   }
@@ -1398,9 +1398,9 @@ export async function askToBring(nightId: number, gameId: number, ownerId: strin
     return { ok: true, message: `Asked ${owner.name}. They've got a DM to answer.` };
   } catch (err) {
     if (discordCode(err) !== 50007) console.error(`Couldn't DM ${owner.id} about bringing ${gameId}`, err);
-    if (await emailBringAsk(owner.id, n, g.name, me.name, { dmFailed: true })) return { ok: true, message: `Asked ${owner.name} by email, since Discord wouldn't take a DM.` };
+    if (await emailBringAsk(owner.id, n, g.name, me.name, { dmFailed: true })) return { ok: true, message: `Asked ${owner.name} by email, since Discord couldn't deliver the DM.` };
     const why = discordCode(err) === 50007 ? "they don't take DMs" : "the DM didn't go through";
-    return { ok: true, message: `Asked ${owner.name}, but ${why}, so give them a nudge. They'll see it on the event's page.` };
+    return { ok: true, message: `Asked ${owner.name}, but ${why}. It's on the event's page, but you might want to nudge them.` };
   }
 }
 

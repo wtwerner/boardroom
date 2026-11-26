@@ -217,7 +217,7 @@ export function ConfirmForm({ token }: { token: string }) {
     <form action={action} className="space-y-4">
       <Said state={state} />
       <Submit pending={pending} busy="Confirming…">
-        Confirm my email
+        Yes, confirm it
       </Submit>
     </form>
   );
@@ -231,7 +231,7 @@ export function StopEmailsForm({ stopKey }: { stopKey: string }) {
     <form action={action} className="space-y-4">
       <Said state={state} />
       <Submit pending={pending} busy="Stopping…">
-        Stop emails about events
+        Stop event emails
       </Submit>
     </form>
   );
