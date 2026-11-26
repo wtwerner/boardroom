@@ -1,6 +1,6 @@
 /**
- * The steps a member goes through to get set up, shared by the setup page (/welcome) and the
- * banner on Home that points there. Pure, so which steps count is tested.
+ * The steps a member goes through to get set up, shared by the setup page (/welcome), the
+ * banner on Home that points there, and the tracker beside every page. Pure, so which steps count is tested.
  */
 
 import { TIERS, type Tier } from "@/db/enums";

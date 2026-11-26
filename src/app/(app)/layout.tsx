@@ -1,13 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Suspense, cache } from "react";
+import { type ComponentType, Suspense, cache } from "react";
 import { DEMO, NIGHT_NAMES, SITE_NAME } from "@/config";
 import { MoreMenu, type NavBadges, SideNav, TabBar } from "@/components/nav";
+import { type SetupGlance, SetupCard, SetupStrip } from "@/components/setup-tracker";
 import { previewCasual } from "@/app/actions";
 import { inSentence } from "@/lib/text";
 import { Avatar, DemoNote, Meeple } from "@/components/ui";
-import { getNewToRank } from "@/lib/queries";
+import { getNewToRank, getSetupStatus } from "@/lib/queries";
 import { requireUser } from "@/lib/session";
+import { setupProgress, setupSteps } from "@/lib/setup";
 import { loadSettings } from "@/lib/settings-store";
 import poweredByBgg from "./powered-by-bgg.png";
 
@@ -24,6 +26,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           <WithBadges nav={SideNav} />
         </Suspense>
         <div className="mt-auto">
+          <Suspense fallback={null}>
+            <Setup view={SetupCard} />
+          </Suspense>
           <Suspense fallback={<div className="h-10" />}>
             <UserBadge />
           </Suspense>
@@ -43,6 +48,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </Suspense>
         </div>
       </header>
+      <Suspense fallback={null}>
+        <Setup view={SetupStrip} />
+      </Suspense>
 
       <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-28 sm:px-6 md:pt-10 md:pb-16 lg:px-10">
         {DEMO && <DemoBanner />}
@@ -98,6 +106,19 @@ const countToRank = cache(async () => {
   const me = await requireUser();
   return (await getNewToRank(me.id, me.playerId)).length;
 });
+
+// The sidebar and the phone's strip both ask, so once per request
+const setupGlance = cache(async (): Promise<SetupGlance | null> => {
+  const me = await requireUser();
+  const progress = setupProgress(setupSteps(await getSetupStatus(me), { casual: me.access !== "member" }));
+  return progress.next ? { done: progress.done, total: progress.total, next: progress.next.title } : null;
+});
+
+/** How far through getting set up someone is, on every page until they're done */
+async function Setup({ view: View }: { view: ComponentType<{ setup: SetupGlance }> }) {
+  const setup = await setupGlance();
+  return setup && <View setup={setup} />;
+}
 
 /** The nav with counts beside its links: games you've played that aren't in your ranking yet */
 async function WithBadges({ nav: Nav }: { nav: typeof SideNav }) {
