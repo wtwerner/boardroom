@@ -10,7 +10,7 @@ export function EmailPromptButtons({ sent }: { sent: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <button type="button" disabled={pending} onClick={() => start(async () => setResult(await sendConfirmation()))} className={buttonClass(sent ? "secondary" : "primary")}>
-        {pending ? "Sending…" : sent ? "Send it again" : "Send me a link"}
+        {pending ? "Sending…" : sent ? "Resend" : "Send confirmation email"}
       </button>
       <button type="button" disabled={pending} onClick={() => start(async () => setResult(await setEmailChoice("off")))} className={buttonClass("ghost")}>
         No thanks

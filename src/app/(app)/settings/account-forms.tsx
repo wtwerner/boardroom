@@ -151,13 +151,13 @@ export function EmailUpdates({ on, too, discord, email }: { on: boolean; too: bo
     );
   }
   const options: { value: EmailChoice; label: string; hint: string }[] = [
-    { value: "discord", label: "Discord", hint: "We'll only email you when Discord can't reach you, like when your DMs are closed." },
-    { value: "both", label: "Discord and email", hint: `Everything also goes to ${email}.` },
+    { value: "discord", label: "Discord", hint: "Email only when Discord can't reach you, for example if your DMs are off." },
+    { value: "both", label: "Discord and email", hint: `Also send everything to ${email}.` },
     { value: "off", label: "Discord only", hint: "Never email me." },
   ];
   return (
     <fieldset className="space-y-2" disabled={pending}>
-      <legend className="mb-1 text-sm font-medium">How you hear about events</legend>
+      <legend className="mb-1 text-sm font-medium">Event notifications</legend>
       {options.map((o) => (
         <label key={o.value} className="flex items-start gap-3">
           <input type="radio" name="email-choice" checked={choice === o.value} onChange={() => choose(o.value)} className="mt-0.5 size-4 accent-[var(--felt)]" />
@@ -181,7 +181,7 @@ export function ConfirmEmail({ email, password }: { email: string; password: boo
         Confirm <strong className="font-medium text-ink">{email}</strong> to get emails about events{password && " and to be able to reset your password"}.
       </p>
       <button type="button" disabled={pending} onClick={() => start(async () => setState(await sendConfirmation()))} className={buttonClass("secondary")}>
-        {pending ? "Sending…" : "Send the link"}
+        {pending ? "Sending…" : "Send confirmation email"}
       </button>
       <Result state={state} />
     </div>

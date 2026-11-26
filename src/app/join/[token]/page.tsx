@@ -48,7 +48,7 @@ async function Join({ params }: Pick<PageProps<"/join/[token]">, "params">) {
     <>
       <p className="mb-6 text-felt-ink/75">
         {link.access === "casual" ? `You're invited to the ${inSentence(NIGHT_NAMES.casual)}.` : "You're invited to the group."}{" "}
-        {player ? `Your plays as ${player.name} will come with you.` : "Make an account to see what's planned and say if you're coming."}
+        {player ? `Your past plays as ${player.name} will be added to your account.` : "Make an account to see what's planned and say if you're coming."}
       </p>
       <JoinForm token={token} name={player?.name ?? null} />
     </>

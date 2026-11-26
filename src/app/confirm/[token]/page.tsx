@@ -27,7 +27,7 @@ async function Confirm({ params }: Pick<PageProps<"/confirm/[token]">, "params">
   if (!link) return <Notice>{problem}</Notice>;
   return (
     <>
-      <p className="mb-6 text-felt-ink/75">Is {link.email} your email address?</p>
+      <p className="mb-6 text-felt-ink/75">Confirm {link.email} as your email address.</p>
       <ConfirmForm token={token} />
     </>
   );

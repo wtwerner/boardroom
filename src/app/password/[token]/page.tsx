@@ -28,7 +28,7 @@ async function ChoosePassword({ params }: Pick<PageProps<"/password/[token]">, "
   if (found.problem !== null) return <Notice>{found.problem}</Notice>;
   return (
     <>
-      <p className="mb-6 text-felt-ink/75">Hi {found.user.name}, choose a new password. This signs you out everywhere else.</p>
+      <p className="mb-6 text-felt-ink/75">Choose a new password for {found.user.name}. You&apos;ll be signed out on other devices.</p>
       <PasswordForm token={token} email={found.user.needsEmail ? null : found.user.email} />
     </>
   );

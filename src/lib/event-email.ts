@@ -184,7 +184,8 @@ export const emailDateSet = (nightId: number, byPlayerId: number) =>
     ]);
     const mine = (a: Account) => (a.playerId === null ? null : (status.get(a.playerId) ?? null));
     const f = await frame(nightId);
-    await emailAbout(n.night, postsNights(n.night), (a) => a.playerId !== byPlayerId && (crowd.has(a.userId) || mine(a) !== null), (a) => say.dateSet({ ...n, status: mine(a) }, f));
+    const by = (await db.query.player.findFirst({ where: eq(schema.player.id, byPlayerId), columns: { name: true } }))?.name ?? "Someone";
+    await emailAbout(n.night, postsNights(n.night), (a) => a.playerId !== byPlayerId && (crowd.has(a.userId) || mine(a) !== null), (a) => say.dateSet({ ...n, by, status: mine(a) }, f));
   });
 
 /** Its date fell through: whoever was going */

@@ -91,7 +91,7 @@ export async function forgotPassword(_prev: SignInResult | null, form: FormData)
   } catch (err) {
     return failed(err);
   }
-  return { ok: true, message: "If that email belongs to an account and it's been confirmed, a link is on its way. If nothing shows up in a few minutes, ask one of the group's admins for one." };
+  return { ok: true, message: "If that email belongs to an account and has been confirmed, we've sent a reset link. If it doesn't arrive in a few minutes, ask a group admin for a link." };
 }
 
 export async function confirmEmail(token: string): Promise<SignInResult> {
@@ -101,15 +101,15 @@ export async function confirmEmail(token: string): Promise<SignInResult> {
   } catch (err) {
     return failed(err);
   }
-  return { ok: true, message: "All set. Your email is confirmed." };
+  return { ok: true, message: "Your email is confirmed." };
 }
 
 /** From an email's stop link: the signed key says whose emails, so it works without signing in */
 export async function stopEmailsFrom(key: string): Promise<SignInResult> {
   try {
-    if (!(await stopEmails(key))) return { ok: false, error: "This link doesn't work. Sign in and turn emails off in Settings instead." };
+    if (!(await stopEmails(key))) return { ok: false, error: "This unsubscribe link isn't valid. Sign in and turn off emails in Settings." };
   } catch (err) {
     return failed(err);
   }
-  return { ok: true, message: "Done. You won't get event emails anymore. You can turn them back on in Settings." };
+  return { ok: true, message: "You're unsubscribed from event emails. You can turn them back on in Settings." };
 }

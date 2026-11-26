@@ -13,20 +13,20 @@ describe("buildEmail", () => {
   it("says everything as text and as HTML, with the event, the button and where to stop it", () => {
     const e = send(nightMade({ ...night, by: "Sam" }, f));
     for (const body of [e.text, e.html]) {
-      expect(body).toContain("Sam added a new event. Can you make it?");
+      expect(body).toContain("Sam added 10/29/26 Game Night.");
       expect(body).toContain("10/29/26 Game Night");
       expect(plain(body)).toContain("Thursday, October 29 at 7:00 PM CDT");
       expect(body).toContain(f.url);
       expect(body).toContain(to.stop!.page);
     }
-    expect(e.subject).toBe("New event: 10/29/26 Game Night");
+    expect(e.subject).toBe("New event: 10/29/26 Game Night, Thu, Oct 29");
   });
 
   it("lets mail apps unsubscribe in one click, and attaches the event for calendars", () => {
     const e = send(nightMade({ ...night, by: "Sam" }, f));
     expect(e.headers).toEqual({ "List-Unsubscribe": `<${to.stop!.oneClick}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
     expect(e.attachments).toEqual([expect.objectContaining({ filename: "event.ics", content: f.calendar.ics })]);
-    expect(e.text).toContain(`Add it to your calendar: ${f.calendar.url}`);
+    expect(e.text).toContain(`Add to calendar: ${f.calendar.url}`);
   });
 
   it("attaches nothing for an event without a date", () => {
@@ -45,7 +45,7 @@ describe("buildEmail", () => {
 
   it("doesn't offer to stop account emails", () => {
     const e = buildEmail(passwordReset({ name: "Sam", siteName: "Boardroom" }, { url: "https://example.com/password/t" }), { siteName: "Boardroom" });
-    expect(e.text).not.toContain("Stop emails");
+    expect(e.text).not.toContain("Unsubscribe");
     expect(e.headers).toBeUndefined();
   });
 });
@@ -69,13 +69,14 @@ describe("emailWhen and emailSoon", () => {
 describe("nightChanged", () => {
   it("says what moved, and what it was", () => {
     const placed = send(nightChanged(night, { ...night, location: "Alex's", by: "Sam" }, f)).text;
-    expect(placed).toContain("Sam moved 10/29/26 Game Night to Alex's.");
+    expect(placed).toContain("Sam changed the place for 10/29/26 Game Night.");
     expect(placed).toContain("Where: Alex's");
-    expect(placed).toContain("It was at Sam's.");
+    expect(placed).toContain("Was: Sam's");
     const moved = send(nightChanged(night, { ...night, startsAt: "2026-10-31T00:00:00Z", by: "Sam" }, f)).text;
-    expect(plain(moved)).toContain("Sam moved 10/29/26 Game Night to Friday, October 30 at 7:00 PM CDT.");
-    expect(moved).toContain("It was Thursday, October 29");
-    expect(send(nightChanged(night, { ...night, location: null, by: "Sam" }, f)).text).toContain("Sam cleared the place for 10/29/26 Game Night.");
+    expect(moved).toContain("Sam changed the time for 10/29/26 Game Night.");
+    expect(moved).toContain("When: Friday, October 30");
+    expect(moved).toContain("Was: Thursday, October 29");
+    expect(send(nightChanged(night, { ...night, location: null, by: "Sam" }, f)).text).toContain("Was: Sam's");
   });
 
   it("stays quiet about a new name", () => {
@@ -85,31 +86,32 @@ describe("nightChanged", () => {
 
 describe("what someone answered", () => {
   it("is on the date being set, with the calendar unless they can't come", () => {
-    expect(send(dateSet({ ...night, status: "maybe" }, f)).text).toContain("You said maybe to that date, so you're a maybe for now.");
-    expect(send(dateSet({ ...night, status: null }, f)).text).toContain("has a date. Can you make it?");
-    expect(send(dateSet({ ...night, status: "declined" }, f)).attachments).toBeUndefined();
-    expect(send(dateSet({ ...night, status: "going" }, f)).subject).toBe("10/29/26 Game Night is on Thursday, October 29");
+    expect(send(dateSet({ ...night, by: "Alex", status: "maybe" }, f)).text).toContain("RSVP: Maybe");
+    expect(send(dateSet({ ...night, by: "Alex", status: "declined" }, f)).text).toContain("RSVP: Can't make it");
+    expect(send(dateSet({ ...night, by: "Alex", status: null }, f)).text).toContain("RSVP: https://");
+    expect(send(dateSet({ ...night, by: "Alex", status: "declined" }, f)).attachments).toBeUndefined();
+    expect(send(dateSet({ ...night, by: "Alex", status: "going" }, f)).subject).toBe("Date set: 10/29/26 Game Night, Thu, Oct 29");
   });
 
   it("is on the reminder, with what they're bringing and how soon", () => {
     const e = send(reminder({ ...night, status: "going", bringing: ["Azul", "Skull"] }, f, new Date("2026-10-29T20:00:00Z")));
-    expect(plain(e.subject)).toBe("Tonight at 7:00 PM CDT: 10/29/26 Game Night");
-    expect(e.text).toContain("You said you'd bring Azul and Skull.");
-    expect(e.text).not.toContain("down as");
-    expect(send(reminder({ ...night, status: "maybe", bringing: [] }, f)).text).toContain("you're still a maybe. Can you make it?");
+    expect(plain(e.subject)).toBe("Reminder: 10/29/26 Game Night tonight at 7:00 PM CDT");
+    expect(e.text).toContain("Bringing: Azul and Skull");
+    expect(e.text).toContain("RSVP: Going");
+    expect(send(reminder({ ...night, status: "maybe", bringing: [] }, f)).text).toContain("Update RSVP: https://");
   });
 });
 
 describe("other messages", () => {
   it("say when an event's off, with no button", () => {
     const e = send(nightOff({ title: "Game Night", by: "Sam", on: false, startsAt: night.startsAt }, f));
-    expect(e.subject).toBe("Game Night is off");
-    expect(plain(e.text)).toContain("Sam called off Game Night, planned for Thursday, October 29 at 7:00 PM CDT.");
-    expect(e.text).not.toContain("See the event");
+    expect(e.subject).toBe("Canceled: Game Night");
+    expect(plain(e.text)).toContain("Sam canceled Game Night, which was planned for Thursday, October 29 at 7:00 PM CDT.");
+    expect(e.text).not.toContain("View event");
   });
 
   it("name the group's own nights for someone made a member, when there are two kinds", () => {
-    expect(madeMember({ by: "Sam", night: "strategy night" }, { url: "https://example.com/welcome" }).subject).toBe("You're in for strategy night");
-    expect(madeMember({ by: "Sam", night: null }, { url: "https://example.com/welcome" }).subject).toBe("You're a member now");
+    expect(madeMember({ by: "Sam", night: "strategy night" }, { url: "https://example.com/welcome" }).intro).toBe("Sam made you a member, so you can now see and join strategy night events.");
+    expect(madeMember({ by: "Sam", night: null }, { url: "https://example.com/welcome" }).intro).toBe("Sam made you a member of the group.");
   });
 });

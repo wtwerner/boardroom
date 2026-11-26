@@ -66,7 +66,7 @@ ${d.card.rows
     : "";
   const also = d.also ? p(`<a href="${escapeHtml(d.also.url)}" style="color:${C.felt}">${html(d.also.label)}</a>`, "margin:0;font-size:14px") : "";
   const footer = to.stop
-    ? `You're getting this because you have a ${html(to.siteName)} account.<br><a href="${escapeHtml(to.stop.page)}" style="color:${C.slate}">Stop emails about events</a> &middot; <a href="${escapeHtml(to.stop.settings)}" style="color:${C.slate}">Email settings</a>`
+    ? `You're receiving this because you have a ${html(to.siteName)} account.<br><a href="${escapeHtml(to.stop.page)}" style="color:${C.slate}">Unsubscribe from event emails</a> &middot; <a href="${escapeHtml(to.stop.settings)}" style="color:${C.slate}">Email settings</a>`
     : `Sent by ${html(to.siteName)}.`;
 
   return `<!doctype html>
@@ -91,7 +91,7 @@ ${also}
 
 function textBody(d: Draft, to: Addressing) {
   const card = d.card && [d.card.title, ...d.card.rows.map((r) => `${r.label}: ${r.value.replace(/\n/g, "\n  ")}`)].join("\n");
-  const footer = to.stop ? `You're getting this because you have a ${to.siteName} account.\nStop emails about events: ${to.stop.page}` : `Sent by ${to.siteName}.`;
+  const footer = to.stop ? `You're receiving this because you have a ${to.siteName} account.\nUnsubscribe from event emails: ${to.stop.page}` : `Sent by ${to.siteName}.`;
   return [d.intro, card, ...kept(d.lines), d.action && `${d.action.label}: ${d.action.url}`, d.also && `${d.also.label}: ${d.also.url}`, `--\n${footer}`]
     .filter(Boolean)
     .join("\n\n");
@@ -137,27 +137,38 @@ export type Frame = { timeZone: string; url: string; calendar?: { url: string; i
 
 type Night = { title: string; startsAt: Date | string; location: string | null };
 
-const rows = (n: Night, f: Frame) => [{ label: "When", value: emailWhen(n.startsAt, f.timeZone) }, ...(n.location ? [{ label: "Where", value: n.location }] : [])];
-const event = (n: Night, f: Frame) => ({ title: n.title, rows: rows(n, f) });
-const addToCalendar = (f: Frame) => (f.calendar ? { also: { label: "Add it to your calendar", url: f.calendar.url }, ics: f.calendar.ics } : {});
-const see = (f: Frame) => ({ label: "See the event", url: f.url });
+/** What someone answered, in the words of the event page's buttons */
+export type Rsvp = "going" | "maybe" | "declined";
+const RSVP: Record<Rsvp, string> = { going: "Going", maybe: "Maybe", declined: "Can't make it" };
+
+const rows = (n: Night, f: Frame, extra: { label: string; value: string }[] = []) => [
+  { label: "When", value: emailWhen(n.startsAt, f.timeZone) },
+  ...(n.location ? [{ label: "Where", value: n.location }] : []),
+  ...extra,
+];
+const event = (n: Night, f: Frame, extra?: { label: string; value: string }[]) => ({ title: n.title, rows: rows(n, f, extra) });
+const yourRsvp = (status: Rsvp | null) => (status ? [{ label: "RSVP", value: RSVP[status] }] : []);
+const addToCalendar = (f: Frame) => (f.calendar ? { also: { label: "Add to calendar", url: f.calendar.url }, ics: f.calendar.ics } : {});
+const view = (f: Frame) => ({ label: "View event", url: f.url });
+const rsvp = (f: Frame) => ({ label: "RSVP", url: f.url });
+const shortDate = (at: Date | string, timeZone: string) => new Date(at).toLocaleDateString("en-US", { timeZone, weekday: "short", month: "short", day: "numeric" });
 
 /** "Azul", "Azul and Cascadia", "Azul, Cascadia and Root" */
 const andList = (items: string[]) => (items.length < 2 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
 
 /** A new event */
 export const nightMade = (n: Night & { by: string }, f: Frame): Draft => ({
-  subject: `New event: ${n.title}`,
-  intro: `${n.by} added a new event. Can you make it?`,
+  subject: `New event: ${n.title}, ${shortDate(n.startsAt, f.timeZone)}`,
+  intro: `${n.by} added ${n.title}.`,
   card: event(n, f),
-  action: { label: `Let ${n.by} know`, url: f.url },
+  action: rsvp(f),
   ...addToCalendar(f),
 });
 
 /** A new event picking its date */
 export const pollStarted = (n: { title: string; by: string; location: string | null; dates: (Date | string)[] }, f: Frame): Draft => ({
-  subject: `Which dates work for ${n.title}?`,
-  intro: `${n.by} is trying to find a date for ${n.title}. Which of these work for you?`,
+  subject: `Choose dates for ${n.title}`,
+  intro: `${n.by} is finding a date for ${n.title}. Choose the dates that work for you.`,
   card: {
     title: n.title,
     rows: [
@@ -165,47 +176,45 @@ export const pollStarted = (n: { title: string; by: string; location: string | n
       ...(n.location ? [{ label: "Where", value: n.location }] : []),
     ],
   },
-  action: { label: "Pick your dates", url: f.url },
+  action: { label: "Choose dates", url: f.url },
 });
 
 /** Someone who hasn't said which dates work, nudged by `by` */
 export const datesNudge = (n: { title: string; by: string }, f: Frame): Draft => ({
-  subject: `Which dates work for ${n.title}?`,
-  intro: `${n.by} is still waiting on your dates for ${n.title}.`,
-  action: { label: "Pick your dates", url: f.url },
+  subject: `Reminder: choose dates for ${n.title}`,
+  intro: `${n.by} is waiting for your answer on dates for ${n.title}.`,
+  action: { label: "Choose dates", url: f.url },
 });
 
 /** To whoever started it: everyone's answered, or the day to decide by is here. `best`: the date most people can make so far */
 export const pollReady = (n: { title: string; why: "answered" | "decide"; best: { when: string; coming: number } | null; waiting: number }, f: Frame): Draft => ({
-  subject: n.why === "answered" ? `Everyone's answered for ${n.title}` : `Time to pick a date for ${n.title}`,
-  intro: n.why === "answered" ? `Everyone's said which dates work for ${n.title}, so you can pick one.` : `Today's the day you said you'd pick a date for ${n.title}.`,
-  lines: [
-    n.best && `${n.best.when} works for the most people so far (${n.best.coming}).`,
-    n.why === "decide" && n.waiting > 0 && `${n.waiting === 1 ? "1 person still hasn't" : `${n.waiting} people still haven't`} answered.`,
-  ],
-  action: { label: "Pick the date", url: f.url },
+  subject: n.why === "answered" ? `Everyone has answered: ${n.title}` : `Set the date for ${n.title}`,
+  intro: n.why === "answered" ? `Everyone has chosen dates for ${n.title}. You can set the date now.` : `Today is the decide-by date for ${n.title}.`,
+  card: {
+    title: n.title,
+    rows: [
+      ...(n.best ? [{ label: "Best date", value: `${n.best.when} (${n.best.coming === 1 ? "1 person" : `${n.best.coming} people`})` }] : []),
+      ...(n.why === "decide" && n.waiting > 0 ? [{ label: "No answer", value: n.waiting === 1 ? "1 person" : `${n.waiting} people` }] : []),
+    ],
+  },
+  action: { label: "Set the date", url: f.url },
 });
 
-const YOUR_ANSWER = {
-  going: "You said that date works, so you're going.",
-  maybe: "You said maybe to that date, so you're a maybe for now.",
-  declined: "You said that date doesn't work, so you're marked as not going.",
-} as const;
-
-/** Its date is set. `status` is what their answer to that date made them, if they gave one */
-export const dateSet = (n: Night & { status: "going" | "maybe" | "declined" | null }, f: Frame): Draft => ({
-  subject: `${n.title} is on ${longDate(new Date(n.startsAt), f.timeZone)}`,
-  intro: `${n.title} has a date. ${n.status ? YOUR_ANSWER[n.status] : "Can you make it?"}`,
-  card: event(n, f),
-  action: n.status === "going" ? see(f) : { label: n.status ? "Change your answer" : "Answer", url: f.url },
+/** Its date is set. `status` is the RSVP their answer to that date gave them, if they answered */
+export const dateSet = (n: Night & { by: string; status: Rsvp | null }, f: Frame): Draft => ({
+  subject: `Date set: ${n.title}, ${shortDate(n.startsAt, f.timeZone)}`,
+  intro: `${n.by} set the date for ${n.title}.`,
+  card: event(n, f, yourRsvp(n.status)),
+  lines: [n.status && "Your RSVP is based on your date poll answer. You can change it on the event page."],
+  action: n.status ? view(f) : rsvp(f),
   ...(n.status !== "declined" && addToCalendar(f)),
 });
 
 /** Its date fell through, and it's picking another */
 export const dateFellThrough = (n: { title: string; was: Date | string }, f: Frame): Draft => ({
-  subject: `${n.title} needs a new date`,
-  intro: `${emailWhen(n.was, f.timeZone)} fell through for ${n.title}. Which of the other dates work for you?`,
-  action: { label: "Pick your dates", url: f.url },
+  subject: `New date needed: ${n.title}`,
+  intro: `${emailWhen(n.was, f.timeZone)} no longer works for ${n.title}. Choose from the other dates.`,
+  action: { label: "Choose dates", url: f.url },
 });
 
 /** It moved, or is somewhere else. Null when nothing people would notice changed */
@@ -213,20 +222,13 @@ export function nightChanged(before: Night, after: Night & { by: string }, f: Fr
   const moved = new Date(before.startsAt).getTime() !== new Date(after.startsAt).getTime();
   const placed = (before.location ?? "") !== (after.location ?? "");
   if (!moved && !placed) return null;
-  const intro =
-    moved && placed
-      ? `${after.by} changed when and where ${after.title} is.`
-      : moved
-        ? `${after.by} moved ${after.title} to ${emailWhen(after.startsAt, f.timeZone)}.`
-        : after.location
-          ? `${after.by} moved ${after.title} to ${after.location}.`
-          : `${after.by} cleared the place for ${after.title}.`;
+  const what = moved && placed ? "the time and place" : moved ? "the time" : "the place";
+  const was = [moved && emailWhen(before.startsAt, f.timeZone), placed && (before.location ?? "No place")].filter((x): x is string => Boolean(x)).join("\n");
   return {
-    subject: moved && !placed ? `${after.title} has a new time` : placed && !moved ? `${after.title} has moved` : `${after.title} has changed`,
-    intro,
-    card: event(after, f),
-    lines: [moved && `It was ${emailWhen(before.startsAt, f.timeZone)}.`, placed && before.location && `It was at ${before.location}.`],
-    action: see(f),
+    subject: `Updated: ${after.title}`,
+    intro: `${after.by} changed ${what} for ${after.title}.`,
+    card: event(after, f, [{ label: "Was", value: was }]),
+    action: view(f),
     // The same event in their calendar moves with it
     ...addToCalendar(f),
   };
@@ -236,15 +238,15 @@ export function nightChanged(before: Night, after: Night & { by: string }, f: Fr
 export const nightOff = (n: { title: string; by: string; on: boolean; startsAt?: Date | string | null }, f: Frame): Draft => {
   const when = n.startsAt && emailWhen(n.startsAt, f.timeZone);
   return n.on
-    ? { subject: `${n.title} is back on`, intro: `${n.by} put ${n.title} back on${when ? ` for ${when}` : ""}. Can you still make it?`, action: { label: "Answer", url: f.url } }
-    : { subject: `${n.title} is off`, intro: `${n.by} called off ${n.title}${when ? `, planned for ${when}` : ""}.` };
+    ? { subject: `Back on: ${n.title}`, intro: `${n.by} reopened ${n.title}.`, ...(when && { card: { title: n.title, rows: [{ label: "When", value: when }] } }), action: rsvp(f) }
+    : { subject: `Canceled: ${n.title}`, intro: `${n.by} canceled ${n.title}${when ? `, which was planned for ${when}` : ""}.` };
 };
 
 export const seatOpened = (n: Night, f: Frame): Draft => ({
-  subject: `A seat opened up: ${n.title}`,
-  intro: `A seat opened up at ${n.title} and you were next on the waitlist, so you're in.`,
-  card: event(n, f),
-  action: see(f),
+  subject: `You're off the waitlist: ${n.title}`,
+  intro: `A spot opened up for ${n.title}, so you've moved from the waitlist to Going.`,
+  card: event(n, f, yourRsvp("going")),
+  action: view(f),
   ...addToCalendar(f),
 });
 
@@ -252,56 +254,54 @@ export const seatOpened = (n: Night, f: Frame): Draft => ({
 export const reminder = (n: Night & { status: "going" | "maybe"; bringing: string[] }, f: Frame, now = new Date()): Draft => {
   const soon = emailSoon(n.startsAt, f.timeZone, now);
   return {
-    subject: `${soon[0].toUpperCase()}${soon.slice(1)}: ${n.title}`,
-    intro: n.status === "maybe" ? `${n.title} is ${soon}, and you're still a maybe. Can you make it?` : `${n.title} is ${soon}.`,
-    card: event(n, f),
-    lines: [n.bringing.length > 0 && `You said you'd bring ${andList(n.bringing)}.`],
-    action: n.status === "maybe" ? { label: "Answer", url: f.url } : see(f),
+    subject: `Reminder: ${n.title} ${soon}`,
+    intro: `${n.title} starts ${soon}.`,
+    card: event(n, f, [...yourRsvp(n.status), ...(n.bringing.length ? [{ label: "Bringing", value: andList(n.bringing) }] : [])]),
+    action: n.status === "maybe" ? { label: "Update RSVP", url: f.url } : view(f),
   };
 };
 
 /** The morning after, to whoever made it, with nothing logged */
 export const logNudge = (n: { title: string }, f: Frame): Draft => ({
-  subject: `What got played at ${n.title}?`,
-  intro: `Nobody's logged the games from ${n.title} yet. Can you add them?`,
-  action: { label: "Log the games", url: f.url },
+  subject: `Log the games from ${n.title}`,
+  intro: `No games have been logged for ${n.title} yet.`,
+  action: { label: "Log games", url: f.url },
 });
 
 /** After a casual night, the games someone hasn't rated */
 export const rateNudge = (n: { title: string; games: string[] }, f: Frame): Draft => ({
-  subject: `What did you think of ${andList(n.games)}?`,
-  intro: `Thanks for coming to ${n.title}. How did you like ${andList(n.games)}?`,
-  lines: ["Your ratings help pick games for next time."],
-  action: { label: "Rate them", url: f.url },
+  subject: `Rate the games from ${n.title}`,
+  intro: `Thanks for coming to ${n.title}. You played ${andList(n.games)}, and haven't rated ${n.games.length === 1 ? "it" : "them"} yet.`,
+  action: { label: "Rate games", url: f.url },
 });
 
 export const bringAsk = (n: Night & { by: string; game: string }, f: Frame): Draft => ({
-  subject: `Can you bring ${n.game}?`,
-  intro: `${n.by} asked if you could bring ${n.game} to ${n.title}.`,
+  subject: `${n.by} asked you to bring ${n.game}`,
+  intro: `${n.by} asked if you can bring ${n.game} to ${n.title}.`,
   card: event(n, f),
-  action: { label: `Answer ${n.by}`, url: f.url },
+  action: { label: "Respond", url: f.url },
 });
 
 /** An admin made someone a member, so they see the group's own events too. `night`: what those are called, when there's a casual night as well */
 export const madeMember = (n: { by: string; night: string | null }, f: Pick<Frame, "url">): Draft => ({
-  subject: n.night ? `You're in for ${n.night}` : "You're a member now",
-  intro: n.night ? `${n.by} added you to ${n.night}, so you'll see those events on the site now.` : `${n.by} made you a member of the group.`,
-  lines: ["If you haven't yet, take a few minutes to rate and rank the games you've played."],
+  subject: "You're now a member",
+  intro: n.night ? `${n.by} made you a member, so you can now see and join ${n.night} events.` : `${n.by} made you a member of the group.`,
+  lines: ["Finish setting up to rate and rank the games you've played."],
   action: { label: "Get set up", url: f.url },
 });
 
 /** For a forgotten password */
 export const passwordReset = (n: { name: string; siteName: string }, f: Pick<Frame, "url">): Draft => ({
   subject: `Reset your ${n.siteName} password`,
-  intro: `Hi ${n.name}, here's the link to choose a new password. It works once, for the next 24 hours.`,
-  lines: ["Didn't ask for this? Ignore it and your password won't change."],
-  action: { label: "Choose a new password", url: f.url },
+  intro: `Hi ${n.name}, we received a request to reset your password.`,
+  lines: ["This link works once and expires in 24 hours. If you didn't request it, you can ignore this email."],
+  action: { label: "Reset password", url: f.url },
 });
 
 /** `password`: they sign in with one, so a confirmed address is also how they reset it */
 export const confirmEmail = (n: { name: string; siteName: string; password: boolean }, f: Pick<Frame, "url">): Draft => ({
   subject: `Confirm your email for ${n.siteName}`,
-  intro: `Hi ${n.name}, can you confirm this is your email address?`,
-  lines: [`Once it's confirmed, you'll get emails about events${n.password ? ", and you can reset your password if you forget it" : ""}.`, `Didn't sign up for ${n.siteName}? You can ignore this.`],
-  action: { label: "Confirm my email", url: f.url },
+  intro: `Hi ${n.name}, please confirm your email address.`,
+  lines: [`Once it's confirmed, you'll get emails about events${n.password ? " and can reset your password if you forget it" : ""}. If you didn't create this account, you can ignore this email.`],
+  action: { label: "Confirm email", url: f.url },
 });

@@ -6,7 +6,7 @@ import { loadSettings } from "@/lib/settings-store";
 import { StopEmailsForm } from "../../../sign-in/account-forms";
 import { Notice, SignInShell } from "../../../sign-in/shell";
 
-export const metadata: Metadata = { title: "Stop emails about events", robots: { index: false, follow: false }, referrer: "no-referrer" };
+export const metadata: Metadata = { title: "Unsubscribe from event emails", robots: { index: false, follow: false }, referrer: "no-referrer" };
 
 /** From the link at the bottom of an email about an event: works without signing in, and asks before it does anything */
 export default async function StopEmailsPage(props: PageProps<"/email/stop/[key]">) {
@@ -24,11 +24,11 @@ async function Stop({ params }: Pick<PageProps<"/email/stop/[key]">, "params">) 
   const { key } = await params;
   await connection();
   const u = await stopLinkFor(key);
-  if (!u) return <Notice>This link doesn&apos;t work. Sign in and turn emails off in Settings instead.</Notice>;
-  if (!u.emailUpdates) return <p className="text-felt-ink/75">Event emails to {u.email} are already off. You can turn them back on in Settings.</p>;
+  if (!u) return <Notice>This unsubscribe link isn&apos;t valid. Sign in and turn off emails in Settings.</Notice>;
+  if (!u.emailUpdates) return <p className="text-felt-ink/75">{u.email} is already unsubscribed from event emails. You can turn them back on in Settings.</p>;
   return (
     <>
-      <p className="mb-6 text-felt-ink/75">Stop sending event emails to {u.email}? Everything will still be on the site.</p>
+      <p className="mb-6 text-felt-ink/75">Unsubscribe {u.email} from event emails? Events will still be on the site.</p>
       <StopEmailsForm stopKey={key} />
     </>
   );

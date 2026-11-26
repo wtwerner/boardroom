@@ -609,7 +609,7 @@ export async function saveEmail(_prev: ActionResult | null, form: FormData): Pro
 export async function sendConfirmation(): Promise<ActionResult> {
   const me = await requireUser();
   const sent = await emailConfirmation(me.id);
-  return sent ? { ok: true, message: "Sent. If it's not there in a few minutes, check your spam folder." } : { ok: false, error: "We just sent one. Give it a few minutes, and check your spam folder." };
+  return sent ? { ok: true, message: "Sent. Check your inbox, including spam." } : { ok: false, error: "A confirmation email was sent a few minutes ago. Check your inbox, including spam." };
 }
 
 export type EmailChoice = "discord" | "both" | "off";
@@ -871,7 +871,7 @@ export async function setAccess(userId: string, to: Access): Promise<ActionResul
     const discord = await matchRole(target.discordId, to, me.name);
     // Nobody welcomed them in Discord, so they hear it by email if they can
     const emailed = to === "member" && target.access === "casual" && (await emailMadeMember(userId, me.name));
-    return { ok: true, message: [said + events, emailed && "We emailed them to let them know.", discord].filter(Boolean).join(" ") };
+    return { ok: true, message: [said + events, emailed && "They've been notified by email.", discord].filter(Boolean).join(" ") };
   } catch (err) {
     return fail(err);
   }

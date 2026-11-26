@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "Set up the site", robots: { index: f
 export default async function SetupPage() {
   await loadSettings();
   return (
-    <SignInShell intro="This site is brand new. Make your account first, then you can name the site and invite the group.">
+    <SignInShell intro="Create your account first. Then you can name the site and invite the group.">
       <Suspense>
         <Setup />
       </Suspense>
