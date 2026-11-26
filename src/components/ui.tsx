@@ -255,7 +255,7 @@ export function Section({
 }
 
 /** How far through something someone is, as a filling bar */
-export function ProgressBar({ done, total, label, className }: { done: number; total: number; label: string; className?: string }) {
+export function ProgressBar({ done, total, label, className, fill = "bg-felt" }: { done: number; total: number; label: string; className?: string; /** The filled part's color, for a bar on the felt */ fill?: string }) {
   return (
     <span
       role="progressbar"
@@ -263,9 +263,9 @@ export function ProgressBar({ done, total, label, className }: { done: number; t
       aria-valuemax={total}
       aria-valuenow={done}
       aria-label={label}
-      className={clsx("block h-2 w-full overflow-hidden rounded-full bg-line", className)}
+      className={twMerge("block h-2 w-full overflow-hidden rounded-full bg-line", className)}
     >
-      <span className="block h-full rounded-full bg-felt" style={{ width: `${total ? (done / total) * 100 : 100}%` }} />
+      <span className={clsx("block h-full rounded-full", fill)} style={{ width: `${total ? (done / total) * 100 : 100}%` }} />
     </span>
   );
 }
