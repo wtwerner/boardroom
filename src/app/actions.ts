@@ -29,7 +29,7 @@ import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
 import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
 import { inSentence } from "@/lib/text";
-import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, leaveNights, ownNight, playerForDiscordUser, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
+import { answerBringAsk as saveBringAnswer, cancelNight, reopenNight as saveReopenedNight, createNight, deleteNight as removeNight, editNight, leaveNights, ownNight, playerForDiscordUser, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
 import { playerLinkedLater, removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeCandidate, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
 import { accessChangeRefusal } from "@/lib/access";
@@ -1060,6 +1060,36 @@ export async function deleteNight(id: number): Promise<ActionResult> {
     return fail(err);
   }
   redirect("/plan");
+}
+
+/** Called off for everyone. Its answers stay, so it can be reopened as it was. A night finding its date calls off its poll instead */
+export async function cancelEvent(nightId: number): Promise<ActionResult> {
+  const me = await requireMember();
+  try {
+    const n = await ownNight(nightId);
+    if (n.cancelled) return { ok: true };
+    if (n.findingDate) return { ok: false, error: "It's still finding a date. Call off its date poll instead." };
+    if (n.startsAt.getTime() <= Date.now()) return { ok: false, error: "It's already started." };
+    await cancelNight(nightId);
+    syncNightPostLater(nightId, { say: `❌ ${await mentionMe(me)} canceled the event.`, news: { what: "off", by: { name: me.name, userId: me.id } } });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
+}
+
+/** Back on after being canceled, answers and all */
+export async function reopenEvent(nightId: number): Promise<ActionResult> {
+  const me = await requireMember();
+  try {
+    await saveReopenedNight(nightId);
+    syncNightPostLater(nightId, { say: `↩️ ${await mentionMe(me)} reopened it.`, news: { what: "on", by: { name: me.name, userId: me.id } } });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
 }
 
 // Finding a night's date: it changes here or in Discord, and its post follows

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CalendarSync, Pencil, Trash2 } from "lucide-react";
+import { Ban, CalendarSync, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import type { Night } from "@/db/enums";
-import { deleteNight, findNewDate, updateNightDetails } from "@/app/actions";
+import { type ActionResult, cancelEvent, deleteNight, findNewDate, reopenEvent, updateNightDetails } from "@/app/actions";
 import { buttonClass } from "@/components/ui";
 import { DateInput } from "@/components/date-input";
 import { type CalendarSetup, DatePicker, readDates } from "../../plan/date-picker";
@@ -18,6 +18,7 @@ export function NightActions({
   initial,
   findingDate,
   canDelete,
+  canCancel,
   canFindNewDate,
   calendar,
   staying,
@@ -29,6 +30,8 @@ export function NightActions({
   /** Its date isn't set yet; `named` when its name was given by hand, and the day to decide by (YYYY-MM-DD) or "" */
   findingDate: { named: boolean; decideBy: string } | null;
   canDelete: boolean;
+  /** It has a date and hasn't started, so it can be canceled (and reopened later) */
+  canCancel: boolean;
   /** It's still coming up, so it can go back to a poll for another date */
   canFindNewDate: boolean;
   /** For picking the dates to offer instead */
@@ -41,6 +44,7 @@ export function NightActions({
 }) {
   const [open, setOpen] = useState<"edit" | "date" | null>(null);
   const [pending, start] = useTransition();
+  const [failed, setFailed] = useState<string | null>(null);
   if (open === "edit" && findingDate)
     return <DetailsForm id={id} title={findingDate.named ? initial.title : ""} location={initial.location} decideBy={findingDate.decideBy} onDone={() => setOpen(null)} />;
   if (open === "edit") return <NightForm id={id} initial={initial} onDone={() => setOpen(null)} setup={setup} />;
@@ -56,6 +60,22 @@ export function NightActions({
           <CalendarSync className="size-3.5" /> Date fell through
         </button>
       )}
+      {canCancel && (
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (confirm(`Cancel ${initial.title}? Everyone who's going or a maybe is told. Their answers are kept, so you can reopen it.`))
+              start(async () => {
+                const res = await cancelEvent(id);
+                setFailed(res.ok ? null : res.error);
+              });
+          }}
+          className={buttonClass("ghost", "px-2.5 py-1.5 text-xs")}
+        >
+          <Ban className="size-3.5" /> Cancel event
+        </button>
+      )}
       {canDelete && (
         <button
           type="button"
@@ -68,6 +88,29 @@ export function NightActions({
         >
           <Trash2 className="size-3.5" /> Delete
         </button>
+      )}
+      {failed && (
+        <span role="alert" className="self-center text-xs text-meeple-red">
+          {failed}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** For a canceled event that hasn't been and gone: back on, with everyone's answers as they were */
+export function ReopenEvent({ id }: { id: number }) {
+  const [pending, start] = useTransition();
+  const [result, setResult] = useState<ActionResult | null>(null);
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <button type="button" disabled={pending} onClick={() => start(async () => setResult(await reopenEvent(id)))} className={buttonClass("secondary", "px-2.5 py-1.5 text-xs")}>
+        <RotateCcw className="size-3.5" /> {pending ? "Reopening…" : "Reopen"}
+      </button>
+      {result && !result.ok && (
+        <span role="alert" className="text-xs text-meeple-red">
+          {result.error}
+        </span>
       )}
     </span>
   );

@@ -139,7 +139,7 @@ export function capabilities(names: { core: string; casual: string }, { discord 
       admin: "yes",
       member: "yes",
       casual: "no",
-      actions: ["addNight", "updateNight", "updateNightDetails", "deleteNight", "startPoll", "findNewDate", "setNightDate", "nudgeForDates", "callOffPoll", "reopenPoll", "choosePlan"],
+      actions: ["addNight", "updateNight", "updateNightDetails", "deleteNight", "cancelEvent", "reopenEvent", "startPoll", "findNewDate", "setNightDate", "nudgeForDates", "callOffPoll", "reopenPoll", "choosePlan"],
     },
     { area: "Plays", what: "Log plays", admin: "yes", member: "yes", casual: "casual", actions: ["logPlay", "endNight"] },
     { area: "Plays", what: "Edit or delete plays", admin: "yes", member: "yes", casual: "own", actions: ["updatePlay", "deletePlay", "movePlay"] },

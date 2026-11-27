@@ -27,7 +27,7 @@ import { localDate, nightWhen, soonLabel, tableFor } from "@/lib/nights";
 import { GamePicker, GameSearch } from "../game-picker";
 import { CasualGames } from "./casual-games";
 import { CoreGames } from "./core-games";
-import { NightActions } from "./night-actions";
+import { NightActions, ReopenEvent } from "./night-actions";
 import { LiveLog } from "./live-log";
 import { PastNight, PlayedSection } from "./past-night";
 import { inSentence } from "@/lib/text";
@@ -134,9 +134,13 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
           <PollCard poll={await pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} calendar={calendar} limited={limited} />
         ) : n.cancelled ? (
           // Nothing to answer or plan: setRsvp and the rest refuse a canceled event
-          <Panel className="space-y-1 p-4 text-sm">
-            <p className="font-medium">This event was canceled.</p>
-            {n.going.length > 0 && <p className="text-slate">Going when it was canceled: {listNames(n.going.map((a) => a.name))}.</p>}
+          <Panel className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+            <div className="min-w-0 space-y-1">
+              <p className="font-medium">This event was canceled.</p>
+              {n.going.length > 0 && <p className="text-slate">Going when it was canceled: {listNames(n.going.map((a) => a.name))}.</p>}
+            </div>
+            {/* Back on with everyone's answers as they were; everyone who'd answered is told */}
+            {!limited && !n.past && <ReopenEvent id={n.id} />}
           </Panel>
         ) : (
           <Panel className="p-4">
@@ -420,6 +424,7 @@ function NightHeader({
             initial={{ night: n.night, title: n.title, date: when.date, time: when.clock, location: n.location ?? "", capacity: n.capacity }}
             findingDate={n.findingDate ? { named: n.named, decideBy: decideBy ?? "" } : null}
             canDelete={n.plays.length === 0}
+            canCancel={!n.findingDate && !n.cancelled && !n.started}
             canFindNewDate={!n.started && !n.findingDate && Boolean(calendar)}
             calendar={calendar ?? null}
             staying={staying}

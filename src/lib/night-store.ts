@@ -120,6 +120,16 @@ export async function cancelNight(id: number) {
   return n;
 }
 
+/** Back on after being canceled, with everyone's answers as they were. One still finding its date reopens its poll instead */
+export async function reopenNight(id: number) {
+  const n = await ownNight(id);
+  if (!n.cancelled) throw new Error("It isn't canceled.");
+  if (n.findingDate) throw new Error("Reopen its date poll instead.");
+  if (isPast(n)) throw new Error("That's been and gone.");
+  await db.update(schema.gameNight).set({ cancelled: false }).where(eq(schema.gameNight.id, n.id));
+  return n;
+}
+
 /** Gone entirely, with the games planned for it. Returns it, so its post can be taken down too. */
 export async function deleteNight(id: number) {
   const n = await ownNight(id);
