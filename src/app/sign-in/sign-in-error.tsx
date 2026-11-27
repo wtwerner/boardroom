@@ -4,12 +4,13 @@ import { useSearchParams } from "next/navigation";
 import type { SignInRefusal } from "@/lib/sign-in-refusal";
 import { SignInButton } from "./sign-in-button";
 
-const MESSAGES: Record<SignInRefusal | "access_denied" | "account_not_linked", string> = {
+const MESSAGES: Record<SignInRefusal | "access_denied" | "account_not_linked" | "account_already_linked_to_different_user", string> = {
   not_in_server: "That Discord account isn't in the group's server. Ask someone in the group for an invite, then try again.",
   missing_role: "Couldn't sign you in.",
   passwords_off: "This site doesn't use passwords. Sign in with Discord.",
   access_denied: "Sign-in was canceled in Discord.",
   account_not_linked: "There's already an account here with that email. Sign in with your password, then connect Discord on Settings.",
+  account_already_linked_to_different_user: "That Discord account is already connected to another account here.",
 };
 
 /** Why the last attempt failed, in words. Failed attempts come back as ?error=<code> */

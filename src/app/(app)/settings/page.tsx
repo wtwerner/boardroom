@@ -12,7 +12,7 @@ import { getPlayers } from "@/lib/queries";
 import { hasBggToken } from "@/lib/bgg";
 import { emailReady } from "@/lib/email";
 import { isPlaceholderEmail } from "@/lib/join";
-import { ConnectDiscord, ConfirmEmail, EmailForm, EmailUpdates, PasswordForm } from "./account-forms";
+import { AddPassword, ConnectDiscord, ConnectError, ConfirmEmail, EmailForm, EmailUpdates, PasswordForm } from "./account-forms";
 import { anyServerMemberCanSignIn, listGuildMembers, postsNights } from "@/lib/discord";
 import { BgaForm, BggForm, CalendarSync, ColorPicker, CsvForm, MergePlayersForm, PlayerDiscordLink, RenamePlayerForm, SignOutButton, SplitPlayerForm } from "./settings-forms";
 
@@ -108,7 +108,7 @@ async function Settings() {
         <ColorPicker current={me.color} />
       </Section>
 
-      {!DEMO && account && (hasPassword || (DISCORD_SIGN_IN && !hasDiscord) || emailReady()) && (
+      {!DEMO && account && (hasPassword || PASSWORD_SIGN_IN || (DISCORD_SIGN_IN && !hasDiscord) || emailReady()) && (
         <Section id="email" title="Signing in and email" className="scroll-mt-6">
           <Panel className="space-y-5 p-4">
             {hasPassword && PASSWORD_SIGN_IN && (
@@ -119,8 +119,14 @@ async function Settings() {
                 </div>
               </>
             )}
-            {DISCORD_SIGN_IN && !hasDiscord && (
+            {PASSWORD_SIGN_IN && !hasPassword && (
               <div className="border-t border-line pt-4 first:border-0 first:pt-0">
+                <AddPassword />
+              </div>
+            )}
+            {DISCORD_SIGN_IN && !hasDiscord && (
+              <div className="space-y-3 border-t border-line pt-4 first:border-0 first:pt-0">
+                <ConnectError />
                 <ConnectDiscord />
               </div>
             )}

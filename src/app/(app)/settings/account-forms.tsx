@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import clsx from "clsx";
-import { type ActionResult, type EmailChoice, saveEmail, sendConfirmation, setEmailChoice } from "@/app/actions";
+import { type ActionResult, type EmailChoice, saveEmail, sendConfirmation, setEmailChoice, setMyPassword } from "@/app/actions";
 import { buttonClass } from "@/components/ui";
 import { authClient } from "@/lib/auth-client";
 import { PASSWORD_MAX, PASSWORD_MIN } from "@/lib/join";
@@ -114,7 +115,8 @@ export function ConnectDiscord() {
         className={buttonClass("secondary")}
         onClick={async () => {
           setPending(true);
-          const { error: failed } = await authClient.linkSocial({ provider: "discord", callbackURL: "/settings#email", errorCallbackURL: "/sign-in" });
+          // A failure comes back here with ?error=<code>, for ConnectError to explain
+          const { error: failed } = await authClient.linkSocial({ provider: "discord", callbackURL: "/settings#email", errorCallbackURL: "/settings" });
           if (failed) {
             setPending(false);
             setError("Discord didn't open. Try again in a minute.");
@@ -185,5 +187,41 @@ export function ConfirmEmail({ email, password }: { email: string; password: boo
       </button>
       <Result state={state} />
     </div>
+  );
+}
+
+/** Why connecting Discord didn't work, from the ?error=<code> it came back with */
+const CONNECT_ERRORS: Record<string, string> = {
+  account_already_linked_to_different_user: "That Discord account is already connected to another account here. Ask an admin to remove the other account, then try again.",
+  not_in_server: "That Discord account isn't in the group's server. Join the server, then try again.",
+  access_denied: "Connecting was canceled in Discord.",
+};
+
+export function ConnectError() {
+  const error = useSearchParams().get("error");
+  const box = useRef<HTMLParagraphElement>(null);
+  // Braces: newer browsers return a promise from scrollIntoView, which React would take for a cleanup
+  useEffect(() => {
+    box.current?.scrollIntoView({ block: "center" });
+  }, [error]);
+  if (!error) return null;
+  return (
+    <p ref={box} role="alert" className="rounded-lg border border-meeple-red/40 bg-meeple-red/10 px-3 py-2 text-sm">
+      {CONNECT_ERRORS[error] ?? "Discord didn't connect. Try again in a minute."}
+    </p>
+  );
+}
+
+/** For someone who signs in with Discord: a password, to sign in without it */
+export function AddPassword() {
+  const [state, action, pending] = useActionState<ActionResult | null>(() => setMyPassword(), null);
+  return (
+    <form action={action} className="space-y-2">
+      <p className="text-sm text-slate">Add a password to sign in with your email when you can&apos;t use Discord.</p>
+      <button disabled={pending} className={buttonClass("secondary")}>
+        {pending ? "Opening…" : "Set a password"}
+      </button>
+      <Result state={state} />
+    </form>
   );
 }

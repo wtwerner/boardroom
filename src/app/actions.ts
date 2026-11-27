@@ -923,6 +923,24 @@ export async function makePasswordLink(userId: string): Promise<ActionResult> {
   }
 }
 
+/**
+ * A first password for someone who signs in with Discord, on a site that uses them: the same link an
+ * admin would make, opened straight away, since they're signed in already
+ */
+export async function setMyPassword(): Promise<ActionResult> {
+  let path: string;
+  try {
+    const me = await requireUser();
+    if (DEMO) return { ok: false, error: "The demo's members don't have passwords." };
+    const has = await db.query.account.findFirst({ where: and(eq(schema.account.userId, me.id), eq(schema.account.providerId, "credential")), columns: { id: true } });
+    if (has) return { ok: false, error: "You have a password already. Change it above." };
+    path = await savePasswordLink(me.id, me.id);
+  } catch (err) {
+    return fail(err);
+  }
+  redirect(path);
+}
+
 /** Give or take Discord's member role to match someone's access here, for a mismatch on People and access */
 export async function matchDiscordRole(userId: string): Promise<ActionResult> {
   try {

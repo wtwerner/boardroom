@@ -113,11 +113,11 @@ export function capabilities(names: { core: string; casual: string }, { discord 
     { area: "Their own", what: "Rate and rank games", admin: "yes", member: "yes", casual: "yes", actions: ["setOpinion", "acceptBggSuggestions", "undoBggSuggestions", "saveRanking"] },
     {
       area: "Their own",
-      what: "Name, color, email, calendar, BGG collection and Board Game Arena name",
+      what: "Name, color, email, password, calendar, BGG collection and Board Game Arena name",
       admin: "yes",
       member: "yes",
       casual: "yes",
-      actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv", "saveBgaProfile", "saveEmail", "sendConfirmation", "setEmailChoice"],
+      actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv", "saveBgaProfile", "saveEmail", "sendConfirmation", "setEmailChoice", "setMyPassword"],
     },
     { area: "Seeing", what: "Every page: Home, Plan, Plays, Shelf, Rankings, People, Discover, Online", admin: "yes", member: "yes", casual: "yes", actions: [] },
     { area: "Seeing", what: `The ${names.core}'s events, plays and group list`, admin: "yes", member: "yes", casual: "no", actions: [] },
