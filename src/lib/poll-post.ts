@@ -3,6 +3,8 @@ import { after } from "next/server";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { nightPingSetting, postMessage, replyToMessage } from "./discord";
+import { emailReady } from "./email";
+import { type Actor, emailDateSet, emailDatesNudge, emailFellThrough, emailPollReady } from "./event-email";
 import { isClaim, joinThread, postChannel, postInThread, renameNightThread, syncNightPost } from "./night-post";
 import type { CardPerson } from "./night-message";
 import { nightPing } from "./night-message";
@@ -27,8 +29,15 @@ export function answeredLater(nightId: number, pollId: number, join?: number) {
       const result = await syncNightPost(nightId);
       if (result === "posted") await joinThread(nightId);
       else if (result && join) await joinThread(nightId, [join]);
+    } catch (err) {
+      console.error(`Couldn't update night ${nightId}'s post in Discord`, err);
+      // Whoever started it hears only once, so without email that waits until Discord's back
+      if (!emailReady()) return;
+    }
+    try {
       const done = await everyoneJustAnswered(pollId);
       if (!done) return;
+      await emailPollReady(done.poll, "answered", bestSoFar(done.poll).best);
       const { body, allowedMentions } = everyoneAnsweredMessage({ starter: done.starter, ...bestSoFar(done.poll), min: done.poll.min });
       await postInThread(nightId, body, allowedMentions);
     } catch (err) {
@@ -47,16 +56,18 @@ function bestSoFar(poll: PollDetail) {
   return { best: { startsAt: first.startsAt, coming, everyone: first.verdict === "everyone" }, tie: null };
 }
 
-/** On the day it should be decided by (from the tick): ping whoever started it in the thread to pick a date */
+/** On the day it should be decided by (from the tick): ping whoever started it in the thread to pick a date, or email them */
 export async function sayDecideBy(poll: PollDetail) {
+  await emailPollReady(poll, "decide", bestSoFar(poll).best);
   const starter = poll.createdBy ? (poll.members.find((m) => m.userId === poll.createdBy) ?? null) : null;
   const { body, allowedMentions } = decideByMessage({ starter, ...bestSoFar(poll), min: poll.min, waiting: poll.waiting });
   await postInThread(poll.nightId, body, allowedMentions);
 }
 
-/** Ping the members who haven't answered in the thread */
-export function nudgeLater(nightId: number, waiting: CardPerson[], by: string) {
+/** Ping the members who haven't answered in the thread, and email the ones Discord doesn't reach */
+export function nudgeLater(nightId: number, waiting: (CardPerson & { userId: string })[], by: string, actor: Actor) {
   after(async () => {
+    await emailDatesNudge(nightId, waiting.map((w) => w.userId), actor);
     try {
       const { body, allowedMentions } = nudgeMessage(waiting, by);
       await postInThread(nightId, body, allowedMentions);
@@ -73,6 +84,7 @@ export function nudgeLater(nightId: number, waiting: CardPerson[], by: string) {
  */
 export function announceDateSetLater(nightId: number, coming: { going: CardPerson[]; maybe: CardPerson[] }, by: { playerId: number }) {
   after(async () => {
+    await emailDateSet(nightId, by.playerId);
     try {
       const result = await syncNightPost(nightId);
       if (!result) return;
@@ -97,8 +109,9 @@ export function announceDateSetLater(nightId: number, coming: { going: CardPerso
  * Once its date falls through: the post shows the dates on offer again, its thread is renamed,
  * and a note there says which date and pings whoever was going
  */
-export function announceFellThroughLater(nightId: number, note: Parameters<typeof refindMessage>[0]) {
+export function announceFellThroughLater(nightId: number, note: Parameters<typeof refindMessage>[0], email: { going: number[]; by: Actor }) {
   after(async () => {
+    await emailFellThrough(nightId, note.was, email.going, email.by);
     try {
       const result = await syncNightPost(nightId);
       const night = await db.query.gameNight.findFirst({ where: eq(schema.gameNight.id, nightId), columns: { threadId: true, messageId: true } });

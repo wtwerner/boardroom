@@ -29,6 +29,7 @@ import {
   updateReply,
 } from "./interactions";
 import { answerBringAsk, cancelNight, createNight, editNight, lastMadeNight, ownNight, playerForDiscordUser, playerNamed, setRsvp, waitingFor } from "./night-store";
+import { emailNewNight, emailNightOff } from "./event-email";
 import { joinThread, postInThread, syncNightPost, syncNightPostLater, upcomingOwnNights } from "./night-post";
 import { localDate, nightTitle, nightWhen, soonLabel } from "./nights";
 import { inSentence } from "./text";
@@ -127,7 +128,7 @@ async function command(i: Interaction) {
   if (sub === "edit") return editForm(await ownNight(nightId));
   if (sub === "cancel") {
     const n = await ownNight(nightId);
-    if (n.cancelled) return reply("That event is already cancelled.");
+    if (n.cancelled) return reply("That event is already canceled.");
     return ask(`Cancel **${n.title}** (<t:${unix(n.startsAt)}:F>)? Its post will say so, and it leaves the list of events.`, [
       { label: "Cancel the event", customId: actionId({ kind: "cancel", nightId: n.id }), danger: true },
     ]);
@@ -189,7 +190,7 @@ async function component(i: Interaction) {
   }
   if (action.kind === "for") {
     if (!(await mayAnswer(i, n.night))) return reply(NOT_THIS_ONE());
-    if (n.cancelled) return reply("That event was cancelled.");
+    if (n.cancelled) return reply("That event was canceled.");
     return modal(actionId({ kind: "for", nightId: n.id }), "Answer for someone else", [
       { id: "who", label: "Who", user: true, placeholder: "Someone in the server" },
       { id: "name", label: "Or their name", placeholder: "Someone who isn't in Discord", maxLength: 40 },
@@ -205,12 +206,13 @@ async function component(i: Interaction) {
   after(async () => {
     try {
       await syncNightPost(n.id);
-      await postInThread(n.id, `❌ <@${i.member!.user.id}> cancelled the event.`);
+      await postInThread(n.id, `❌ <@${i.member!.user.id}> canceled the event.`);
     } catch (err) {
       console.error(`Couldn't mark night ${n.id} cancelled in Discord`, err);
     }
+    await emailNightOff(n.id, { name: memberName(i) });
   });
-  return updateReply(`Cancelled **${n.title}**.`);
+  return updateReply(`Canceled **${n.title}**.`);
 }
 
 /** Their links for adding this night, with a sync link once they're a player (answering makes them one) */
@@ -265,7 +267,7 @@ async function submitted(i: Interaction) {
  * they say, and which dates on offer stay
  */
 async function refindForm(n: typeof schema.gameNight.$inferSelect) {
-  if (n.cancelled) return reply("That event was cancelled.");
+  if (n.cancelled) return reply("That event was canceled.");
   if (n.findingDate) return reply("It's finding a date already.");
   const staying = await datesStaying(n.id);
   return modal(actionId({ kind: "refind", nightId: n.id }), "Date fell through", [
@@ -293,7 +295,7 @@ async function refindDate(i: Interaction, nightId: number, form: Record<string, 
   if ("error" in dates) return reply(dates.error);
   const n = await ownNight(nightId);
   const found = await dateFellThrough(nightId, dates.map((d) => d.startsAt), userId);
-  announceFellThroughLater(nightId, { by: `<@${i.member!.user.id}>`, was: found.was.toISOString(), going: found.going });
+  announceFellThroughLater(nightId, { by: `<@${i.member!.user.id}>`, was: found.was.toISOString(), going: found.going }, { going: found.going.map((g) => g.playerId), by: { name: memberName(i), userId } });
   return reply(`**${escape(n.title)}** is back to picking a date. Its post shows the dates on offer, with everyone's answers.`);
 }
 
@@ -445,6 +447,7 @@ async function newNight(i: Interaction, form: Record<string, string>, capacity: 
       console.error(`Couldn't post night ${row.id}`, err);
       done += " Its post didn't go up; it'll try again the next time the event changes.";
     }
+    await emailNewNight(row.id, { name: memberName(i), userId });
     if (SITE_URL && night === "core") done += `\nPlan it: ${SITE_URL}/events/${row.id}`;
     await editInteractionReply(i.application_id, i.token, { content: done }).catch((err) => console.error("Couldn't finish the reply", err));
   });
@@ -452,7 +455,7 @@ async function newNight(i: Interaction, form: Record<string, string>, capacity: 
 }
 
 function editForm(n: typeof schema.gameNight.$inferSelect) {
-  if (n.cancelled) return reply("That event was cancelled.");
+  if (n.cancelled) return reply("That event was canceled.");
   const shown = formatForForm(n.startsAt, TIME_ZONE);
   return modal(actionId({ kind: "edit", nightId: n.id }), "Change the event", [
     { id: "title", label: "Title", value: n.title, required: true, maxLength: 100 },
@@ -527,6 +530,7 @@ async function newPoll(i: Interaction, form: Record<string, string>) {
       console.error(`Couldn't post night ${nightId}`, err);
       done += " Its post didn't go up; it'll try again the next time someone answers on the site.";
     }
+    await emailNewNight(nightId, { name: memberName(i), userId });
     await editInteractionReply(i.application_id, i.token, { content: done }).catch((err) => console.error("Couldn't finish the reply", err));
   });
   return deferReply();
@@ -592,7 +596,7 @@ async function pollButton(i: Interaction, action: PollAction) {
 
   if (action.kind === "pollReopen") {
     await reopenPoll(row.id);
-    syncNightPostLater(nightId, { say: `↩️ <@${i.member!.user.id}> reopened it.` });
+    syncNightPostLater(nightId, { say: `↩️ <@${i.member!.user.id}> reopened it.`, news: { what: "on", by: { name: memberName(i) } } });
     return deferUpdate();
   }
 
@@ -631,7 +635,7 @@ async function pollButton(i: Interaction, action: PollAction) {
     ]);
   }
   await cancelNight(nightId);
-  syncNightPostLater(nightId, { say: `❌ <@${i.member!.user.id}> called it off.` });
+  syncNightPostLater(nightId, { say: `❌ <@${i.member!.user.id}> called it off.`, news: { what: "off", by: { name: memberName(i) } } });
   return updateReply(`Called off **${escape(title)}**.`);
 }
 

@@ -30,6 +30,22 @@ export const SITE_URL = (env("BETTER_AUTH_URL") ?? (env("VERCEL_PROJECT_PRODUCTI
  */
 export const DEMO = demoRefusal(process.env) === null;
 
+/**
+ * What a group has set up of Discord, which is all optional. Signing in with it needs the
+ * application's id and secret; the bot (posts, DMs, reading plays) needs its token and the server.
+ */
+export const DISCORD_SIGN_IN = Boolean(env("DISCORD_CLIENT_ID") && env("DISCORD_CLIENT_SECRET"));
+export const DISCORD_BOT = Boolean(env("DISCORD_BOT_TOKEN") && env("DISCORD_GUILD_ID"));
+
+/**
+ * Email, also optional: any SMTP server's address, and who it's from. Links in emails need the
+ * site's address, so it's off without one. Off, the site never emails anyone.
+ */
+export const EMAIL = env("SMTP_URL") && env("EMAIL_FROM") && SITE_URL ? { smtpUrl: env("SMTP_URL")!, from: env("EMAIL_FROM")! } : null;
+
+/** Lets whoever put a new site up make its first account (src/lib/setup-code.ts) */
+export const SETUP_CODE = env("SETUP_CODE");
+
 /** Everything on Group settings, as saved. The Discord channels and roles are read through src/lib/discord.ts */
 export let SETTINGS: GroupSettings;
 
@@ -62,6 +78,15 @@ export let CASUAL_NIGHT: boolean;
  * sees only the casual night (src/lib/access.ts). Only with a casual night.
  */
 export let CASUAL_SIGN_IN: boolean;
+
+/**
+ * Invited people sign in with an email and password. Always on without Discord sign-in, since
+ * there's no other way in; with it, an admin turns it on for people who aren't in Discord.
+ */
+export let PASSWORD_SIGN_IN: boolean;
+
+/** A link that invites the group's chat: the most people it lets in, so one that gets around can't fill the site, and how many days it works */
+export let GROUP_INVITE: { people: number; days: number };
 
 /** The kinds of night this group has: its own, and the casual night when it has one */
 export let GROUP_NIGHTS: readonly Night[];
@@ -109,6 +134,8 @@ export function applySettings(s: GroupSettings) {
   TIME_ZONE = s.timeZone;
   CASUAL_NIGHT = s.casualNight;
   CASUAL_SIGN_IN = s.casualNight && s.casualSignIn;
+  PASSWORD_SIGN_IN = !DEMO && (s.passwordSignIn || !DISCORD_SIGN_IN);
+  GROUP_INVITE = { people: s.groupInvitePeople, days: s.groupInviteDays };
   GROUP_NIGHTS = s.casualNight ? ["core", "casual"] : ["core"];
   HEAVY_WEIGHT = s.heavyWeight;
   SHOW_BGG_RATINGS = s.showBggRatings;

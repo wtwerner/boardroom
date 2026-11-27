@@ -13,14 +13,17 @@ type Channel = { id: string; name: string; forum: boolean };
 type Role = { id: string; name: string };
 type Discord = { channels: Channel[]; roles: Role[]; interactions: boolean };
 
-export function GroupSettingsForm({ settings, timeZones, claude, discord, readOnly }: { settings: GroupSettings; timeZones: string[]; claude: boolean; discord: Discord | null; readOnly: boolean }) {
+/** What the site has set up besides its settings: ways of signing in and of telling people things */
+type Site = { discordSignIn: boolean; email: boolean };
+
+export function GroupSettingsForm({ settings, timeZones, claude, discord, site, readOnly }: { settings: GroupSettings; timeZones: string[]; claude: boolean; discord: Discord | null; site: Site; readOnly: boolean }) {
   const [state, action, pending] = useActionState<GroupSettingsResult | null, FormData>(saveGroupSettings, null);
   const errors = state && !state.ok && "fields" in state ? state.fields : {};
   return (
     <form action={action} className="space-y-10">
       {/* Saved values come back tidied (a blank name is the default again), so the fields start over from them */}
       <fieldset disabled={readOnly} className="space-y-10">
-        <Fields key={JSON.stringify(settings)} settings={settings} timeZones={timeZones} claude={claude} discord={discord} errors={errors} />
+        <Fields key={JSON.stringify(settings)} settings={settings} timeZones={timeZones} claude={claude} discord={discord} site={site} errors={errors} />
       </fieldset>
       {!readOnly && <div className="sticky bottom-24 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-card px-4 py-3 shadow-token md:bottom-4">
         <button className={buttonClass("primary")} disabled={pending}>{pending ? "Saving…" : "Save"}</button>
@@ -34,9 +37,10 @@ export function GroupSettingsForm({ settings, timeZones, claude, discord, readOn
   );
 }
 
-function Fields({ settings: s, timeZones, claude, discord, errors }: { settings: GroupSettings; timeZones: string[]; claude: boolean; discord: Discord | null; errors: Partial<Record<SettingKey, string>> }) {
+function Fields({ settings: s, timeZones, claude, discord, site, errors }: { settings: GroupSettings; timeZones: string[]; claude: boolean; discord: Discord | null; site: Site; errors: Partial<Record<SettingKey, string>> }) {
   const [casual, setCasual] = useState(s.casualNight);
   const [casualSignIn, setCasualSignIn] = useState(s.casualSignIn);
+  const [passwords, setPasswords] = useState(s.passwordSignIn);
   const [useClaude, setUseClaude] = useState(s.claude);
   const [showBgg, setShowBgg] = useState(s.showBggRatings);
   const [names, setNames] = useState({ core: s.coreNightName, casual: s.casualNightName });
@@ -46,7 +50,7 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
     <>
       <Section title="The group">
         <Panel className="space-y-4 p-4">
-          <Field label="Site name" hint="In the header, page titles, and on the button under plays posted to Discord." {...field("siteName")}>
+          <Field label="Site name" hint={`In the header and page titles${discord ? ", and on the button under plays posted to Discord" : ""}.`} {...field("siteName")}>
             <input id="siteName" name="siteName" defaultValue={s.siteName} maxLength={40} className={input} />
           </Field>
           <Field label="Time zone" hint="Where the group plays, for event times and play dates." {...field("timeZone")}>
@@ -62,7 +66,7 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
       <Section title="Nights">
         <Panel className="space-y-4 p-4">
           <NightFields night="core" names={names} setNames={setNames} title={s.coreNightTitle} minPeople={s.coreMinPeople} errors={errors} />
-          <Field label="Reminder" hint="Hours before an event starts that its channel gets a ping for whoever's going or a maybe. 0 turns it off." {...field("reminderHours")}>
+          <Field label="Reminder" hint={`Hours before an event starts that whoever's going or a maybe is reminded${discord ? " in its channel" : site.email ? " by email" : ", once the site sends email"}. 0 turns it off.`} {...field("reminderHours")}>
             <input id="reminderHours" name="reminderHours" type="number" min={0} max={72} step={1} defaultValue={s.reminderHours} className={clsx(input, "max-w-28")} />
           </Field>
           <Field label="How long an event runs" hint="Hours, for when an event ends in people's calendars." {...field("nightHours")}>
@@ -70,17 +74,39 @@ function Fields({ settings: s, timeZones, claude, discord, errors }: { settings:
           </Field>
           <div className="border-t border-line pt-4">
             <Toggle name="casualNight" checked={casual} onChange={setCasual} label="A casual night too">
-              A second, lighter night with guests, with its own channels and picks.
+              A second, lighter night with guests, with its own {discord ? "channels and " : ""}picks.
             </Toggle>
           </div>
           {casual && <NightFields night="casual" names={names} setNames={setNames} title={s.casualNightTitle} minPeople={s.casualMinPeople} errors={errors} />}
-          {casual && (
+          {casual && site.discordSignIn && (
             <div className="border-t border-line pt-4">
               <Toggle name="casualSignIn" checked={casualSignIn} onChange={setCasualSignIn} label={`${names.casual || "Casual night"} players can sign in`}>
                 Anyone in the Discord server without the member role signs in with an account for the {inSentence(names.casual || "Casual night")} only:
                 their own ratings, rankings and collection, its events and plays, and nothing of the {inSentence(names.core || "Game night")}. Admins
                 move people up, down or out on People and access.
               </Toggle>
+            </div>
+          )}
+        </Panel>
+      </Section>
+
+      <Section title={site.discordSignIn ? "Signing in" : "Invites"}>
+        <Panel className="space-y-4 p-4">
+          {/* Without Discord sign-in it's the only way in, so there's nothing to turn on */}
+          {site.discordSignIn && (
+            <Toggle name="passwordSignIn" checked={passwords} onChange={setPasswords} label="People can join without Discord">
+              Admins can invite people who aren&apos;t in Discord, with a link from People and access. They sign in with an email and password. Turning it
+              off keeps their accounts, but they can&apos;t sign in.
+            </Toggle>
+          )}
+          {(passwords || !site.discordSignIn) && (
+            <div className={clsx("grid gap-4 sm:grid-cols-2", site.discordSignIn && "border-t border-line pt-4")}>
+              <Field label="People per group link" hint="The most a link for the group's chat lets in, including links already out." {...field("groupInvitePeople")}>
+                <input id="groupInvitePeople" name="groupInvitePeople" type="number" min={1} max={500} step={1} defaultValue={s.groupInvitePeople} className={clsx(input, "max-w-28")} />
+              </Field>
+              <Field label="Days a group link works" hint="For links made from now on. Admins can turn one off sooner." {...field("groupInviteDays")}>
+                <input id="groupInviteDays" name="groupInviteDays" type="number" min={1} max={90} step={1} defaultValue={s.groupInviteDays} className={clsx(input, "max-w-28")} />
+              </Field>
             </div>
           )}
         </Panel>

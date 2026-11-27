@@ -120,7 +120,7 @@ async function Plays({ searchParams }: { searchParams: PageProps<"/plays">["sear
         {CASUAL_NIGHT && member && <NightSwitch current={night} href={(n) => (n ? `/plays?night=${n}` : "/plays")} all="All" />}
 
         {nights.length === 0 ? (
-          <Empty>{night ? `No ${inSentence(NIGHT_NAMES[night])} plays yet.` : "No plays yet. Sync from Discord or log one by hand."}</Empty>
+          <Empty>{night ? `No ${inSentence(NIGHT_NAMES[night])} plays yet.` : canPostToDiscord() ? "No plays yet. Sync from Discord or log one by hand." : "No plays yet. Log one above."}</Empty>
         ) : (
           <ol className="space-y-4">
             {nights.map(([key, nightPlays]) => (

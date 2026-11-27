@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
-import { CASUAL_NIGHT, CLAUDE_IDEAS_PER_DAY, DEMO, GROUP_NIGHTS, NIGHT_NAMES, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
+import { CASUAL_NIGHT, CLAUDE_IDEAS_PER_DAY, DEMO, DISCORD_BOT, GROUP_NIGHTS, NIGHT_NAMES, SETTINGS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
 import { ACCESS, type Access, DATE_ANSWERS, MEEPLE_COLORS, MUST_PLAY_LIMIT, NIGHTS, type Night, POLL_MAX_DATES, RSVP_STATUSES, type RsvpStatus, SENTIMENTS, TIERS, type Tier } from "@/db/enums";
 import { claudeReady, pickForNight, recommendPurchases, type NightPicks } from "@/lib/ai";
@@ -29,11 +29,14 @@ import { SETTING_KEYS, type SettingKey, checkSettings } from "@/lib/settings";
 import { SETTINGS_TAG, saveSettings } from "@/lib/settings-store";
 import { zonedToUtc } from "@/lib/nights";
 import { inSentence } from "@/lib/text";
-import { answerBringAsk as saveBringAnswer, cancelNight, createNight, deleteNight as removeNight, editNight, leaveNights, ownNight, playerForDiscordUser, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
+import { answerBringAsk as saveBringAnswer, cancelNight, reopenNight as saveReopenedNight, createNight, deleteNight as removeNight, editNight, leaveNights, ownNight, playerForDiscordUser, playerForUser, playerNamed, setRsvp as saveRsvp, titleForGame, waitingFor } from "@/lib/night-store";
 import { playerLinkedLater, removePost, syncNightPostLater } from "@/lib/night-post";
 import { canWelcome, welcomeCandidate, welcomeName, welcomeToGroup as welcome } from "@/lib/welcome";
 import { accessChangeRefusal } from "@/lib/access";
-import { addPollDate, createPoll, dateFellThrough as saveFellThrough, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, setDecideBy, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
+import { changeEmail, closeInvite as saveInviteClosed, makeInvite as saveInvite, makePasswordLink as savePasswordLink, sendConfirmation as emailConfirmation } from "@/lib/account-store";
+import { EmailInput } from "@/lib/join";
+import { canEmailAny, emailBeforeDelete, emailBringAsk, emailMadeMember } from "@/lib/event-email";
+import { addPollDate, createPoll, dateFellThrough as saveFellThrough, loadPoll, noDatesWork as saveNoDates, nudgeWaiting, ownPoll, setDecideBy, reopenPoll as saveReopened, setDateAnswer as saveDateAnswer, setPollDate as saveDate } from "@/lib/poll-store";
 import { announceDateSetLater, announceFellThroughLater, answeredLater, nudgeLater } from "@/lib/poll-post";
 import { escape } from "@/lib/discord-components";
 import { welcomeSummary } from "@/lib/welcome-message";
@@ -54,7 +57,7 @@ import {
 } from "@/lib/sync";
 
 export type ActionResult =
-  | { ok: true; message?: string; /** Players it made (someone new on the log form) */ playerIds?: number[] }
+  | { ok: true; message?: string; /** Players it made (someone new on the log form) */ playerIds?: number[]; /** A link it made, shown this once */ link?: string }
   | { ok: false; error: string; duplicate?: boolean };
 
 /**
@@ -587,6 +590,39 @@ export async function setMyColor(color: string) {
   refresh();
 }
 
+/** The email I sign in with, and hear about events at. Changing it takes my password */
+export async function saveEmail(_prev: ActionResult | null, form: FormData): Promise<ActionResult> {
+  const me = await requireUser();
+  if (DEMO) return { ok: false, error: "The demo's members don't have emails." };
+  const parsed = EmailInput.safeParse({ email: form.get("email") ?? "" });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0].message };
+  try {
+    await changeEmail(me.id, parsed.data.email, String(form.get("password") ?? ""));
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true, message: "Saved." };
+}
+
+/** Another email to confirm my address with */
+export async function sendConfirmation(): Promise<ActionResult> {
+  const me = await requireUser();
+  const sent = await emailConfirmation(me.id);
+  return sent ? { ok: true, message: "Sent. Check your inbox, including spam." } : { ok: false, error: "A confirmation email was sent a few minutes ago. Check your inbox, including spam." };
+}
+
+export type EmailChoice = "discord" | "both" | "off";
+
+/** Whether I get emails about events: only what Discord doesn't tell me, all of them, or none (reach.ts) */
+export async function setEmailChoice(choice: EmailChoice): Promise<ActionResult> {
+  const me = await requireUser();
+  if (!["discord", "both", "off"].includes(choice)) return { ok: false, error: "Pick one." };
+  await db.update(schema.user).set({ emailUpdates: choice !== "off", emailToo: choice === "both" }).where(eq(schema.user.id, me.id));
+  refresh();
+  return { ok: true };
+}
+
 /** Off to the page for subscribing to their events, making their feed's secret if it's the first time */
 export async function openCalendarSync(form: FormData) {
   const me = await requireUser();
@@ -833,10 +869,76 @@ export async function setAccess(userId: string, to: Access): Promise<ActionResul
     }
 
     const discord = await matchRole(target.discordId, to, me.name);
-    return { ok: true, message: [said + events, discord].filter(Boolean).join(" ") };
+    // Nobody welcomed them in Discord, so they hear it by email if they can
+    const emailed = to === "member" && target.access === "casual" && (await emailMadeMember(userId, me.name));
+    return { ok: true, message: [said + events, emailed && "They've been notified by email.", discord].filter(Boolean).join(" ") };
   } catch (err) {
     return fail(err);
   }
+}
+
+const InviteInput = z.object({
+  access: z.enum(["member", "casual"]),
+  /** One link for everyone in a chat, rather than for one person */
+  group: z.boolean(),
+  label: z.string().trim().max(60),
+  playerId: z.number().int().nullable(),
+});
+
+/** A link someone can make an account from, without Discord. Shown once, for the admin to send however the group talks */
+export async function makeInvite(input: z.infer<typeof InviteInput>): Promise<ActionResult> {
+  try {
+    const me = await requireAdmin();
+    const parsed = InviteInput.safeParse(input);
+    if (!parsed.success) return { ok: false, error: "Keep who it's for under 61 characters." };
+    const { label, ...rest } = parsed.data;
+    const path = await saveInvite({ ...rest, label: label || null }, me.id);
+    refresh();
+    return { ok: true, link: `${SITE_URL ?? ""}${path}` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Turn an invite off. Accounts already made from it stay */
+export async function closeInvite(id: number): Promise<ActionResult> {
+  try {
+    await requireAdmin();
+    await saveInviteClosed(id);
+    refresh();
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** A link for someone who's forgotten their password, or only ever used Discord, to choose one. Shown once */
+export async function makePasswordLink(userId: string): Promise<ActionResult> {
+  try {
+    const me = await requireAdmin();
+    const path = await savePasswordLink(userId, me.id);
+    return { ok: true, link: `${SITE_URL ?? ""}${path}` };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * A first password for someone who signs in with Discord, on a site that uses them: the same link an
+ * admin would make, opened straight away, since they're signed in already
+ */
+export async function setMyPassword(): Promise<ActionResult> {
+  let path: string;
+  try {
+    const me = await requireUser();
+    if (DEMO) return { ok: false, error: "The demo's members don't have passwords." };
+    const has = await db.query.account.findFirst({ where: and(eq(schema.account.userId, me.id), eq(schema.account.providerId, "credential")), columns: { id: true } });
+    if (has) return { ok: false, error: "You have a password already. Change it above." };
+    path = await savePasswordLink(me.id, me.id);
+  } catch (err) {
+    return fail(err);
+  }
+  redirect(path);
 }
 
 /** Give or take Discord's member role to match someone's access here, for a mismatch on People and access */
@@ -898,7 +1000,7 @@ export async function addNight(input: z.infer<typeof NightInput>): Promise<Actio
   try {
     ({ id } = await createNight({ night, title, startsAt: zonedToUtc(date, time, TIME_ZONE), location, capacity }, me.id));
     // Not marked going, but added to the thread to follow it
-    syncNightPostLater(id, { creator: await playerForUser(me) });
+    syncNightPostLater(id, { creator: await playerForUser(me), news: { what: "new", by: { name: me.name, userId: me.id } } });
   } catch (err) {
     return fail(err);
   }
@@ -914,7 +1016,7 @@ export async function updateNight(id: number, input: z.infer<typeof NightInput>)
     const waiting = await waitingFor(id);
     const before = await editNight(id, { night, title, startsAt: zonedToUtc(date, time, TIME_ZONE), location, capacity });
     const discordId = (await db.query.user.findFirst({ where: eq(schema.user.id, me.id), columns: { discordId: true } }))?.discordId;
-    syncNightPostLater(id, { note: { before, by: { name: me.name, discordId } }, waiting });
+    syncNightPostLater(id, { note: { before, by: { name: me.name, discordId }, userId: me.id }, waiting });
   } catch (err) {
     return fail(err);
   }
@@ -946,14 +1048,48 @@ export async function updateNightDetails(id: number, input: z.infer<typeof Detai
 }
 
 export async function deleteNight(id: number): Promise<ActionResult> {
-  await requireMember();
+  const me = await requireMember();
   try {
+    const tell = await emailBeforeDelete(id, { name: me.name, userId: me.id });
     const n = await removeNight(id);
-    after(() => removePost(n).catch((err) => console.error("Couldn't take the night's post down", err)));
+    after(async () => {
+      await removePost(n).catch((err) => console.error("Couldn't take the night's post down", err));
+      await tell();
+    });
   } catch (err) {
     return fail(err);
   }
   redirect("/plan");
+}
+
+/** Called off for everyone. Its answers stay, so it can be reopened as it was. A night finding its date calls off its poll instead */
+export async function cancelEvent(nightId: number): Promise<ActionResult> {
+  const me = await requireMember();
+  try {
+    const n = await ownNight(nightId);
+    if (n.cancelled) return { ok: true };
+    if (n.findingDate) return { ok: false, error: "It's still finding a date. Call off its date poll instead." };
+    if (n.startsAt.getTime() <= Date.now()) return { ok: false, error: "It's already started." };
+    await cancelNight(nightId);
+    syncNightPostLater(nightId, { say: `❌ ${await mentionMe(me)} canceled the event.`, news: { what: "off", by: { name: me.name, userId: me.id } } });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
+}
+
+/** Back on after being canceled, answers and all */
+export async function reopenEvent(nightId: number): Promise<ActionResult> {
+  const me = await requireMember();
+  try {
+    await saveReopenedNight(nightId);
+    syncNightPostLater(nightId, { say: `↩️ ${await mentionMe(me)} reopened it.`, news: { what: "on", by: { name: me.name, userId: me.id } } });
+  } catch (err) {
+    return fail(err);
+  }
+  refresh();
+  return { ok: true };
 }
 
 // Finding a night's date: it changes here or in Discord, and its post follows
@@ -983,7 +1119,7 @@ export async function startPoll(input: z.infer<typeof PollInput>): Promise<Actio
   let nightId: number;
   try {
     ({ nightId } = await createPoll({ night: GROUP_NIGHTS.includes(night) ? night : "core", title: title || null, location, dates: dates.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)), decideBy: decideAt(decideBy) }, me.id));
-    syncNightPostLater(nightId, { creator: await playerForUser(me) });
+    syncNightPostLater(nightId, { creator: await playerForUser(me), news: { what: "new", by: { name: me.name, userId: me.id } } });
   } catch (err) {
     return fail(err);
   }
@@ -1072,7 +1208,7 @@ export async function findNewDate(nightId: number, dates: z.infer<typeof NewDate
   if (!parsed.success) return { ok: false, error: `Give up to ${POLL_MAX_DATES} dates, each with a time.` };
   try {
     const found = await saveFellThrough(nightId, parsed.data.map((d) => zonedToUtc(d.date, d.time, TIME_ZONE)), me.id);
-    announceFellThroughLater(nightId, { by: await mentionMe(me), was: found.was.toISOString(), going: found.going });
+    announceFellThroughLater(nightId, { by: await mentionMe(me), was: found.was.toISOString(), going: found.going }, { going: found.going.map((g) => g.playerId), by: { name: me.name, userId: me.id } });
   } catch (err) {
     return fail(err);
   }
@@ -1100,14 +1236,17 @@ export async function nudgeForDates(pollId: number): Promise<ActionResult> {
   try {
     const poll = await ownPoll(pollId);
     const n = await ownNight(poll.gameNightId);
-    if (!n.threadId) return { ok: false, error: "It isn't posted in Discord, so there's nowhere to nudge them." };
+    const { waiting: late = [] } = (await loadPoll(pollId)) ?? {};
+    if (!n.threadId && !(await canEmailAny(late.map((w) => w.userId), false))) {
+      return { ok: false, error: DISCORD_BOT ? "It isn't posted in Discord, so there's nowhere to nudge them." : "None of them get emails from the site, so there's nowhere to nudge them." };
+    }
     const { nightId, waiting } = await nudgeWaiting(pollId);
-    nudgeLater(nightId, waiting, await mentionMe(me));
+    nudgeLater(nightId, waiting, await mentionMe(me), { name: me.name, userId: me.id });
   } catch (err) {
     return fail(err);
   }
   refresh();
-  return { ok: true, message: "Nudged them in the event's thread." };
+  return { ok: true, message: "Nudged them." };
 }
 
 /** Call off a night that's finding its date */
@@ -1116,7 +1255,7 @@ export async function callOffPoll(pollId: number): Promise<ActionResult> {
   try {
     const poll = await ownPoll(pollId);
     await cancelNight(poll.gameNightId);
-    syncNightPostLater(poll.gameNightId, { say: `❌ ${await mentionMe(me)} called it off.` });
+    syncNightPostLater(poll.gameNightId, { say: `❌ ${await mentionMe(me)} called it off.`, news: { what: "off", by: { name: me.name, userId: me.id } } });
   } catch (err) {
     return fail(err);
   }
@@ -1129,7 +1268,7 @@ export async function reopenPoll(pollId: number): Promise<ActionResult> {
   const me = await requireMember();
   try {
     const n = await saveReopened(pollId);
-    syncNightPostLater(n.id, { say: `↩️ ${await mentionMe(me)} reopened it.` });
+    syncNightPostLater(n.id, { say: `↩️ ${await mentionMe(me)} reopened it.`, news: { what: "on", by: { name: me.name, userId: me.id } } });
   } catch (err) {
     return fail(err);
   }
@@ -1292,20 +1431,24 @@ export async function askToBring(nightId: number, gameId: number, ownerId: strin
   syncNightPostLater(n.id);
   refresh();
 
-  // Without the bot (or their Discord account), they'll see it on the event's page
+  // Without the bot (or their Discord account), they get an email, or see it on the event's page
   if (!owner.discordId || !process.env.DISCORD_BOT_TOKEN || !hasInteractions()) {
-    return { ok: true, message: `Asked ${owner.name}. They'll see it on the event's page.` };
+    const emailed = await emailBringAsk(owner.id, n, g.name, me.name);
+    return { ok: true, message: emailed ? `Asked ${owner.name} by email.` : `Asked ${owner.name}. They'll see it on the event's page.` };
   }
   try {
     await sendDirectMessage(
       owner.discordId,
       bringAskDm({ planId, game: g.name, night: { title: n.title, startsAt: n.startsAt.toISOString() }, by: me.name, url: SITE_URL ? `${SITE_URL}/events/${n.id}` : null }),
     );
+    // Asked for email as well
+    await emailBringAsk(owner.id, n, g.name, me.name);
     return { ok: true, message: `Asked ${owner.name}. They've got a DM to answer.` };
   } catch (err) {
     if (discordCode(err) !== 50007) console.error(`Couldn't DM ${owner.id} about bringing ${gameId}`, err);
+    if (await emailBringAsk(owner.id, n, g.name, me.name, { dmFailed: true })) return { ok: true, message: `Asked ${owner.name} by email, since Discord couldn't deliver the DM.` };
     const why = discordCode(err) === 50007 ? "they don't take DMs" : "the DM didn't go through";
-    return { ok: true, message: `Asked ${owner.name}, but ${why}, so give them a nudge.` };
+    return { ok: true, message: `Asked ${owner.name}, but ${why}. It's on the event's page, but you might want to nudge them.` };
   }
 }
 

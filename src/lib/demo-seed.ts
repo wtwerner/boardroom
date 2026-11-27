@@ -187,7 +187,7 @@ export async function seedGroup(now = new Date()) {
   // Start clean, everyone signed out. BGA's game list and the Discover catalog stay: they aren't the group's.
   for (const t of [
     schema.datePollVote, schema.datePollOption, schema.datePoll, schema.planReady, schema.planVote, schema.gamePlan, schema.nightRsvp, schema.gameNight, schema.suggestionVote, schema.suggestion, schema.ranking, schema.opinion, schema.playPlayer, schema.play,
-    schema.player, schema.collectionItem, schema.game, schema.session, schema.account, schema.verification, schema.user, schema.syncState, schema.setting,
+    schema.player, schema.collectionItem, schema.game, schema.accessLink, schema.rateLimit, schema.session, schema.account, schema.verification, schema.user, schema.syncState, schema.setting,
   ]) {
     await db.delete(t);
   }
@@ -491,11 +491,14 @@ async function rsvp(gameNightId: number, answers: Record<string, RsvpStatus>) {
 
 /**
  * The demo's nightly reset: the made-up group back as it was, dated from today, and everyone
- * signed out. Refuses unless this is a demo (DEMO=on and no Discord), so it can't wipe a real
- * group's data.
+ * signed out. Refuses unless this is a demo (demoRefusal) and nobody real has an account, so it can't wipe a
+ * real group's data.
  */
 export async function resetDemo() {
   const refusal = demoRefusal(process.env);
   if (refusal) throw new Error(`Not resetting: ${refusal}`);
+  // The made-up members only use the sign-in shortcut: an account with a password or Discord is a real person's
+  const real = await db.query.account.findFirst({ columns: { id: true } });
+  if (real) throw new Error("Not resetting: this database has real accounts in it");
   return seedGroup();
 }

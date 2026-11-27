@@ -2,6 +2,8 @@ import "server-only";
 import { and, eq, gt, inArray, isNotNull, isNull, lte, ne } from "drizzle-orm";
 import { CASUAL_NIGHT, REMINDER_HOURS, SITE_NAME, SITE_URL, TIME_ZONE } from "@/config";
 import { db, schema } from "@/db";
+import { emailReady } from "./email";
+import { emailLogNudge, emailRateNudge, emailReminder } from "./event-email";
 import { canPostToDiscord, discordCode, postsNights, replyToMessage, sendDirectMessage } from "./discord";
 import { isClaim, postChannel } from "./night-post";
 import { logNudgeDm, logNudgeDue, rateNudgeDm, rateNudges, reminderDue, reminderMessage } from "./nudges";
@@ -16,19 +18,27 @@ import { syncDiscordPlays } from "./sync";
 const HOUR = 3_600_000;
 const n = schema.gameNight;
 
-/** Reply to each night's post when it's about to start, pinging whoever's going or a maybe. Returns the nights reminded. */
+/** Reply to each night's post when it's about to start, pinging whoever's going or a maybe, and email whoever that doesn't reach. Returns the nights reminded. */
 export async function sendReminders(now = new Date()) {
   if (!REMINDER_HOURS) return [];
   const rows = await db
     .select()
     .from(n)
-    .where(and(eq(n.cancelled, false), eq(n.findingDate, false), isNull(n.remindedAt), isNotNull(n.messageId), gt(n.startsAt, now), lte(n.startsAt, new Date(now.getTime() + REMINDER_HOURS * HOUR))));
+    .where(and(eq(n.cancelled, false), eq(n.findingDate, false), isNull(n.remindedAt), gt(n.startsAt, now), lte(n.startsAt, new Date(now.getTime() + REMINDER_HOURS * HOUR))));
   const reminded: number[] = [];
   for (const row of rows) {
-    if (!reminderDue(row, now, REMINDER_HOURS) || !postsNights(row.night) || isClaim(row.messageId)) continue;
+    if (!reminderDue(row, now, REMINDER_HOURS) || isClaim(row.messageId)) continue;
+    // Its post gets a reply; anyone that doesn't reach is emailed. With neither, there's nobody to remind yet
+    const posted = row.messageId !== null && postsNights(row.night);
+    if (!posted && !emailReady()) continue;
     // Claimed first, so two ticks running at once don't both remind
     const claimed = await db.update(n).set({ remindedAt: now }).where(and(eq(n.id, row.id), isNull(n.remindedAt))).returning({ id: n.id });
     if (!claimed.length) continue;
+    if (!posted) {
+      await emailReminder(row.id, false);
+      reminded.push(row.id);
+      continue;
+    }
     const answers = await db
       .select({ name: schema.player.name, discordId: schema.player.discordId, status: schema.nightRsvp.status, guests: schema.nightRsvp.guests })
       .from(schema.nightRsvp)
@@ -49,6 +59,7 @@ export async function sendReminders(now = new Date()) {
     try {
       await replyToMessage(await postChannel(row), row.messageId!, body, allowedMentions);
       reminded.push(row.id);
+      await emailReminder(row.id, true);
     } catch (err) {
       // The next tick tries again, until the night starts
       console.error(`Couldn't remind night ${row.id}'s channel`, err);
@@ -59,11 +70,12 @@ export async function sendReminders(now = new Date()) {
 }
 
 /**
- * DM whoever made each night that's over with nothing logged, asking them to log it. Returns
+ * DM (or email) whoever made each night that's over with nothing logged, asking them to log it. Returns
  * the nights they were asked about.
  */
 export async function sendLogNudges(now = new Date()) {
-  if (!process.env.DISCORD_BOT_TOKEN) return [];
+  const bot = Boolean(process.env.DISCORD_BOT_TOKEN);
+  if (!bot && !emailReady()) return [];
   const rows = await db
     .select()
     .from(n)
@@ -79,26 +91,34 @@ export async function sendLogNudges(now = new Date()) {
     if (!claimed.length) continue;
     const logged = await db.query.play.findFirst({ where: and(eq(schema.play.night, row.night), eq(schema.play.playedOn, row.date!)), columns: { id: true } });
     const creator = await db.query.user.findFirst({ where: eq(schema.user.id, row.createdBy!), columns: { discordId: true } });
-    if (logged || !creator?.discordId) continue;
+    if (logged || !creator) continue;
+    if (!bot || !creator.discordId) {
+      if (await emailLogNudge(row.createdBy!, row)) nudged.push(row.id);
+      continue;
+    }
     try {
       await sendDirectMessage(creator.discordId, logNudgeDm({ title: row.title, url: SITE_URL ? `${SITE_URL}/events/${row.id}#log` : null, siteName: SITE_NAME }));
       nudged.push(row.id);
+      // Asked for email as well
+      await emailLogNudge(row.createdBy!, row);
     } catch (err) {
-      // Asked once: someone who doesn't take DMs (50007) won't start to by the next tick
+      // Asked once: someone who doesn't take DMs (50007) won't start to by the next tick, so they're emailed instead
       if (discordCode(err) !== 50007) console.error(`Couldn't ask about logging night ${row.id}`, err);
+      if (await emailLogNudge(row.createdBy!, row, { dmFailed: true })) nudged.push(row.id);
     }
   }
   return nudged;
 }
 
 /**
- * The morning after a casual night with plays logged, DM everyone with an account who played
+ * The morning after a casual night with plays logged, DM (or email) everyone with an account who played
  * (members and casual players alike), naming the games they haven't rated, so the next one's
  * planner has more to go on. Once a night; a night with nothing logged yet waits until it has.
  * Returns the people asked.
  */
 export async function sendRateNudges(now = new Date()) {
-  if (!process.env.DISCORD_BOT_TOKEN || !CASUAL_NIGHT) return [];
+  const bot = Boolean(process.env.DISCORD_BOT_TOKEN);
+  if ((!bot && !emailReady()) || !CASUAL_NIGHT) return [];
   const rows = await db
     .select()
     .from(n)
@@ -141,12 +161,17 @@ export async function sendRateNudges(now = new Date()) {
     );
     for (const ask of asks) {
       const discordId = discordOf.get(ask.userId);
-      if (!discordId) continue;
+      if (!bot || !discordId) {
+        if (await emailRateNudge(ask.userId, row, ask.games)) asked.push(ask.userId);
+        continue;
+      }
       try {
         await sendDirectMessage(discordId, rateNudgeDm({ title: row.title, games: ask.games, url: SITE_URL ? `${SITE_URL}/rankings/rate` : null, siteName: SITE_NAME }));
         asked.push(ask.userId);
+        await emailRateNudge(ask.userId, row, ask.games);
       } catch (err) {
         if (discordCode(err) !== 50007) console.error(`Couldn't ask ${ask.userId} to rate night ${row.id}'s games`, err);
+        if (await emailRateNudge(ask.userId, row, ask.games, { dmFailed: true })) asked.push(ask.userId);
       }
     }
   }

@@ -42,10 +42,12 @@ export async function GET(request: Request) {
 }
 
 async function syncGroup(results: Record<string, unknown>) {
-  try {
-    results.discord = await syncDiscordPlays();
-  } catch (err) {
-    results.discord = { error: String(err) };
+  if (process.env.DISCORD_BOT_TOKEN) {
+    try {
+      results.discord = await syncDiscordPlays();
+    } catch (err) {
+      results.discord = { error: String(err) };
+    }
   }
   if (hasBggToken()) {
     try {

@@ -64,7 +64,8 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
 
   // Nights still finding their date, each with the dates on offer
   const finding = await Promise.all(polls.map(async (p) => ({ poll: p, night: await loadNight(p.nightId) })));
-  const pollViews = finding.flatMap(({ poll, night }) => (night ? [pollView(poll, night)] : []));
+  const inSight = finding.flatMap(({ poll, night }) => (night ? [{ poll, night }] : []));
+  const pollViews = await Promise.all(inSight.map(({ poll, night }) => pollView(poll, night)));
   const offNights = await Promise.all(calledOff.map((p) => loadNight(p.nightId)));
   const pollSection = (
     <Section title="Picking a date" id="polls">
@@ -118,7 +119,7 @@ async function Agenda({ searchParams }: { searchParams: PageProps<"/plan">["sear
         ) : (
           <Empty>
             {!member
-              ? "Nothing coming up yet. The next one shows up here, and in Discord, once it's planned."
+              ? `Nothing coming up yet. The next one shows up here${postsNights("casual") ? ", and in Discord," : ""} once it's planned.`
               : GROUP_NIGHTS.some(postsNights)
                 ? `Nothing coming up. Add the next event below, or with /${commandName()} new in Discord.`
                 : "Nothing coming up. Add the next event below."}

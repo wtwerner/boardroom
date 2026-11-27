@@ -5,6 +5,7 @@ import clsx from "clsx";
 import { type ActionResult, matchDiscordRole, setAccess, setAdmin } from "@/app/actions";
 import type { Access } from "@/db/enums";
 import { buttonClass } from "@/components/ui";
+import { PasswordLinkButton } from "./invites";
 
 /**
  * One person's access, for an admin: member or casual, admin or not, and taking them off the
@@ -24,6 +25,8 @@ export function AccessControls(props: {
   /** The group has a casual night, so someone can be moved there */
   offerCasual: boolean;
   readOnly: boolean;
+  /** The group uses passwords, so an admin can make a link to choose one */
+  passwords: boolean;
 }) {
   const [pending, start] = useTransition();
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -114,6 +117,7 @@ export function AccessControls(props: {
           </button>
         )}
       </div>
+      {props.passwords && !locked && <PasswordLinkButton userId={props.userId} name={props.name} />}
       <Status result={result} />
     </div>
   );

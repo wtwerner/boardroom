@@ -3,22 +3,27 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
-import { and, eq } from "drizzle-orm";
-import { CASUAL_NIGHT, CASUAL_SIGN_IN, SITE_URL } from "@/config";
+import { and, eq, isNull, ne } from "drizzle-orm";
+import { CASUAL_NIGHT, CASUAL_SIGN_IN, DISCORD_SIGN_IN, PASSWORD_SIGN_IN, SITE_URL } from "@/config";
 import { db, schema } from "@/db";
 import type { Access } from "@/db/enums";
-import { signInAccess } from "./access";
+import { passwordAccess, signInAccess, startedByPassword } from "./access";
 import { getServerMember } from "./discord";
 import { discordAccountEmail } from "./discord-email";
 import { pickColor } from "./meeple";
-import { matchByName } from "./players";
+import { linkPlayer } from "./player-link";
+import { PASSWORD_MAX, PASSWORD_MIN } from "./join";
 import { loadSettings } from "./settings-store";
 import type { SignInRefusal } from "./sign-in-refusal";
 
 const REFUSAL_MESSAGE: Record<SignInRefusal, string> = {
   not_in_server: "This site is only for members of the game group's Discord server.",
-  missing_role: "Couldn't sign you in with that Discord account.",
+  missing_role: "Couldn't sign you in.",
+  passwords_off: "This site doesn't use passwords. Sign in with Discord.",
 };
+
+// With a code, Better Auth redirects the OAuth callback to /sign-in?error=<code>; without one it answers with raw JSON
+const refuse = (code: SignInRefusal) => new APIError("FORBIDDEN", { code, message: REFUSAL_MESSAGE[code] });
 
 /**
  * What someone signs in as (src/lib/access.ts), or a refusal. `existing` is their access if
@@ -35,10 +40,7 @@ async function signInAs(discordId: string | null | undefined, existing: Access |
     casualSignIn: CASUAL_SIGN_IN,
     casualNight: CASUAL_NIGHT,
   });
-  if (!decision.ok) {
-    // With a code, Better Auth redirects the OAuth callback to /sign-in?error=<code>; without one it answers with raw JSON
-    throw new APIError("FORBIDDEN", { code: decision.refusal, message: REFUSAL_MESSAGE[decision.refusal] });
-  }
+  if (!decision.ok) throw refuse(decision.refusal);
   return decision.access;
 }
 
@@ -53,37 +55,6 @@ function checkedJustNow(userId: string) {
   return at !== undefined && Date.now() - at < 60_000;
 }
 
-/**
- * Give a new member a player record: claim the one from imported play logs
- * that was @-mentioned with their Discord account (or, failing that, is the only
- * one with their name), or start a fresh one. Two players with their name could
- * be either, so they start fresh and merge their history in. Either way they get
- * a meeple color if they don't have one (pickColor).
- */
-async function linkPlayer(userId: string, name: string, discordId: string | null) {
-  const players = await db.select().from(schema.player);
-  if (players.some((p) => p.userId === userId)) return;
-  const color = pickColor(players.map((p) => p.color));
-  const byName = matchByName(
-    players.filter((p) => !p.userId && !p.discordId),
-    name,
-  );
-  const match =
-    (discordId && players.find((p) => !p.userId && p.discordId === discordId)) ||
-    (byName && "player" in byName ? byName.player : null);
-
-  if (match) {
-    await db
-      .update(schema.player)
-      .set({ userId, discordId: discordId ?? match.discordId, color: match.color ?? color })
-      .where(eq(schema.player.id, match.id));
-    // The group may already have renamed their player ("Sam" for a handle like "sambo99"): keep that, not the Discord name
-    if (match.name !== name) await db.update(schema.user).set({ name: match.name }).where(eq(schema.user.id, userId));
-  } else {
-    await db.insert(schema.player).values({ name, userId, discordId, color });
-  }
-}
-
 /** Anyone who first signed in once the first six colors were taken went without one: they get one on their next sign-in */
 async function colorIfNone(userId: string) {
   const mine = await db.query.player.findFirst({ where: eq(schema.player.userId, userId), columns: { id: true, color: true } });
@@ -95,11 +66,20 @@ async function colorIfNone(userId: string) {
 export const auth = betterAuth({
   baseURL: SITE_URL,
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
-  // Without a Discord application (local development, a demo) there's no way to sign in but the shortcut in dev-login.ts
-  socialProviders: process.env.DISCORD_CLIENT_ID
+  // Accounts are only made from an invite, or for a new site's first (account-store.ts), never by
+  // signing up here. Whether the group uses passwords at all is checked as a session starts, below
+  emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: PASSWORD_MIN, maxPasswordLength: PASSWORD_MAX },
+  account: {
+    // Two accounts with the same email are only joined by someone signed in to one of them (Connect
+    // Discord on Settings), never because the addresses match: an invite's is whatever they typed
+    accountLinking: { enabled: true, disableImplicitLinking: true, allowDifferentEmails: true, trustedProviders: ["discord"] },
+  },
+  // Counted in the database: in memory, each server would give out its own tries
+  rateLimit: { storage: "database" },
+  socialProviders: DISCORD_SIGN_IN
     ? {
         discord: {
-          clientId: process.env.DISCORD_CLIENT_ID,
+          clientId: process.env.DISCORD_CLIENT_ID!,
           clientSecret: process.env.DISCORD_CLIENT_SECRET!,
           mapProfileToUser: (profile) => ({ email: discordAccountEmail(profile) }),
         },
@@ -120,11 +100,25 @@ export const auth = betterAuth({
   // Discord's own profile). Profile fields mapped onto the user are dropped when the
   // field is `input: false`, and making it `input: true` would let people edit it.
   databaseHooks: {
+    user: {
+      create: {
+        // Discord says whether it checked the address, but that's not the same as someone choosing to get
+        // emails at it: emails about events go to an address confirmed here (reach.ts)
+        before: async (user) => ({ data: { ...user, emailVerified: false } }),
+      },
+    },
     account: {
       create: {
-        // The first sign-in: the member role decides whether they're a member or a casual account
+        // The first sign-in: the member role decides whether they're a member or a casual account.
+        // Someone already signed in here who's connecting Discord stays what they are
         before: async (account) => {
           if (account.providerId !== "discord") return;
+          const mine = await db.query.account.findFirst({ where: eq(schema.account.userId, account.userId), columns: { id: true } });
+          if (mine) {
+            const u = await db.query.user.findFirst({ where: eq(schema.user.id, account.userId), columns: { access: true } });
+            await signInAs(account.accountId, u?.access ?? "removed");
+            return;
+          }
           const access = await signInAs(account.accountId, null);
           await db.update(schema.user).set({ access }).where(eq(schema.user.id, account.userId));
           justChecked.set(account.userId, Date.now());
@@ -137,7 +131,20 @@ export const auth = betterAuth({
             .set({ discordId: account.accountId })
             .where(eq(schema.user.id, account.userId))
             .returning({ name: schema.user.name });
-          if (u) await linkPlayer(account.userId, u.name, account.accountId);
+          if (!u) return;
+          await linkPlayer(account.userId, u.name, account.accountId);
+          // Connecting it later: their player is tagged by it too, unless old posts already gave it
+          // to another name, which they can merge into theirs on Settings
+          const taken = await db.query.player.findFirst({ where: and(eq(schema.player.discordId, account.accountId), ne(schema.player.userId, account.userId)), columns: { id: true } });
+          const unclaimed = await db.query.player.findFirst({ where: and(eq(schema.player.discordId, account.accountId), isNull(schema.player.userId)), columns: { id: true } });
+          if (!taken && !unclaimed) await db.update(schema.player).set({ discordId: account.accountId }).where(and(eq(schema.player.userId, account.userId), isNull(schema.player.discordId)));
+        },
+      },
+      delete: {
+        // Disconnected: their id is free for whichever account it's connected to next
+        after: async (account) => {
+          if (account.providerId !== "discord") return;
+          await db.update(schema.user).set({ discordId: null }).where(and(eq(schema.user.id, account.userId), eq(schema.user.discordId, account.accountId)));
         },
       },
     },
@@ -145,8 +152,16 @@ export const auth = betterAuth({
       create: {
         // Re-checked on every sign-in: someone who leaves the server, or an admin removed, can't get back in.
         // After the first time Boardroom says what they are, not the role
-        before: async (session) => {
+        before: async (session, ctx) => {
           if (checkedJustNow(session.userId)) return;
+          // By password: an invite let them in, so it's the group's passwords and their access that count
+          if (startedByPassword(ctx?.path)) {
+            await loadSettings({ fresh: true });
+            const u = await db.query.user.findFirst({ where: eq(schema.user.id, session.userId), columns: { access: true } });
+            const decision = passwordAccess({ enabled: PASSWORD_SIGN_IN, existing: u?.access ?? null, casualNight: CASUAL_NIGHT });
+            if (!decision.ok) throw refuse(decision.refusal);
+            return;
+          }
           const [row, u] = await Promise.all([
             db.query.account.findFirst({
               where: and(eq(schema.account.userId, session.userId), eq(schema.account.providerId, "discord")),

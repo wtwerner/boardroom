@@ -18,6 +18,12 @@ describe("demoRefusal", () => {
   });
 });
 
+describe("demoRefusal without Discord", () => {
+  it("never runs on a site a group set up with a code", () => {
+    expect(demoRefusal({ DEMO: "on", SETUP_CODE: "a long setup code" })).toMatch(/SETUP_CODE is set/);
+  });
+});
+
 describe("isDemoMember", () => {
   it("is only the made-up members", () => {
     expect(["u-sam", "u-alex", "u-jordan", "u-casey"].every(isDemoMember)).toBe(true);

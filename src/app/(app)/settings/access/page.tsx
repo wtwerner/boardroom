@@ -3,15 +3,17 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import clsx from "clsx";
 import { ArrowLeft, Check, Minus } from "lucide-react";
-import { CASUAL_NIGHT, CASUAL_SIGN_IN, DEMO, NIGHT_NAMES } from "@/config";
+import { CASUAL_NIGHT, CASUAL_SIGN_IN, DEMO, DISCORD_BOT, DISCORD_SIGN_IN, GROUP_INVITE, NIGHT_NAMES, PASSWORD_SIGN_IN, TIME_ZONE } from "@/config";
 import type { Access } from "@/db/enums";
 import { Avatar, DemoNote, Empty, Meeple, PageHeader, Panel, Section, Skeleton, TextLink, formatDate } from "@/components/ui";
 import { type Allowed, capabilities, roleMismatch } from "@/lib/access";
 import { hasMemberRole, listGuildMembers } from "@/lib/discord";
-import { type AccessOverview, getAccessOverview } from "@/lib/queries";
+import { openInvites } from "@/lib/account-store";
+import { type AccessOverview, getAccessOverview, getPlayers } from "@/lib/queries";
 import { canManageGroup, requireMemberPage } from "@/lib/session";
 import { inSentence } from "@/lib/text";
 import { AccessControls, MatchDiscordButton } from "./access-controls";
+import { CloseInvite, InviteForm } from "./invites";
 
 export const metadata: Metadata = { title: "People and access" };
 
@@ -37,7 +39,12 @@ type RoleState = { inServer: boolean; hasRole: boolean | null };
 async function PeopleAndAccess() {
   const me = await requireMemberPage();
   if (!(await canManageGroup())) notFound();
-  const [{ accounts, regulars }, server] = await Promise.all([getAccessOverview(), listGuildMembers()]);
+  const [{ accounts, regulars }, server, invites, players] = await Promise.all([
+    getAccessOverview(),
+    listGuildMembers(),
+    PASSWORD_SIGN_IN ? openInvites() : [],
+    PASSWORD_SIGN_IN ? getPlayers() : [],
+  ]);
   // Discord's view, when the bot can read the server: who's in it and who holds the role
   const discord = new Map(server.map((m) => [m.id, m]));
   const roleOf = (discordId: string | null): RoleState | null => {
@@ -50,7 +57,7 @@ async function PeopleAndAccess() {
   const names = { core: inSentence(NIGHT_NAMES.core), casual: inSentence(NIGHT_NAMES.casual) };
   // Without a casual night there's no casual side to the site: nobody's moved there, and anyone already there can't sign in
   const showCasual = CASUAL_NIGHT || accounts.some((a) => a.access === "casual");
-  const rows = capabilities(names);
+  const rows = capabilities(names, { discord: DISCORD_BOT });
   const byAccess = (a: Access) => accounts.filter((x) => x.access === a);
   const members = byAccess("member").sort((a, b) => Number(b.isAdmin) - Number(a.isAdmin) || a.name.localeCompare(b.name));
   const casual = byAccess("casual");
@@ -82,6 +89,41 @@ async function PeopleAndAccess() {
         {showCasual && <Tile label={`${casualName} accounts`} value={casual.length} note={signInNote()} />}
         <Tile label="Off the site" value={removed.length} note="can't sign in" />
       </dl>
+
+      {PASSWORD_SIGN_IN && (
+        <Section id="invite" title="Invite people" className="scroll-mt-6">
+          <p className="mb-3 max-w-2xl text-sm text-slate">
+            {DISCORD_SIGN_IN ? "For people who aren't in Discord: " : ""}
+            {DISCORD_SIGN_IN ? "make" : "Make"} a link and send it however the group talks. Whoever opens it makes an account with an email and password.
+          </p>
+          <Panel>
+            <InviteForm players={players.filter((p) => !p.userId).map((p) => ({ id: p.id, name: p.label }))} casual={CASUAL_NIGHT ? casualName : null} limit={GROUP_INVITE} />
+            {invites.length > 0 && (
+              <ul className="divide-y divide-line border-t border-line" aria-label="Invites that still work">
+                {invites.map((v) => (
+                  <li key={v.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
+                    <span className="min-w-0 flex-1">
+                      <span className="font-medium">{v.label ?? v.player ?? (v.once ? "One person" : "The group's chat")}</span>
+                      <span className="block text-xs text-slate">
+                        {[
+                          v.access === "casual" ? `${casualName} only` : "Member",
+                          v.label && v.player && `as ${v.player}`,
+                          !v.once && `${v.uses} of ${GROUP_INVITE.people} joined`,
+                          v.by && `made by ${v.by}`,
+                          `until ${v.expiresAt.toLocaleDateString("en-US", { timeZone: TIME_ZONE, month: "short", day: "numeric" })}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </span>
+                    <CloseInvite id={v.id} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+        </Section>
+      )}
 
       {mismatched.length > 0 && (
         <Section title="Discord doesn't match">
@@ -127,9 +169,11 @@ async function PeopleAndAccess() {
             <Panel className="divide-y divide-line">{casual.map(row)}</Panel>
           ) : (
             <Empty>
-              {CASUAL_SIGN_IN
-                ? `Nobody yet. Anyone in the Discord server without the member role gets one when they sign in.`
-                : `Nobody yet. Turn on "${NIGHT_NAMES.casual} players can sign in" on Group settings to let them.`}
+              {CASUAL_SIGN_IN && DISCORD_SIGN_IN
+                ? "Nobody yet. Anyone in the Discord server without the member role gets one when they sign in."
+                : PASSWORD_SIGN_IN
+                  ? `Nobody yet. Invite someone to the ${names.casual} only and they get one.`
+                  : `Nobody yet. Turn on "${NIGHT_NAMES.casual} players can sign in" on Group settings to let them.`}
             </Empty>
           )}
         </Section>
@@ -145,14 +189,16 @@ async function PeopleAndAccess() {
         <Section title={`${NIGHT_NAMES.casual} regulars without an account`}>
           <p className="mb-3 max-w-2xl text-sm text-slate">
             Came twice or more in the last year.{" "}
-            {CASUAL_SIGN_IN
-              ? "Once they're in the Discord server, they can sign in."
-              : `They could sign in once "${casualName} players can sign in" is on and they're in the Discord server.`}
+            {PASSWORD_SIGN_IN
+              ? "Invite one above, choosing their name in past plays, and those plays are theirs."
+              : CASUAL_SIGN_IN
+                ? "Once they're in the Discord server, they can sign in."
+                : `They could sign in once "${casualName} players can sign in" is on and they're in the Discord server.`}
           </p>
           <Panel className="divide-y divide-line">
             {regulars.map((r) => {
               // Only Discord can say whether someone's in the server; a player with no Discord linked might be anyway
-              const where = !r.discordId ? "Discord not linked" : !server.length ? null : discord.has(r.discordId) ? "In Discord" : "Not in Discord";
+              const where = !DISCORD_BOT ? null : !r.discordId ? "Discord not linked" : !server.length ? null : discord.has(r.discordId) ? "In Discord" : "Not in Discord";
               return (
                 <div key={r.playerId} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
                   <Meeple color={r.color} />
@@ -217,10 +263,10 @@ async function PeopleAndAccess() {
   );
 }
 
-/** Whether new people without the member role get a casual account, for the tile under the count */
+/** How new people get a casual account, for the tile under the count */
 function signInNote() {
   if (!CASUAL_NIGHT) return "can't sign in";
-  return CASUAL_SIGN_IN ? "sign-in on" : "sign-in off";
+  return PASSWORD_SIGN_IN && !DISCORD_SIGN_IN ? "by invite" : CASUAL_SIGN_IN ? "sign-in on" : "sign-in off";
 }
 
 function Tile({ label, value, note }: { label: string; value: number; note: string }) {
@@ -285,6 +331,7 @@ function PersonRow({
         casualName={casualName}
         offerCasual={CASUAL_NIGHT}
         readOnly={readOnly}
+        passwords={PASSWORD_SIGN_IN}
       />
     </div>
   );

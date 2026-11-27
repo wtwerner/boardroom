@@ -1,7 +1,7 @@
 /**
- * Who gets in and what each kind of account can do. Boardroom decides someone's access; Discord's
- * member role is kept in step with it (it still decides who sees the core group's channels), and
- * only read the first time someone signs in. Pure, so the rules are tested; auth.ts applies the
+ * Who gets in and what each kind of account can do. Boardroom decides someone's access: an invite
+ * says what they start as, or in Discord, the member role does the first time they sign in. After
+ * that the role is kept in step with Boardroom (it still decides who sees the core group's channels). Pure, so the rules are tested; auth.ts applies the
  * sign-in rule and actions.ts the changes admins make.
  */
 
@@ -40,6 +40,21 @@ export function signInAccess(f: SignInFacts): { ok: true; access: "member" | "ca
   if (f.casualSignIn) return { ok: true, access: "casual" };
   if (f.hasRole === null) return { ok: true, access: "member" };
   return { ok: false, refusal: "missing_role" };
+}
+
+/** Better Auth's routes that start a session from a password: signing in, and changing it on Settings, which ends the sessions before it */
+export const startedByPassword = (path: string | undefined) => path === "/sign-in/email" || path === "/change-password";
+
+/**
+ * Whether someone with a password can sign in: not while the group doesn't use them, and by the
+ * same rules as anyone once they're past that. Whoever invited them decided what they are.
+ */
+export function passwordAccess(f: { enabled: boolean; existing: Access | null; casualNight: boolean }): { ok: true } | { ok: false; refusal: SignInRefusal } {
+  if (!f.enabled) return { ok: false, refusal: "passwords_off" };
+  // Like Discord's: the page doesn't say someone was removed
+  if (!f.existing || f.existing === "removed") return { ok: false, refusal: "missing_role" };
+  if (f.existing === "casual" && !f.casualNight) return { ok: false, refusal: "missing_role" };
+  return { ok: true };
 }
 
 export type AccessTarget = { id: string; access: Access; isAdmin: boolean };
@@ -93,16 +108,16 @@ export type Capability = {
  * account sees the casual night's; everything else is everyone's, but making and running events and
  * the group's housekeeping are the members', and settings and access the admins'.
  */
-export function capabilities(names: { core: string; casual: string }): Capability[] {
+export function capabilities(names: { core: string; casual: string }, { discord = true }: { /** The site has a Discord bot */ discord?: boolean } = {}): Capability[] {
   return [
     { area: "Their own", what: "Rate and rank games", admin: "yes", member: "yes", casual: "yes", actions: ["setOpinion", "acceptBggSuggestions", "undoBggSuggestions", "saveRanking"] },
     {
       area: "Their own",
-      what: "Name, color, calendar, BGG collection and Board Game Arena name",
+      what: "Name, color, email, password, calendar, BGG collection and Board Game Arena name",
       admin: "yes",
       member: "yes",
       casual: "yes",
-      actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv", "saveBgaProfile"],
+      actions: ["renamePlayer", "setMyColor", "openCalendarSync", "newCalendarLink", "saveBggUsername", "importCsv", "saveBgaProfile", "saveEmail", "sendConfirmation", "setEmailChoice", "setMyPassword"],
     },
     { area: "Seeing", what: "Every page: Home, Plan, Plays, Shelf, Rankings, People, Discover, Online", admin: "yes", member: "yes", casual: "yes", actions: [] },
     { area: "Seeing", what: `The ${names.core}'s events, plays and group list`, admin: "yes", member: "yes", casual: "no", actions: [] },
@@ -124,13 +139,13 @@ export function capabilities(names: { core: string; casual: string }): Capabilit
       admin: "yes",
       member: "yes",
       casual: "no",
-      actions: ["addNight", "updateNight", "updateNightDetails", "deleteNight", "startPoll", "findNewDate", "setNightDate", "nudgeForDates", "callOffPoll", "reopenPoll", "choosePlan"],
+      actions: ["addNight", "updateNight", "updateNightDetails", "deleteNight", "cancelEvent", "reopenEvent", "startPoll", "findNewDate", "setNightDate", "nudgeForDates", "callOffPoll", "reopenPoll", "choosePlan"],
     },
     { area: "Plays", what: "Log plays", admin: "yes", member: "yes", casual: "casual", actions: ["logPlay", "endNight"] },
     { area: "Plays", what: "Edit or delete plays", admin: "yes", member: "yes", casual: "own", actions: ["updatePlay", "deletePlay", "movePlay"] },
     {
       area: "Housekeeping",
-      what: "Sync from Discord, fix game names, merge or split players",
+      what: discord ? "Sync from Discord, fix game names, merge or split players" : "Fix game names, merge or split players",
       admin: "yes",
       member: "yes",
       casual: "no",
@@ -148,6 +163,6 @@ export function capabilities(names: { core: string; casual: string }): Capabilit
       actions: ["wantGame", "unwantGame", "takeOffBuyList", "addSuggestion", "askClaudeForPicks"],
     },
     { area: "Admin", what: "Group settings, and who's an admin", admin: "yes", member: "no", casual: "no", actions: ["saveGroupSettings", "setAdmin"] },
-    { area: "Admin", what: "Invite people, and move them up, down or off the site", admin: "yes", member: "no", casual: "no", actions: ["welcomeToGroup", "setAccess", "matchDiscordRole"] },
+    { area: "Admin", what: "Invite people, and move them up, down or off the site", admin: "yes", member: "no", casual: "no", actions: ["welcomeToGroup", "makeInvite", "closeInvite", "makePasswordLink", "setAccess", "matchDiscordRole"] },
   ];
 }

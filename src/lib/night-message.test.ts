@@ -149,7 +149,7 @@ describe("buildNightMessage", () => {
 
   it("marks a cancelled night and takes its buttons away", () => {
     const m = buildNightMessage({ ...base, cancelled: true });
-    expect(componentText(m.components)).toContain("## ~~Thursday heavy~~\n🚫 **Cancelled**");
+    expect(componentText(m.components)).toContain("## ~~Thursday heavy~~\n🚫 **Canceled**");
     expect(buttons(m)).toEqual([]);
   });
 
@@ -184,7 +184,7 @@ describe("buildNightThreadCopy", () => {
 
   it("says a cancelled night is, with nothing to press", () => {
     const copy = buildNightThreadCopy({ ...base, cancelled: true });
-    expect(componentText(copy.components)).toBe("-# 🚫 Cancelled");
+    expect(componentText(copy.components)).toBe("-# 🚫 Canceled");
     expect(rows(copy)).toEqual([]);
   });
 });

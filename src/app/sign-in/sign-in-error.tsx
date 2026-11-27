@@ -4,21 +4,34 @@ import { useSearchParams } from "next/navigation";
 import type { SignInRefusal } from "@/lib/sign-in-refusal";
 import { SignInButton } from "./sign-in-button";
 
-const MESSAGES: Record<SignInRefusal | "access_denied", string> = {
+const MESSAGES: Record<SignInRefusal | "access_denied" | "account_not_linked" | "account_already_linked_to_different_user", string> = {
   not_in_server: "That Discord account isn't in the group's server. Ask someone in the group for an invite, then try again.",
-  missing_role: "Couldn't sign you in with that Discord account.",
+  missing_role: "Couldn't sign you in.",
+  passwords_off: "This site doesn't use passwords. Sign in with Discord.",
   access_denied: "Sign-in was canceled in Discord.",
+  account_not_linked: "There's already an account here with that email. Sign in with your password, then connect Discord on Settings.",
+  account_already_linked_to_different_user: "That Discord account is already connected to another account here.",
 };
 
-/** The sign-in button, with why the last attempt failed above it. Failed attempts come back as ?error=<code>. */
-export function SignInOrRetry() {
+/** Why the last attempt failed, in words. Failed attempts come back as ?error=<code> */
+function useProblem() {
   const error = useSearchParams().get("error");
-  if (!error) return <SignInButton />;
-  const message = Object.hasOwn(MESSAGES, error) ? MESSAGES[error as keyof typeof MESSAGES] : "Discord sign-in didn't finish.";
+  if (!error) return null;
+  return Object.hasOwn(MESSAGES, error) ? MESSAGES[error as keyof typeof MESSAGES] : "Sign-in didn't finish.";
+}
+
+export function SignInError() {
+  const problem = useProblem();
+  return problem && <p role="alert" className="mb-4 rounded-lg bg-black/20 px-3 py-2 text-sm">{problem}</p>;
+}
+
+/** Discord's sign-in button, with why the last attempt failed above it */
+export function SignInOrRetry() {
+  const problem = useProblem();
   return (
     <>
-      <p role="alert" className="mb-4 rounded-lg bg-black/20 px-3 py-2 text-sm">{message}</p>
-      <SignInButton label="Try again" />
+      <SignInError />
+      <SignInButton label={problem ? "Try again with Discord" : undefined} />
     </>
   );
 }

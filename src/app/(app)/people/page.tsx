@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { CASUAL_NIGHT, NIGHT_NAMES, SITE_NAME } from "@/config";
+import { CASUAL_NIGHT, DISCORD_SIGN_IN, NIGHT_NAMES, PASSWORD_SIGN_IN, SITE_NAME } from "@/config";
 import { Avatar, Empty, GameCover, Meeple, NewBadge, PageHeader, Panel, Section, Skeleton, TextLink, formatDate } from "@/components/ui";
 import { TIERS } from "@/db/enums";
 import { hasMemberRole, listGuildMembers } from "@/lib/discord";
@@ -77,12 +77,16 @@ async function People() {
             {member ? (
               <p className="mb-3 text-sm text-slate">
                 Regulars from past plays{CASUAL_NIGHT && `, ${inSentence(NIGHT_NAMES.casual)} included`}.{" "}
-                {hasMemberRole() ? "Anyone given the group’s role in Discord" : "Anyone in the Discord server"} can sign in and their history
-                comes with them; if it doesn&apos;t, merge the names in{" "}
+                {!DISCORD_SIGN_IN
+                  ? "Once someone's invited"
+                  : hasMemberRole()
+                    ? "Anyone given the group’s role in Discord can sign in"
+                    : "Anyone in the Discord server can sign in"}
+                {DISCORD_SIGN_IN ? " and " : ", "}their history comes with them; if it doesn&apos;t, merge the names in{" "}
                 <Link href="/settings#players" className="text-accent underline-offset-4 hover:underline">Settings</Link>.
               </p>
             ) : (
-              <p className="mb-3 text-sm text-slate">Regulars from past {inSentence(NIGHT_NAMES.casual)}s. Once they sign in with Discord, their history comes with them.</p>
+              <p className="mb-3 text-sm text-slate">Regulars from past {inSentence(NIGHT_NAMES.casual)}s. Once they sign in, their history comes with them.</p>
             )}
             <Panel className="divide-y divide-line">
               {notSignedUp.map((p) => (
@@ -101,6 +105,12 @@ async function People() {
           <Empty>Everyone who comes regularly has signed up.</Empty>
         )}
       </Section>
+
+      {admin && PASSWORD_SIGN_IN && !candidates && (
+        <p className="text-sm text-slate">
+          Someone missing? <TextLink href="/settings/access#invite">Invite them</TextLink> on People and access.
+        </p>
+      )}
 
       {candidates && (
         <Section title={`Invite someone to ${invitedTo}`}>

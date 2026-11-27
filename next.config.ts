@@ -1,6 +1,11 @@
 import type { NextConfig } from "next";
 
+// `next dev` only serves its scripts' socket to localhost, and without it a page never becomes
+// interactive. Opened at another address (a phone on the same network, a tunnel), that's the site's own
+const siteUrl = process.env.BETTER_AUTH_URL ?? "";
+
 const nextConfig: NextConfig = {
+  allowedDevOrigins: URL.canParse(siteUrl) ? [new URL(siteUrl).hostname] : [],
   cacheComponents: true,
   partialPrefetching: true,
   experimental: {

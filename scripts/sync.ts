@@ -13,7 +13,7 @@ async function main() {
   const { hasBggToken } = await import("@/lib/bgg");
   const { syncBgaGames, syncBggCollections, syncDiscordPlays } = await import("@/lib/sync");
 
-  console.log("Discord:", await syncDiscordPlays());
+  console.log("Discord:", process.env.DISCORD_BOT_TOKEN ? await syncDiscordPlays() : "skipped (no DISCORD_BOT_TOKEN)");
   if (hasBggToken()) {
     const { refreshCatalog, refreshUpcoming } = await import("@/lib/catalog");
     console.log("BGG:", await syncBggCollections());

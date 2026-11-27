@@ -1,6 +1,6 @@
 # Discord setup
 
-Boardroom uses one Discord application for two jobs:
+Discord is optional: Boardroom works without it, and you can add it any time. With it, Boardroom uses one Discord application for two jobs:
 
 - **Login** (OAuth2). Members sign in with their Discord account.
 - **A bot user** that reads the plays channel, posts plays logged in the app, checks that people signing in are in the server, and (optionally) posts each game night with a thread and buttons to answer.

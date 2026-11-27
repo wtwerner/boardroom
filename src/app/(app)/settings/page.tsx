@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
 import { count, eq } from "drizzle-orm";
-import { CASUAL_NIGHT, DEMO, NIGHT_NAMES } from "@/config";
+import { CASUAL_NIGHT, DEMO, DISCORD_BOT, DISCORD_SIGN_IN, NIGHT_NAMES, PASSWORD_SIGN_IN } from "@/config";
 import { db, schema } from "@/db";
 import { PageHeader, Panel, Section, Skeleton, buttonClass } from "@/components/ui";
 import { previewCasual } from "@/app/actions";
@@ -10,7 +10,10 @@ import { inSentence } from "@/lib/text";
 import { canManageGroup, requireUser } from "@/lib/session";
 import { getPlayers } from "@/lib/queries";
 import { hasBggToken } from "@/lib/bgg";
-import { anyServerMemberCanSignIn, listGuildMembers } from "@/lib/discord";
+import { emailReady } from "@/lib/email";
+import { isPlaceholderEmail } from "@/lib/join";
+import { AddPassword, ConnectDiscord, ConnectError, ConfirmEmail, EmailForm, EmailUpdates, PasswordForm } from "./account-forms";
+import { anyServerMemberCanSignIn, listGuildMembers, postsNights } from "@/lib/discord";
 import { BgaForm, BggForm, CalendarSync, ColorPicker, CsvForm, MergePlayersForm, PlayerDiscordLink, RenamePlayerForm, SignOutButton, SplitPlayerForm } from "./settings-forms";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -30,7 +33,7 @@ async function Settings() {
   const me = await requireUser();
   // A casual account has their own things here: name, color, calendar and collection
   const member = me.access === "member";
-  const [players, [owned], seatCounts, discordMembers, [bga], canManage, admins, myCalendar] = await Promise.all([
+  const [players, [owned], seatCounts, discordMembers, [bga], canManage, admins, myCalendar, [account], logins] = await Promise.all([
     getPlayers(),
     db
       .select({ n: count() })
@@ -48,7 +51,14 @@ async function Settings() {
     canManageGroup(),
     db.select({ name: schema.user.name }).from(schema.user).where(eq(schema.user.isAdmin, true)),
     me.playerId ? db.query.player.findFirst({ where: eq(schema.player.id, me.playerId), columns: { calendarToken: true } }) : null,
+    db
+      .select({ email: schema.user.email, verified: schema.user.emailVerified, updates: schema.user.emailUpdates, too: schema.user.emailToo, discordId: schema.user.discordId })
+      .from(schema.user)
+      .where(eq(schema.user.id, me.id)),
+    db.select({ provider: schema.account.providerId }).from(schema.account).where(eq(schema.account.userId, me.id)),
   ]);
+  const hasPassword = logins.some((x) => x.provider === "credential");
+  const hasDiscord = logins.some((x) => x.provider === "discord");
   const plays = new Map(seatCounts.map((s) => [s.playerId, s.n]));
 
   return (
@@ -65,21 +75,21 @@ async function Settings() {
           <Link href="/settings/group" className="flex items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/40">
             <span>
               <span className="block font-medium">Group settings</span>
-              <span className="block text-sm text-slate">The site&apos;s name, time zone, kinds of events, Discord channels, and who the admins are.</span>
+              <span className="block text-sm text-slate">The site&apos;s name, time zone, kinds of events{DISCORD_BOT && ", Discord channels"}, and who the admins are.</span>
             </span>
             <span aria-hidden className="text-slate">→</span>
           </Link>
           <Link href="/settings/access" className="flex items-center justify-between gap-3 rounded-xl border border-line bg-card px-4 py-3 hover:border-ink/40">
             <span>
               <span className="block font-medium">People and access</span>
-              <span className="block text-sm text-slate">Who&apos;s a member{CASUAL_NIGHT && ` or a ${inSentence(NIGHT_NAMES.casual)} account`}, who&apos;s an admin, and what each can do.</span>
+              <span className="block text-sm text-slate">{PASSWORD_SIGN_IN && "Invite people, and see "}{PASSWORD_SIGN_IN ? "who" : "Who"}&apos;s a member{CASUAL_NIGHT && ` or a ${inSentence(NIGHT_NAMES.casual)} account`}, who&apos;s an admin, and what each can do.</span>
             </span>
             <span aria-hidden className="text-slate">→</span>
           </Link>
         </div>
       ) : (
         <p className="text-sm text-slate">
-          The site&apos;s name, time zone and Discord channels are on Group settings, which {admins.map((a) => a.name).join(", ")}{" "}
+          The site&apos;s name{DISCORD_BOT ? ", time zone and Discord channels" : " and time zone"} are on Group settings, which {admins.map((a) => a.name).join(", ")}{" "}
           {admins.length === 1 ? "looks after" : "look after"} as {admins.length === 1 ? "admin" : "admins"}.
         </p>
       )}
@@ -90,13 +100,48 @@ async function Settings() {
       <Section title="You">
         {me.playerId && (
           <div className="mb-5">
-            <p className="mb-2 text-sm text-slate">The name everyone sees on plays and rankings. It starts as your Discord name, but most people here go by their first name.</p>
+            <p className="mb-2 text-sm text-slate">The name everyone sees on plays and rankings. {hasDiscord && "It starts as your Discord name, but most people here go by their first name."}</p>
             <RenamePlayerForm players={[{ id: me.playerId, name: me.name }]} myPlayerId={me.playerId} label="Your name" />
           </div>
         )}
         <p className="mb-3 text-sm text-slate">Your meeple color goes beside your name on plays and rankings, and around your picture. Others can pick the same one.</p>
         <ColorPicker current={me.color} />
       </Section>
+
+      {!DEMO && account && (hasPassword || PASSWORD_SIGN_IN || (DISCORD_SIGN_IN && !hasDiscord) || emailReady()) && (
+        <Section id="email" title="Signing in and email" className="scroll-mt-6">
+          <Panel className="space-y-5 p-4">
+            {hasPassword && PASSWORD_SIGN_IN && (
+              <>
+                <EmailForm email={account.email} />
+                <div className="border-t border-line pt-4">
+                  <PasswordForm />
+                </div>
+              </>
+            )}
+            {PASSWORD_SIGN_IN && !hasPassword && (
+              <div className="border-t border-line pt-4 first:border-0 first:pt-0">
+                <AddPassword />
+              </div>
+            )}
+            {DISCORD_SIGN_IN && !hasDiscord && (
+              <div className="space-y-3 border-t border-line pt-4 first:border-0 first:pt-0">
+                <ConnectError />
+                <ConnectDiscord />
+              </div>
+            )}
+            {emailReady() && !isPlaceholderEmail(account.email) && (
+              <div className="space-y-3 border-t border-line pt-4 first:border-0 first:pt-0">
+                {account.verified ? (
+                  <EmailUpdates on={account.updates} too={account.too} discord={DISCORD_BOT && Boolean(account.discordId) && postsNights(me.access === "member" ? "core" : "casual")} email={account.email} />
+                ) : (
+                  <ConfirmEmail email={account.email} password={hasPassword} />
+                )}
+              </div>
+            )}
+          </Panel>
+        </Section>
+      )}
 
       {me.playerId && (
         <Section id="calendar" title="Your calendar" className="scroll-mt-6">
@@ -147,8 +192,7 @@ async function Settings() {
           <Section id="players" title="Players" className="scroll-mt-6">
             <p className="mb-3 text-sm text-slate">
               Everyone who appears in a play log.
-              {/* A demo has no Discord to link anyone to */}
-              {!DEMO &&
+              {DISCORD_BOT &&
                 " Link each person to their Discord account so plays posted from here tag them. Anyone @-mentioned in an imported message is linked already, and members are linked when they sign in."}
             </p>
             <Panel className="mb-4 divide-y divide-line">
@@ -159,7 +203,7 @@ async function Settings() {
                     {p.userId && <span className="text-xs text-slate"> (member)</span>}
                     <span className="tabular block text-xs text-slate">{plays.get(p.id) ?? 0} {plays.get(p.id) === 1 ? "play" : "plays"}</span>
                   </span>
-                  {!DEMO && (
+                  {DISCORD_BOT && (
                     <PlayerDiscordLink
                       playerId={p.id}
                       discordId={p.discordId}

@@ -74,6 +74,11 @@ const SETTINGS = {
   casualNightTitle: { schema: optionalText(80), env: "CASUAL_NIGHT_TITLE" },
   // Newer than the settings page: off until an admin turns it on
   casualSignIn: { schema: flag, env: () => null },
+  // On for a group that starts without Discord, so adding Discord later doesn't lock anyone out
+  passwordSignIn: { schema: flag, env: (e: Env) => !e.DISCORD_CLIENT_ID?.trim() },
+  // Newer than the settings page, so there's no environment variable to fall back to
+  groupInvitePeople: { schema: number(1, 500, 30, "int"), env: () => null },
+  groupInviteDays: { schema: number(1, 90, 7, "int"), env: () => null },
   heavyWeight: { schema: number(1, 5, 2.75), env: "HEAVY_GAME_WEIGHT" },
   // Newer than the settings page: off until an admin turns it on
   showBggRatings: { schema: flag, env: () => null },

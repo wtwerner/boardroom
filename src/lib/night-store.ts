@@ -59,7 +59,7 @@ const isPast = (n: { startsAt: Date }) => n.startsAt.getTime() < Date.now() - ni
 /** Change a night's details. Returns how it was, so the thread can be told what moved. */
 export async function editNight(id: number, fields: Partial<NightFields>) {
   const n = await ownNight(id);
-  if (n.cancelled) throw new Error("That was cancelled.");
+  if (n.cancelled) throw new Error("That was canceled.");
   // Its date's set from its poll (poll-store.ts), so only its other details change here
   if (n.findingDate && fields.startsAt) throw new Error("Its date isn't set yet. Set it from the dates on offer, or suggest another.");
   const next = {
@@ -117,6 +117,16 @@ export async function waitingFor(nightId: number) {
 export async function cancelNight(id: number) {
   const n = await ownNight(id);
   await db.update(schema.gameNight).set({ cancelled: true }).where(eq(schema.gameNight.id, n.id));
+  return n;
+}
+
+/** Back on after being canceled, with everyone's answers as they were. One still finding its date reopens its poll instead */
+export async function reopenNight(id: number) {
+  const n = await ownNight(id);
+  if (!n.cancelled) throw new Error("It isn't canceled.");
+  if (n.findingDate) throw new Error("Reopen its date poll instead.");
+  if (isPast(n)) throw new Error("That's been and gone.");
+  await db.update(schema.gameNight).set({ cancelled: false }).where(eq(schema.gameNight.id, n.id));
   return n;
 }
 
@@ -196,7 +206,7 @@ export async function leaveNights(userId: string, { offSite }: { offSite: boolea
  */
 export async function setRsvp(input: { nightId: number; playerId: number; status: RsvpStatus | null; guests?: number; via: "site" | "discord" }) {
   const n = await ownNight(input.nightId);
-  if (n.cancelled) throw new Error("That was cancelled.");
+  if (n.cancelled) throw new Error("That was canceled.");
   if (n.findingDate) throw new Error("Its date isn't set yet. Say which dates work instead.");
   if (isPast(n)) throw new Error("That's been and gone.");
   const key = and(eq(schema.nightRsvp.gameNightId, n.id), eq(schema.nightRsvp.playerId, input.playerId));

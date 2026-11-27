@@ -52,3 +52,10 @@ export type Tier = (typeof TIERS)[number];
  */
 export const ACCESS = ["member", "casual", "removed"] as const;
 export type Access = (typeof ACCESS)[number];
+
+/**
+ * A link that stands in for someone being signed in (access_link): an invite to make an account,
+ * one to choose a new password, or one to confirm an email address is theirs.
+ */
+export const LINK_KINDS = ["invite", "password", "email"] as const;
+export type LinkKind = (typeof LINK_KINDS)[number];

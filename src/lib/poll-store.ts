@@ -342,7 +342,7 @@ export async function setPollDate(pollId: number, optionId: number) {
  */
 export async function dateFellThrough(nightId: number, dates: Date[], userId: string) {
   const n = await ownNight(nightId);
-  if (n.cancelled) throw new Error("That was cancelled.");
+  if (n.cancelled) throw new Error("That was canceled.");
   if (n.findingDate) throw new Error("It's finding a date already.");
   if (n.startsAt.getTime() <= Date.now()) throw new Error("That's been and gone.");
   const offered = checkDates(dates);
@@ -387,7 +387,7 @@ export async function dateFellThrough(nightId: number, dates: Date[], userId: st
       pollId,
       night: n.night,
       was: n.startsAt,
-      going: rsvps.filter((r) => r.status === "going" || r.status === "waitlist").map((r) => ({ name: r.name, discordId: r.discordId })),
+      going: rsvps.filter((r) => r.status === "going" || r.status === "waitlist").map((r) => ({ name: r.name, discordId: r.discordId, playerId: r.playerId })),
       games: games.length,
     };
   });
