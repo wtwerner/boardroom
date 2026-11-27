@@ -7,7 +7,7 @@ import { DEMO, GROUP_NIGHTS, NIGHT_NAMES, NIGHT_TITLES, TIME_ZONE } from "@/conf
 import { db, schema } from "@/db";
 import { DateBadge, NightTag, NightWhen, OnNow, isOn } from "@/components/night-row";
 import { LiveRefresh } from "@/components/live-refresh";
-import { discordAppUrl } from "@/lib/discord-components";
+import { discordAppUrl, listNames } from "@/lib/discord-components";
 import { bggPrepLinks } from "@/lib/bgg-links";
 import { nightKey } from "@/lib/calendar-store";
 import { Empty, Panel, Section, Skeleton, TextLink } from "@/components/ui";
@@ -132,6 +132,12 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
         {poll ? (
           // Finding its date: everyone says which dates work, and their answers are who's coming once one's set
           <PollCard poll={await pollView(poll, n)} myPlayerId={me.playerId} colors={Object.fromEntries(members.map((m) => [m.id, m.color]))} calendar={calendar} limited={limited} />
+        ) : n.cancelled ? (
+          // Nothing to answer or plan: setRsvp and the rest refuse a canceled event
+          <Panel className="space-y-1 p-4 text-sm">
+            <p className="font-medium">This event was canceled.</p>
+            {n.going.length > 0 && <p className="text-slate">Going when it was canceled: {listNames(n.going.map((a) => a.name))}.</p>}
+          </Panel>
         ) : (
           <Panel className="p-4">
             <People
@@ -152,101 +158,105 @@ async function NightPlan({ params }: { params: PageProps<"/events/[id]">["params
         )}
       </div>
 
-      <Section title={n.night === "core" ? "The game" : "What's coming"}>
-        {n.night === "core" ? (
-          <CoreGames games={n.games} going={going.length ? going : people} meId={me.id} lockLinks={DEMO} />
-        ) : (
-          <CasualGames
-            nightId={n.id}
-            limited={limited}
-            games={n.games}
-            members={people}
-            meId={me.id}
-            headcount={headcount}
-            owners={Object.fromEntries(
-              n.games.map((g) => [
-                g.game.id,
-                (everything.find((s) => s.id === g.game.id)?.ownerIds ?? []).flatMap((uid) => {
-                  const p = byId.get(uid);
-                  return p ? [{ id: p.id, name: p.name, coming: table.memberIds.includes(uid) }] : [];
-                }),
-              ]),
+      {!n.cancelled && (
+        <>
+          <Section title={n.night === "core" ? "The game" : "What's coming"}>
+            {n.night === "core" ? (
+              <CoreGames games={n.games} going={going.length ? going : people} meId={me.id} lockLinks={DEMO} />
+            ) : (
+              <CasualGames
+                nightId={n.id}
+                limited={limited}
+                games={n.games}
+                members={people}
+                meId={me.id}
+                headcount={headcount}
+                owners={Object.fromEntries(
+                  n.games.map((g) => [
+                    g.game.id,
+                    (everything.find((s) => s.id === g.game.id)?.ownerIds ?? []).flatMap((uid) => {
+                      const p = byId.get(uid);
+                      return p ? [{ id: p.id, name: p.name, coming: table.memberIds.includes(uid) }] : [];
+                    }),
+                  ]),
+                )}
+              />
             )}
-          />
-        )}
-        {everything.length > 0 && (
-          <div className="mt-4">
-            <GameSearch
-              night={n.night}
-              nightId={n.id}
-              onNight={onNight}
-              members={people}
-              comingIds={table.memberIds}
-              meId={me.id}
-              games={everything.map((g) => ({
-                id: g.id,
-                name: g.name,
-                thumbnail: g.thumbnail,
-                minPlayers: g.minPlayers,
-                maxPlayers: g.maxPlayers,
-                minPlaytime: g.minPlaytime,
-                maxPlaytime: g.maxPlaytime,
-                ownerIds: g.ownerIds,
-              }))}
-            />
-          </div>
-        )}
-      </Section>
+            {everything.length > 0 && (
+              <div className="mt-4">
+                <GameSearch
+                  night={n.night}
+                  nightId={n.id}
+                  onNight={onNight}
+                  members={people}
+                  comingIds={table.memberIds}
+                  meId={me.id}
+                  games={everything.map((g) => ({
+                    id: g.id,
+                    name: g.name,
+                    thumbnail: g.thumbnail,
+                    minPlayers: g.minPlayers,
+                    maxPlayers: g.maxPlayers,
+                    minPlaytime: g.minPlaytime,
+                    maxPlaytime: g.maxPlaytime,
+                    ownerIds: g.ownerIds,
+                  }))}
+                />
+              </div>
+            )}
+          </Section>
 
-      <Section title={n.night === "core" ? "Recommendations to propose" : "Recommendations to bring"}>
-        {shelf.length === 0 ? (
-          <Empty>
-            Nothing on the shelf to pick from yet. <TextLink href="/settings#bgg">Add a BGG collection</TextLink> first.
-          </Empty>
-        ) : (
-          <GamePicker
-            key={`${n.id}-${table.memberIds.join(",")}-${table.others}`}
-            night={n.night}
-            nightName={NIGHT_NAMES[n.night]}
-            nightId={n.id}
-            onNight={onNight}
-            going={n.going.length + n.guests > 0 ? table : null}
-            meId={me.id}
-            members={people}
-            games={shelf.map((g) => ({
-              id: g.id,
-              name: g.name,
-              thumbnail: g.thumbnail,
-              minPlayers: g.minPlayers,
-              maxPlayers: g.maxPlayers,
-              bestPlayers: g.bestPlayers,
-              notRecommendedPlayers: g.notRecommendedPlayers,
-              minPlaytime: g.minPlaytime,
-              maxPlaytime: g.maxPlaytime,
-              weight: g.weight,
-              ownerIds: g.ownerIds,
-              lastPlayedOn: g.lastPlayed,
-              playCount: g.plays,
-              playedBy: playedBy.get(g.id) ?? [],
-            }))}
-            opinions={opinions.map((o) => ({
-              userId: o.userId,
-              gameId: o.gameId,
-              sentiment: o.sentiment,
-              wantToPlay: o.wantToPlay,
-              mustPlay: o.mustPlay,
-            }))}
-            rankings={[rankings.heavy, rankings.light]}
-            chances={chances}
-            bggRatings={bgg.ratings}
-            bggPlays={bgg.plays}
-            today={new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE })}
-            // Claude's context for the night is its own (buildGroupContext), so anyone who sees the night can ask
-            aiEnabled={claudeReady()}
-            explain
-          />
-        )}
-      </Section>
+          <Section title={n.night === "core" ? "Recommendations to propose" : "Recommendations to bring"}>
+            {shelf.length === 0 ? (
+              <Empty>
+                Nothing on the shelf to pick from yet. <TextLink href="/settings#bgg">Add a BGG collection</TextLink> first.
+              </Empty>
+            ) : (
+              <GamePicker
+                key={`${n.id}-${table.memberIds.join(",")}-${table.others}`}
+                night={n.night}
+                nightName={NIGHT_NAMES[n.night]}
+                nightId={n.id}
+                onNight={onNight}
+                going={n.going.length + n.guests > 0 ? table : null}
+                meId={me.id}
+                members={people}
+                games={shelf.map((g) => ({
+                  id: g.id,
+                  name: g.name,
+                  thumbnail: g.thumbnail,
+                  minPlayers: g.minPlayers,
+                  maxPlayers: g.maxPlayers,
+                  bestPlayers: g.bestPlayers,
+                  notRecommendedPlayers: g.notRecommendedPlayers,
+                  minPlaytime: g.minPlaytime,
+                  maxPlaytime: g.maxPlaytime,
+                  weight: g.weight,
+                  ownerIds: g.ownerIds,
+                  lastPlayedOn: g.lastPlayed,
+                  playCount: g.plays,
+                  playedBy: playedBy.get(g.id) ?? [],
+                }))}
+                opinions={opinions.map((o) => ({
+                  userId: o.userId,
+                  gameId: o.gameId,
+                  sentiment: o.sentiment,
+                  wantToPlay: o.wantToPlay,
+                  mustPlay: o.mustPlay,
+                }))}
+                rankings={[rankings.heavy, rankings.light]}
+                chances={chances}
+                bggRatings={bgg.ratings}
+                bggPlays={bgg.plays}
+                today={new Date().toLocaleDateString("en-CA", { timeZone: TIME_ZONE })}
+                // Claude's context for the night is its own (buildGroupContext), so anyone who sees the night can ask
+                aiEnabled={claudeReady()}
+                explain
+              />
+            )}
+          </Section>
+        </>
+      )}
     </div>
   );
 }
